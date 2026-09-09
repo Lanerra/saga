@@ -14,6 +14,7 @@ import structlog
 from core.langgraph.nodes.scene_extraction_validation import (
     _get_normalized_entity_key,
 )
+from utils import classify_category_label
 
 logger = structlog.get_logger(__name__)
 
@@ -25,7 +26,7 @@ def consolidate_scene_extractions(
 
     Deduplication strategy:
     - Characters: Dedupe by name (spaCy-based normalization when available), keep longest description
-    - World items: Dedupe by name (spaCy-based normalization when available), keep longest description
+    - World items: Dedupe by canonical category and normalized name, keep longest description
     - Relationships: Dedupe by (source, target, type) tuple with spaCy normalization
 
     Args:
@@ -35,7 +36,7 @@ def consolidate_scene_extractions(
         Consolidated dict with deduplicated characters, world_items, relationships.
     """
     characters_map: dict[str, dict[str, Any]] = {}
-    world_items_map: dict[str, dict[str, Any]] = {}
+    world_items_map: dict[tuple[str, str], dict[str, Any]] = {}
     relationships_set: set[tuple[str, str, str]] = set()
     relationships: list[dict[str, Any]] = []
 
@@ -57,16 +58,18 @@ def consolidate_scene_extractions(
         for world_item in scene_result.get("world_items", []):
             name = world_item["name"]
             name_key = _get_normalized_entity_key(name)
+            category = world_item.get("attributes", {}).get("category", world_item.get("type", ""))
+            world_item_key = (classify_category_label(category), name_key)
 
-            if name_key in world_items_map:
-                existing = world_items_map[name_key]
+            if world_item_key in world_items_map:
+                existing = world_items_map[world_item_key]
                 existing_desc_len = len(existing.get("description", ""))
                 new_desc_len = len(world_item.get("description", ""))
 
                 if new_desc_len > existing_desc_len:
-                    world_items_map[name_key] = world_item
+                    world_items_map[world_item_key] = world_item
             else:
-                world_items_map[name_key] = world_item
+                world_items_map[world_item_key] = world_item
 
         for relationship in scene_result.get("relationships", []):
             source = relationship.get("source_name", "")

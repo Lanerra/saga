@@ -2,10 +2,12 @@
 """Integration tests for scene extraction with spaCy validation."""
 
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import config
 from core.langgraph.nodes.scene_extraction_normalization import (
     consolidate_scene_extractions,
 )
@@ -241,6 +243,74 @@ def test_consolidate_scene_extractions_multiple_scenes(mock_config: MagicMock, m
     # Should merge and keep the longest description
     assert len(result["characters"]) == 1
     assert result["characters"][0]["description"] == "Scene 2 longer description"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("category_in_attributes", [False, True])
+def test_consolidation_preserves_equal_names_in_distinct_categories(
+    monkeypatch: pytest.MonkeyPatch, reverse: bool, category_in_attributes: bool
+) -> None:
+    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_ENTITY_VALIDATION": False}))
+    location: dict[str, Any] = {
+        "name": "Crossing",
+        "type": "Location",
+        "description": "A river crossing",
+        "first_appearance_chapter": 3,
+        "scene_index": 0,
+        "attributes": {"id": "location-crossing", "rules": ["Toll required"]},
+    }
+    event: dict[str, Any] = {
+        "name": "crossing",
+        "type": "Event",
+        "description": "The annual ceremonial crossing of the river",
+        "first_appearance_chapter": 3,
+        "scene_index": 1,
+        "attributes": {"id": "event-crossing", "goals": ["Reach the far bank"]},
+    }
+    if category_in_attributes:
+        location["type"] = event["type"] = "Item"
+        location["attributes"]["category"] = "place"
+        event["attributes"]["category"] = "battle"
+    items = [event, location] if reverse else [location, event]
+    scenes = [{"world_items": [item]} for item in items]
+
+    result = consolidate_scene_extractions(scenes)
+
+    assert result == {"characters": [], "world_items": items, "relationships": []}
+    for index, item in enumerate(items):
+        assert result["world_items"][index] is item
+    assert consolidate_scene_extractions(scenes) == result
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("equal_length", [False, True])
+def test_consolidation_preserves_world_item_duplicate_selection(
+    monkeypatch: pytest.MonkeyPatch, reverse: bool, equal_length: bool
+) -> None:
+    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_ENTITY_VALIDATION": False}))
+    first: dict[str, Any] = {
+        "name": "Crossing",
+        "type": "Location",
+        "description": "A ford",
+        "first_appearance_chapter": 3,
+        "scene_index": 0,
+        "attributes": {"id": "first-crossing", "category": "Location", "rules": ["Toll required"]},
+    }
+    second: dict[str, Any] = {
+        "name": "crossing",
+        "type": "Location",
+        "description": "A gate" if equal_length else "A ford beside the village gate",
+        "first_appearance_chapter": 3,
+        "scene_index": 1,
+        "attributes": {"id": "second-crossing", "category": "place", "key_elements": ["Village gate"]},
+    }
+    items = [second, first] if reverse else [first, second]
+    selected = items[0] if equal_length else second
+
+    result = consolidate_scene_extractions([{"world_items": [item]} for item in items])
+
+    assert result == {"characters": [], "world_items": [selected], "relationships": []}
+    assert result["world_items"][0] is selected
 
 
 @patch("core.langgraph.nodes.scene_extraction_validation.config")

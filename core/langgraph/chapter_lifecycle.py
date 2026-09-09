@@ -354,7 +354,7 @@ class ChapterLifecycle:
                 )
             }
             policy["contradictions"] = [item.model_dump(mode="json") for item in self.state.get("contradictions", [])]
-            acceptance = {"schema_version": 1, "attempt_id": self.manifest.attempt_id, "manuscript": receipt.model_dump(), "policy": policy, "summary": self.state.get("current_summary"), "quality": quality}
+            acceptance = {"schema_version": 1, "attempt_id": self.manifest.attempt_id, "manuscript": receipt.model_dump(), "policy": policy, "summary": self.state.get("current_summary"), "quality": quality, "enrichment": self.enrichment()}
             self._retain(path, canonical_bytes(acceptance))
         self._verify_acceptance(acceptance)
         return cast(dict[str, Any], acceptance)
@@ -370,6 +370,28 @@ class ChapterLifecycle:
             raise ValueError("Accepted manuscript/draft mismatch")
         self.manuscripts.read(receipt)
         return receipt
+
+    def enrichment_path(self) -> str:
+        reference = self.state.get("draft_ref")
+        if not isinstance(reference, dict):
+            raise ValueError("Enrichment requires a draft reference")
+        content = self._read_artifact(dict(reference))
+        identity = {"project_id": self.project_id, "chapter_number": self.chapter_number, "iteration": self.state.get("iteration_count", 0), "draft_sha256": digest(content)}
+        return f".saga/attempts/enrichment/{digest(canonical_bytes(identity))}.json"
+
+    def enrichment(self) -> dict[str, Any] | None:
+        from core.langgraph.nodes.narrative_enrichment_node import EnrichmentCandidate
+
+        path = self.enrichment_path()
+        if not self.files.exists(path):
+            return None
+        return EnrichmentCandidate.model_validate_json(self.files.read_bytes(path)).model_dump(mode="json")
+
+    def retain_enrichment(self, candidate: dict[str, Any]) -> None:
+        from core.langgraph.nodes.narrative_enrichment_node import EnrichmentCandidate
+
+        content = EnrichmentCandidate.model_validate(candidate).model_dump(mode="json")
+        self._retain(self.enrichment_path(), canonical_bytes(content))
 
     async def publish(self) -> NarrativeState:
         if self.state.get("revision_rollback_failure") is not None:
@@ -392,6 +414,10 @@ class ChapterLifecycle:
                 current = self._validate_rows([dict(record) for record in transaction.run(ATTEMPT_QUERY, self.parameters())])
                 if current is None or current["phase"] != "committed":
                     raise ValueError("Acceptance requires committed graph receipt")
+                if acceptance.get("enrichment") is not None:
+                    from core.langgraph.nodes.narrative_enrichment_node import EnrichmentCandidate
+
+                    EnrichmentCandidate.model_validate(acceptance["enrichment"]).apply(transaction, self.chapter_number)
                 statement = build_chapter_upsert_statement(chapter_number=self.chapter_number, summary=acceptance["summary"], is_provisional=False, generation_status="finalized")
                 transaction.run(*statement).consume()
                 transaction.run(UPDATE_ATTEMPT, {**self.parameters(), "phase": "accepted", "acceptance": canonical_bytes(acceptance).decode("utf-8")}).consume()

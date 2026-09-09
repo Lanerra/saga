@@ -1,9 +1,10 @@
 """Production enrichment callers and complete chapter vector admission."""
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
+from neo4j import Transaction
 from pydantic import ValidationError
 
 import config
@@ -14,6 +15,7 @@ from core.parsers.narrative_enrichment_parser import ChapterEmbeddingExtractionR
 from core.service_context import get_services
 from data_access import chapter_queries
 from models.kg_models import CharacterProfile
+from tests.test_langgraph.test_chapter_lifecycle import Rows
 
 
 @pytest.fixture
@@ -82,7 +84,17 @@ async def test_existing_enrichment_caller_reaches_real_writer(configured: None, 
     monkeypatch.setattr(get_services().language_model, 'async_get_embedding', embed)
     monkeypatch.setattr(node, 'get_character_profiles', profiles)
     if entrypoint == 'node':
-        await node.NarrativeEnrichmentNode().process('Synthetic narrative.', 1)
+        candidate = await node.NarrativeEnrichmentNode().process('Synthetic narrative.', 1)
+        assert writes == []
+
+        class CandidateTransaction:
+            def run(self, query: str, parameters: Any = None) -> Rows:
+                if "RETURN c.embedding_vector AS embedding" in query:
+                    return Rows([{"embedding": [1.0, 0.0, 0.0] if existing else None}])
+                writes.append((query, parameters))
+                return Rows()
+
+        candidate.apply(cast(Transaction, CandidateTransaction()), 1)
     else:
         result, message = await NarrativeEnrichmentParser('Synthetic narrative.', 1).parse_and_persist()
         assert result, message

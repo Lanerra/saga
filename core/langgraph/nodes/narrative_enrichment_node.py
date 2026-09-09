@@ -4,9 +4,9 @@
 This module defines the narrative enrichment node used by the narrative generation
 workflow. This node:
 1. Extracts physical descriptions from narrative text
-2. Updates Character nodes with physical_description property
+2. Stages candidate physical descriptions for chapter acceptance
 3. Extracts chapter embeddings from narrative text
-4. Updates Chapter nodes with embedding property
+4. Stages candidate chapter embeddings for chapter acceptance
 5. Validates that enrichments don't contradict existing properties
 
 Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
@@ -15,6 +15,8 @@ Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
 from typing import Any
 
 import structlog
+from neo4j import Transaction
+from pydantic import BaseModel, ConfigDict, Field
 
 from core.langgraph.content_manager import (
     ContentManager,
@@ -23,18 +25,67 @@ from core.langgraph.content_manager import (
 )
 from core.langgraph.state import NarrativeState
 from core.parsers.narrative_enrichment_parser import (
+    ChapterEmbeddingExtractionResult,
     NarrativeEnrichmentParser,
 )
 from data_access.chapter_queries import (
+    build_chapter_upsert_statement,
     get_chapter_data_from_db,
-    save_chapter_data_to_db,
 )
 from data_access.character_queries import (
     get_character_profiles,
-    sync_characters,
 )
+from data_access.cypher_builders.native_builders import NativeCypherBuilder
+from models.kg_models import CharacterProfile
 
 logger = structlog.get_logger(__name__)
+
+
+class CandidateDescription(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    character_id: str = Field(min_length=1)
+    character_name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+
+
+class EnrichmentCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    descriptions: list[CandidateDescription]
+    embeddings: list[ChapterEmbeddingExtractionResult]
+
+    def apply(self, transaction: Transaction, chapter_number: int) -> None:
+        """Apply only within the lifecycle's quality-approved acceptance transaction."""
+        validator = NarrativeEnrichmentNode()
+        for description in self.descriptions:
+            rows = list(transaction.run(
+                "MATCH (c:Character {id: $id}) RETURN c.physical_description AS description",
+                {"id": description.character_id},
+            ))
+            if len(rows) != 1:
+                raise ValueError("Physical-description target must exist uniquely")
+            existing = rows[0]["description"]
+            if existing:
+                if not validator._validate_physical_description(existing, description.description):
+                    raise ValueError(f"Contradictory physical description for {description.character_name}")
+                continue
+            character = CharacterProfile(id=description.character_id, name=description.character_name, physical_description=description.description)
+            transaction.run(*NativeCypherBuilder.character_physical_description_cypher(character, chapter_number)).consume()
+        for embedding in self.embeddings:
+            if embedding.chapter_number != chapter_number:
+                raise ValueError("Enrichment chapter identity mismatch")
+            vector = embedding.validated_vector().tolist()
+            rows = list(transaction.run(
+                "MATCH (c:Chapter {number: $number}) RETURN c.embedding_vector AS embedding",
+                {"number": chapter_number},
+            ))
+            if len(rows) != 1:
+                raise ValueError("Enrichment chapter must exist uniquely")
+            existing = rows[0]["embedding"]
+            if existing and not validator._validate_embedding(existing, vector):
+                raise ValueError(f"Invalid embedding for chapter {chapter_number}")
+            transaction.run(*build_chapter_upsert_statement(
+                chapter_number=chapter_number, embedding_vector=vector, embedding_model=embedding.embedding_model,
+            )).consume()
 
 
 class NarrativeEnrichmentNode:
@@ -55,8 +106,8 @@ class NarrativeEnrichmentNode:
         self,
         narrative_text: str,
         chapter_number: int,
-    ) -> None:
-        """Process narrative text and extract enrichment data.
+    ) -> EnrichmentCandidate:
+        """Collect validated enrichment without granting graph authority.
 
         Args:
             narrative_text: The narrative text to parse
@@ -92,6 +143,7 @@ class NarrativeEnrichmentNode:
         if not chapter_embeddings:
             logger.warning("NarrativeEnrichmentNode: No chapter embeddings extracted")
 
+        descriptions: list[CandidateDescription] = []
         if physical_descriptions:
             for desc in physical_descriptions:
                 character_name = desc.character_name
@@ -113,17 +165,22 @@ class NarrativeEnrichmentNode:
                         character_name=character_name,
                     )
                 else:
-                    character.physical_description = extracted_description
-                    await sync_characters([character], chapter_number, physical_description_only=True)
+                    descriptions.append(CandidateDescription(character_id=character.id, character_name=character.name, description=extracted_description))
+                    character_profiles = [
+                        item.model_copy(update={"physical_description": extracted_description}) if item.id == character.id else item
+                        for item in character_profiles
+                    ]
                     logger.info(
-                        "NarrativeEnrichmentNode: Added character physical description",
+                        "NarrativeEnrichmentNode: candidate physical description",
                         character_name=character_name,
                     )
 
         if chapter_embeddings:
             for embedding in chapter_embeddings:
                 embedding_vector = embedding.embedding_vector
-                embedding_array = embedding.validated_vector()
+                embedding.validated_vector()
+                if embedding.chapter_number != chapter_number:
+                    raise ValueError("Enrichment chapter identity mismatch")
 
                 if chapter_data.embedding:
                     if not self._validate_embedding(
@@ -131,33 +188,7 @@ class NarrativeEnrichmentNode:
                         embedding_vector,
                     ):
                         raise ValueError(f"Invalid embedding for chapter {chapter_data.number}")
-                    await save_chapter_data_to_db(
-                        chapter_number=chapter_data.number,
-                        title=chapter_data.title,
-                        act_number=chapter_data.act_number,
-                        summary=chapter_data.summary,
-                        embedding_array=embedding_array,
-                        embedding_model=embedding.embedding_model,
-                        is_provisional=chapter_data.is_provisional,
-                    )
-                    logger.info(
-                        "NarrativeEnrichmentNode: Updated chapter embedding",
-                        chapter_number=chapter_data.number,
-                    )
-                else:
-                    await save_chapter_data_to_db(
-                        chapter_number=chapter_data.number,
-                        title=chapter_data.title,
-                        act_number=chapter_data.act_number,
-                        summary=chapter_data.summary,
-                        embedding_array=embedding_array,
-                        embedding_model=embedding.embedding_model,
-                        is_provisional=chapter_data.is_provisional,
-                    )
-                    logger.info(
-                        "NarrativeEnrichmentNode: Added chapter embedding",
-                        chapter_number=chapter_data.number,
-                    )
+        return EnrichmentCandidate(descriptions=descriptions, embeddings=chapter_embeddings)
 
     def _validate_physical_description(
         self,
@@ -457,7 +488,12 @@ async def enrich_narrative(state: NarrativeState) -> dict[str, Any]:
 
     node = NarrativeEnrichmentNode()
     try:
-        await node.process(draft_text, chapter_number)
+        from core.langgraph.chapter_lifecycle import ChapterLifecycle
+
+        lifecycle = ChapterLifecycle(state)
+        if lifecycle.enrichment() is None:
+            candidate = await node.process(draft_text, chapter_number)
+            lifecycle.retain_enrichment(candidate.model_dump(mode="json"))
     except Exception as error:
         logger.error("enrich_narrative: enrichment failed", error=str(error))
         return {

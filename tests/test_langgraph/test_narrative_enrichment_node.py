@@ -19,7 +19,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import config
-from core.langgraph.nodes.narrative_enrichment_node import NarrativeEnrichmentNode
+from core.embedding_contract import embedding_identity
+from core.langgraph.nodes.narrative_enrichment_node import EnrichmentCandidate, NarrativeEnrichmentNode
+from core.parsers.narrative_enrichment_parser import ChapterEmbeddingExtractionResult
 from models.kg_models import Chapter, CharacterProfile
 from tests.fakes.service_context import patch_service
 
@@ -92,8 +94,8 @@ class TestNarrativeEnrichmentNode:
         with (
             patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
             patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-            patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-            patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+            patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
         ):
             # Set up mocks to return sample data
             parser_characters = patch("core.parsers.narrative_enrichment_parser.get_character_profiles", new_callable=AsyncMock, return_value=sample_character_profiles)
@@ -106,17 +108,19 @@ class TestNarrativeEnrichmentNode:
 
             # Call the process method
             with parser_characters, parser_embedding, parser_chapter:
-                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(sample_narrative_text, 1)
                 result = await pending_result
 
             # Verify success
-            assert result is None
+            assert isinstance(result, EnrichmentCandidate)
             assert [(character.name, character.physical_description) for character in sample_character_profiles] == [
-                ("Alice", "a tall woman with long brown hair and piercing blue eyes"),
+                ("Alice", None),
                 ("Bob", None),
             ]
-            assert mock_sync_chars.await_count == 1
-            mock_save_chapter.assert_awaited_once()
+            assert [(item.character_name, item.description) for item in result.descriptions] == [("Alice", "a tall woman with long brown hair and piercing blue eyes")]
+            mock_sync_chars.assert_not_awaited()
+            assert len(result.embeddings) == 1
+            mock_save_chapter.assert_not_awaited()
 
     async def test_process_empty_narrative_text(self) -> None:
         """Test error handling when narrative text is empty."""
@@ -196,8 +200,8 @@ class TestNarrativeEnrichmentNode:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -215,14 +219,16 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(sample_narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
-    async def test_chapter_embedding_extraction(self, sample_narrative_text: str) -> None:
+    async def test_chapter_embedding_extraction(self, sample_narrative_text: str, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test extraction of chapter embeddings from narrative text."""
+        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+        monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 3)
         node = NarrativeEnrichmentNode()
 
         # Mock the parser
@@ -230,7 +236,7 @@ class TestNarrativeEnrichmentNode:
             mock_parser = AsyncMock()
             mock_parser.extract_physical_descriptions.return_value = []
             mock_parser.extract_chapter_embeddings.return_value = [
-                MagicMock(chapter_number=1, embedding_vector=[0.1, 0.2, 0.3]),
+                ChapterEmbeddingExtractionResult(chapter_number=1, embedding_vector=[0.1, 0.2, 0.3], embedding_model=config.EMBEDDING_MODEL, embedding_identity=embedding_identity()),
             ]
             mock_parser_class.return_value = mock_parser
 
@@ -238,8 +244,8 @@ class TestNarrativeEnrichmentNode:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -254,11 +260,11 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(sample_narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
     async def test_character_enrichment_with_physical_description(self, sample_narrative_text: str) -> None:
         """Test enrichment of character with physical description."""
@@ -277,8 +283,8 @@ class TestNarrativeEnrichmentNode:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -293,14 +299,16 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(sample_narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
-    async def test_chapter_enrichment_with_embedding(self, sample_narrative_text: str) -> None:
+    async def test_chapter_enrichment_with_embedding(self, sample_narrative_text: str, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test enrichment of chapter with embedding."""
+        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+        monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 3)
         node = NarrativeEnrichmentNode()
 
         # Mock the parser
@@ -308,7 +316,7 @@ class TestNarrativeEnrichmentNode:
             mock_parser = AsyncMock()
             mock_parser.extract_physical_descriptions.return_value = []
             mock_parser.extract_chapter_embeddings.return_value = [
-                MagicMock(chapter_number=1, embedding_vector=[0.1, 0.2, 0.3]),
+                ChapterEmbeddingExtractionResult(chapter_number=1, embedding_vector=[0.1, 0.2, 0.3], embedding_model=config.EMBEDDING_MODEL, embedding_identity=embedding_identity()),
             ]
             mock_parser_class.return_value = mock_parser
 
@@ -316,8 +324,8 @@ class TestNarrativeEnrichmentNode:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -332,11 +340,11 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(sample_narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
     async def test_validation_no_new_structural_entities(self) -> None:
         """Test that no new structural entities are created during enrichment."""
@@ -354,8 +362,8 @@ class TestNarrativeEnrichmentNode:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -370,11 +378,11 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
     async def test_validation_character_name_matching(self) -> None:
         """Test that character names match canonical names."""
@@ -394,8 +402,8 @@ class TestNarrativeEnrichmentNode:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -410,11 +418,11 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
     async def test_validation_no_contradictions_in_enrichment(self) -> None:
         """Test that enrichments don't contradict existing properties."""
@@ -434,8 +442,8 @@ class TestNarrativeEnrichmentNode:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data with existing physical description
                 mock_get_chars.return_value = [
@@ -466,8 +474,10 @@ class TestNarrativeEnrichmentNode:
 class TestNarrativeEnrichmentNodeIntegration:
     """Integration tests for NarrativeEnrichmentNode."""
 
-    async def test_full_pipeline_stage_5(self) -> None:
+    async def test_full_pipeline_stage_5(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test full Stage 5 pipeline from narrative text to enrichment."""
+        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 4)
+        monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 4)
         node = NarrativeEnrichmentNode()
         narrative_text = """
         Chapter 1: The Beginning
@@ -485,7 +495,7 @@ class TestNarrativeEnrichmentNodeIntegration:
                 MagicMock(character_name="Bob", extracted_description="Shorter man with curly black hair and green eyes"),
             ]
             mock_parser.extract_chapter_embeddings.return_value = [
-                MagicMock(chapter_number=1, embedding_vector=[0.1, 0.2, 0.3, 0.4]),
+                ChapterEmbeddingExtractionResult(chapter_number=1, embedding_vector=[0.1, 0.2, 0.3, 0.4], embedding_model=config.EMBEDDING_MODEL, embedding_identity=embedding_identity()),
             ]
             mock_parser_class.return_value = mock_parser
 
@@ -493,8 +503,8 @@ class TestNarrativeEnrichmentNodeIntegration:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -512,11 +522,11 @@ class TestNarrativeEnrichmentNodeIntegration:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
     async def test_error_handling_in_pipeline(self) -> None:
         """Test error handling in the full pipeline."""
@@ -534,8 +544,8 @@ class TestNarrativeEnrichmentNodeIntegration:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -605,8 +615,8 @@ class TestNarrativeEnrichmentNodeEdgeCases:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data without the character
                 mock_get_chars.return_value = [
@@ -663,8 +673,8 @@ class TestNarrativeEnrichmentNodePerformance:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -679,11 +689,11 @@ class TestNarrativeEnrichmentNodePerformance:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
     async def test_many_character_profiles(self) -> None:
         """Test with many character profiles."""
@@ -718,8 +728,8 @@ class TestNarrativeEnrichmentNodePerformance:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return many character profiles
                 mock_get_chars.return_value = character_profiles
@@ -730,11 +740,11 @@ class TestNarrativeEnrichmentNodePerformance:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
                 # Verify success
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
 
 @pytest.mark.asyncio
@@ -784,8 +794,8 @@ class TestNarrativeEnrichmentNodeValidation:
 class TestNarrativeEnrichmentNodeDatabaseOperations:
     """Database operation tests for NarrativeEnrichmentNode."""
 
-    async def test_sync_characters_called(self) -> None:
-        """Test that sync_characters is called when character is updated."""
+    async def test_character_candidate_retained(self) -> None:
+        """Candidate character descriptions remain available for acceptance."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
 
@@ -802,8 +812,8 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -818,16 +828,19 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
-                # Verify that sync_characters was called
-                mock_sync_chars.assert_called_once()
+                # Candidate preparation cannot write profiles
+                assert [(item.character_id, item.description) for item in result.descriptions] == [("char_001", "Tall woman with long brown hair")]
+                mock_sync_chars.assert_not_called()
 
-    async def test_save_chapter_data_called(self) -> None:
-        """Test that save_chapter_data_to_db is called when chapter is updated."""
+    async def test_embedding_candidate_retained(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Candidate chapter embeddings remain available for acceptance."""
+        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+        monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 3)
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
 
@@ -836,7 +849,7 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             mock_parser = AsyncMock()
             mock_parser.extract_physical_descriptions.return_value = []
             mock_parser.extract_chapter_embeddings.return_value = [
-                MagicMock(chapter_number=1, embedding_vector=[0.1, 0.2, 0.3]),
+                ChapterEmbeddingExtractionResult(chapter_number=1, embedding_vector=[0.1, 0.2, 0.3], embedding_model=config.EMBEDDING_MODEL, embedding_identity=embedding_identity()),
             ]
             mock_parser_class.return_value = mock_parser
 
@@ -844,8 +857,8 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -860,13 +873,14 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
-                # Verify that save_chapter_data_to_db was called
-                mock_save_chapter.assert_called_once()
+                # Candidate preparation cannot write chapter vectors
+                assert [item.embedding_vector for item in result.embeddings] == [[0.1, 0.2, 0.3]]
+                mock_save_chapter.assert_not_called()
 
     async def test_get_character_profiles_called(self) -> None:
         """Test that get_character_profiles is called."""
@@ -884,8 +898,8 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -900,10 +914,10 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
                 # Verify that get_character_profiles was called
                 mock_get_chars.assert_called_once()
@@ -924,8 +938,8 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             with (
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+                patch("data_access.character_queries.sync_characters") as mock_sync_chars,
+                patch("data_access.chapter_queries.save_chapter_data_to_db") as mock_save_chapter,
             ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
@@ -940,10 +954,10 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                pending_result: Awaitable[EnrichmentCandidate] = node.process(narrative_text, 1)
                 result = await pending_result
 
-                assert result is None
+                assert isinstance(result, EnrichmentCandidate)
 
                 # Verify that get_chapter_data_from_db was called
                 mock_get_chapter.assert_called_once_with(1)

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,6 @@ from core.parsers.act_outline_parser import ActOutlineParser
 from core.parsers.chapter_outline_parser import ChapterOutlineParser
 from core.parsers.character_sheet_parser import CharacterSheetParser
 from core.parsers.global_outline_parser import GlobalOutlineParser
-from core.project_manager import ProjectManager
 from core.service_context import RunServices, get_services, service_lifetime
 
 logger = structlog.get_logger(__name__)
@@ -57,60 +57,61 @@ class ParserRunner:
 
 
 async def run_parser_command(project_dir_path: str | None, parser_name: str | None, *, services: RunServices | None = None) -> dict[str, tuple[bool, str]]:
-    """Run the parser command with the given arguments.
+    """Accept/recover a complete frozen import in an explicitly selected project.
 
     Args:
-        project_dir_path: Path to the project directory. If None, use default.
-        parser_name: Name of the parser to run. If None, run all parsers.
+        project_dir_path: Nonempty path to an existing project, without traversal or symlinks.
+        parser_name: Legacy individual parser selector; these writes are blocked.
 
     Returns:
-        Dictionary containing results for each parser.
+        Complete initialization acceptance result, or an individual-parser refusal.
     """
-    setup_saga_logging()
-
-    resolved_project_dir: Path
-    if project_dir_path is None:
-        found = ProjectManager.find_resume_project()
-        if found is None:
-            resolved_project_dir = ProjectManager.create_default_project()
-        else:
-            resolved_project_dir = found
-    else:
-        resolved_project_dir = Path(project_dir_path)
-
-    logger.info("Running parsers", project_dir=str(resolved_project_dir), parser=parser_name)
+    if not isinstance(project_dir_path, str) or not project_dir_path.strip():
+        raise ValueError("Select an explicit nonempty --project-dir")
+    resolved_project_dir = Path(project_dir_path).absolute()
+    if ".." in resolved_project_dir.parts:
+        raise ValueError("Project directory must not contain parent traversal")
+    if any(path.is_symlink() for path in (*resolved_project_dir.parents, resolved_project_dir)):
+        raise ValueError("Project directory must not contain symbolic links")
+    if not resolved_project_dir.is_dir():
+        raise FileNotFoundError(f"Project directory does not exist: {resolved_project_dir}")
 
     runner = ParserRunner(resolved_project_dir)
+    if parser_name is not None:
+        success, message = await runner.run_parser(parser_name)
+        return {parser_name: (success, message)}
 
+    setup_saga_logging()
+    logger.info("Accepting complete frozen initialization import", project_dir=str(resolved_project_dir))
     async with service_lifetime(services):
-        if parser_name:
-            success, message = await runner.run_parser(parser_name)
-            return {parser_name: (success, message)}
-        else:
-            return await runner.run_all_parsers()
+        return await runner.run_all_parsers()
 
 
 def main() -> None:
     """Main entry point for the parser runner CLI."""
-    parser = argparse.ArgumentParser(description="Run SAGA parsers independently for testing and debugging purposes")
+    parser = argparse.ArgumentParser(
+        description="Accept or recover a complete frozen initialization import in an explicitly selected project.",
+        epilog="Individual parser writes are blocked. No project discovery, initialization generation, reset or deletion is requested.",
+    )
     parser.add_argument(
         "--project-dir",
         "-p",
         type=str,
-        help="Path to the project directory containing the initialization files",
+        required=True,
+        help="Existing project containing the selected frozen initialization import",
     )
     parser.add_argument(
         "--parser",
         "-n",
         type=str,
         choices=["character_sheets", "global_outline", "act_outlines", "chapter_outlines"],
-        help="Name of the parser to run (optional; if not specified, all parsers are run)",
+        help="Legacy selector: individual parser writes are blocked; omit to accept the complete frozen import",
     )
     parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
-        help="Enable verbose logging",
+        help="Legacy compatibility flag; logging follows configured settings",
     )
 
     args = parser.parse_args()
@@ -118,30 +119,29 @@ def main() -> None:
     try:
         results = asyncio.run(run_parser_command(args.project_dir, args.parser))
 
-        # Print results
-        print("\nParser Results:")
+        print("\nInitialization Acceptance Results:")
         print("-" * 50)
         for parser_name, (success, message) in results.items():
             status = "✅" if success else "❌"
             print(f"{status} {parser_name}: {message}")
 
-        # Check if all parsers succeeded
         all_successful = all(success for success, _ in results.values())
         if not all_successful:
-            print("\n❌ Some parsers failed")
-            exit(1)
+            print("\nSAGA initialization acceptance failed; retained artifacts may require reconciliation.", file=sys.stderr)
+            sys.exit(1)
         else:
-            print("\n✅ All parsers completed successfully")
+            print("\nSAGA initialization acceptance succeeded: complete retained initialization accepted.")
 
-    except KeyboardInterrupt:
-        logger.info("Parser runner shutting down gracefully due to KeyboardInterrupt...")
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        print("SAGA initialization acceptance cancelled; no completion claimed. Retained artifacts may include partial progress; recover the same project without resetting.", file=sys.stderr)
+        sys.exit(130)
     except Exception as main_error:
         logger.critical(
             f"Parser runner encountered an unhandled exception: {main_error}",
             exc_info=True,
         )
-        print(f"\n❌ Error: {main_error}")
-        exit(1)
+        print(f"\nSAGA initialization acceptance failed: {main_error}. No completion claimed.", file=sys.stderr)
+        sys.exit(1)
 
 
 
