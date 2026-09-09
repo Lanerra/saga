@@ -7,9 +7,9 @@ from typing import Any
 import structlog
 
 import config
-from core.llm_interface_refactored import RefactoredLLMService
 from core.project_config import NarrativeProjectConfig
 from core.project_manager import ProjectManager
+from core.service_context import LanguageModel
 from prompts.prompt_renderer import render_prompt
 from utils.common import ensure_exact_keys, try_load_json_from_response
 
@@ -95,7 +95,7 @@ STORY_STRUCTURES: dict[str, dict[str, Any]] = {
 
 
 class ProjectBootstrapper:
-    def __init__(self, language_model_service: RefactoredLLMService) -> None:
+    def __init__(self, language_model_service: LanguageModel) -> None:
         self.language_model_service = language_model_service
 
     # NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
@@ -118,6 +118,7 @@ class ProjectBootstrapper:
                 "user_input": user_prompt.strip(),
                 "default_narrative_style": config.DEFAULT_NARRATIVE_STYLE,
                 "total_chapters": config.TOTAL_CHAPTERS,
+                "target_word_count": config.TARGET_WORD_COUNT,
             },
         )
 
@@ -139,12 +140,11 @@ class ProjectBootstrapper:
             "protagonist_name",
             "narrative_style",
             "total_chapters",
+            "target_word_count",
         }
         ensure_exact_keys(value=parsed, required_keys=required_keys, context="Bootstrap response")
 
         project_config = NarrativeProjectConfig.model_validate(parsed)
-        if project_config.narrative_style != config.DEFAULT_NARRATIVE_STYLE:
-            raise ValueError("Bootstrap narrative style must match DEFAULT_NARRATIVE_STYLE")
 
         return project_config.model_copy(
             update={

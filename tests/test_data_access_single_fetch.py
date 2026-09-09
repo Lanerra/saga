@@ -4,15 +4,18 @@ from unittest.mock import AsyncMock
 import pytest
 
 import utils
+from core.service_context import get_services
 from data_access import character_queries, world_queries
 from data_access.cache_coordinator import clear_all_data_access_caches
 from models import WorldItem
 from models.kg_constants import KG_NODE_CREATED_CHAPTER
 
+pytestmark = pytest.mark.usefixtures("owned_graph_cache")
+
 
 @pytest.mark.asyncio
-async def test_get_character_profile_by_name(monkeypatch):
-    async def fake_read(query, params=None):
+async def test_get_character_profile_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_read(query: str, params: object = None) -> list[dict[str, object]]:
         if "MATCH (c:Character" in query and "coalesce(c.traits, []) AS traits" in query:
             return [
                 {
@@ -35,7 +38,7 @@ async def test_get_character_profile_by_name(monkeypatch):
         return []
 
     monkeypatch.setattr(
-        character_queries.neo4j_manager,
+        get_services().database,
         "execute_read_query",
         AsyncMock(side_effect=fake_read),
     )
@@ -51,8 +54,8 @@ async def test_get_character_profile_by_name(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_world_item_by_id(monkeypatch):
-    async def fake_read(query, params=None):
+async def test_get_world_item_by_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_read(query: str, params: object = None) -> list[dict[str, object]]:
         if "RETURN we" in query:
             return [
                 {
@@ -70,7 +73,7 @@ async def test_get_world_item_by_id(monkeypatch):
         return []
 
     monkeypatch.setattr(
-        world_queries.neo4j_manager,
+        get_services().database,
         "execute_read_query",
         AsyncMock(side_effect=fake_read),
     )
@@ -87,13 +90,13 @@ async def test_get_world_item_by_id(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sync_world_items_populates_name_to_id(monkeypatch):
+async def test_sync_world_items_populates_name_to_id(monkeypatch: pytest.MonkeyPatch) -> None:
     world_item = WorldItem.from_dict("Places", "City", {"description": "desc"})
     world_data = [world_item]
 
     # world_queries builds Cypher internally now; no need to patch generator
     monkeypatch.setattr(
-        world_queries.neo4j_manager,
+        get_services().database,
         "execute_cypher_batch",
         AsyncMock(return_value=None),
     )
@@ -104,8 +107,8 @@ async def test_sync_world_items_populates_name_to_id(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_world_building_from_db_populates_name_to_id(monkeypatch):
-    async def fake_read(query, params=None):
+async def test_get_world_building_from_db_populates_name_to_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_read(query: str, params: object = None) -> list[dict[str, object]]:
         if "RETURN wc" in query:
             return [{"wc": {"overview_description": "desc"}}]
         if "RETURN w" in query:
@@ -123,7 +126,7 @@ async def test_get_world_building_from_db_populates_name_to_id(monkeypatch):
         return []
 
     monkeypatch.setattr(
-        world_queries.neo4j_manager,
+        get_services().database,
         "execute_read_query",
         AsyncMock(side_effect=fake_read),
     )

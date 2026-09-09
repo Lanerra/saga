@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from core.service_context import get_services
 from utils import text_processing
 
 
@@ -23,10 +24,16 @@ class DummyNLP:
 
 
 @pytest.mark.asyncio
-async def test_find_quote_offsets_no_model(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("document_vector, expected", [([1.0, 0.0], (0, 3, 0, 3)), ([0.0, 1.0], None)])
+async def test_find_quote_offsets_no_model(monkeypatch: pytest.MonkeyPatch, document_vector: list[float], expected: tuple[int, int, int, int] | None) -> None:
     monkeypatch.setattr(text_processing, "_get_spacy_nlp", lambda: None)
+    async def embedding(text: str) -> list[float]:
+        assert text in {"doc", "quote"}
+        return [1.0, 0.0] if text == "quote" else document_vector
+
+    monkeypatch.setattr(get_services().language_model, 'async_get_embedding', embedding)
     result = await text_processing.find_quote_and_sentence_offsets_with_spacy("doc", "quote")
-    assert result == (0, 3, 0, 3)
+    assert result == expected
 
 
 @pytest.mark.asyncio

@@ -3,16 +3,19 @@
 
 import json
 import os
+from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from core.parsers.character_sheet_parser import CharacterSheetParser
 from models.kg_models import CharacterProfile
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def sample_character_sheets():
+def sample_character_sheets() -> Iterator[str]:
     """Create a sample character sheets JSON file for testing."""
     sample_data = {
         "Alice": {
@@ -47,7 +50,7 @@ def sample_character_sheets():
 class TestCharacterSheetParser:
     """Test the CharacterSheetParser class."""
 
-    async def test_parse_character_sheets_success(self, sample_character_sheets):
+    async def test_parse_character_sheets_success(self, sample_character_sheets: str) -> None:
         """Test successful parsing of character sheets."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
@@ -58,14 +61,14 @@ class TestCharacterSheetParser:
         assert characters[0].name == "Alice"
         assert "brave" in characters[0].traits
 
-    async def test_parse_character_sheets_file_not_found(self):
+    async def test_parse_character_sheets_file_not_found(self) -> None:
         """Test handling of missing character sheets file."""
         parser = CharacterSheetParser(character_sheets_path="/nonexistent/file.json")
 
         with pytest.raises(ValueError, match="Character sheets file not found"):
             await parser.parse_character_sheets()
 
-    async def test_parse_character_sheets_invalid_json(self, tmp_path):
+    async def test_parse_character_sheets_invalid_json(self, tmp_path: Path) -> None:
         """Test handling of invalid JSON in character sheets file."""
         invalid_json_file = tmp_path / "invalid.json"
         invalid_json_file.write_text("{invalid json}")
@@ -75,7 +78,7 @@ class TestCharacterSheetParser:
         with pytest.raises(ValueError, match="Invalid JSON"):
             await parser.parse_character_sheets()
 
-    async def test_parse_character_sheet_missing_fields(self):
+    async def test_parse_character_sheet_missing_fields(self) -> None:
         """Test parsing of character sheet with missing required fields."""
         parser = CharacterSheetParser()
 
@@ -83,7 +86,7 @@ class TestCharacterSheetParser:
         with pytest.raises(ValueError, match="Missing 'description'"):
             parser._parse_character_sheet("Test", {"name": "Test"})
 
-    async def test_parse_character_sheet_invalid_status(self):
+    async def test_parse_character_sheet_invalid_status(self) -> None:
         """Invalid character status raises ValueError."""
         parser = CharacterSheetParser()
 
@@ -92,7 +95,7 @@ class TestCharacterSheetParser:
         with pytest.raises(ValueError, match="Invalid status 'InvalidStatus'"):
             parser._parse_character_sheet("Test", character_data)
 
-    async def test_parse_character_sheet_string_relationship_raises(self):
+    async def test_parse_character_sheet_string_relationship_raises(self) -> None:
         """String-format relationships raise ValueError."""
         parser = CharacterSheetParser()
 
@@ -107,7 +110,7 @@ class TestCharacterSheetParser:
         with pytest.raises(ValueError, match="must be a dict"):
             parser._parse_character_sheet("Test", character_data)
 
-    async def test_parse_relationships(self, sample_character_sheets):
+    async def test_parse_relationships(self, sample_character_sheets: str) -> None:
         """Test parsing of relationships from character sheets."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
@@ -122,7 +125,7 @@ class TestCharacterSheetParser:
         assert "Bob" in relationships["Alice"]
         assert "Alice" in relationships["Bob"]
 
-    async def test_create_character_nodes(self, sample_character_sheets):
+    async def test_create_character_nodes(self, sample_character_sheets: str) -> None:
         """Character node creation delegates to sync_characters."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
@@ -134,7 +137,7 @@ class TestCharacterSheetParser:
 
             mock_sync.assert_called_once()
 
-    async def test_create_character_nodes_failure(self, sample_character_sheets):
+    async def test_create_character_nodes_failure(self, sample_character_sheets: str) -> None:
         """Character node creation propagates database errors."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
@@ -145,11 +148,11 @@ class TestCharacterSheetParser:
             with pytest.raises(RuntimeError, match="DB write failed"):
                 await parser.create_character_nodes(characters)
 
-    async def test_create_relationships(self, sample_character_sheets):
+    async def test_create_relationships(self, sample_character_sheets: str) -> None:
         """Test creation of relationships in Neo4j."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
-        with patch("core.parsers.character_sheet_parser.neo4j_manager") as mock_manager:
+        with patch_service('database') as mock_manager:
             mock_manager.execute_write_query = AsyncMock(return_value=None)
 
             characters = await parser.parse_character_sheets()
@@ -160,12 +163,12 @@ class TestCharacterSheetParser:
             # Check that queries were executed
             assert mock_manager.execute_write_query.call_count == 2
 
-    async def test_parse_and_persist_success(self, sample_character_sheets):
+    async def test_parse_and_persist_success(self, sample_character_sheets: str) -> None:
         """Test successful parse and persist operation."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
         with patch("core.parsers.character_sheet_parser.sync_characters") as mock_sync:
-            with patch("core.parsers.character_sheet_parser.neo4j_manager") as mock_manager:
+            with patch_service('database') as mock_manager:
                 mock_sync.return_value = True
                 mock_manager.execute_write_query = AsyncMock(return_value=None)
 
@@ -174,12 +177,12 @@ class TestCharacterSheetParser:
                 assert result is True
                 assert "Successfully parsed and persisted" in message
 
-    async def test_parse_and_persist_failure(self, sample_character_sheets):
+    async def test_parse_and_persist_failure(self, sample_character_sheets: str) -> None:
         """Database failure during character sync surfaces as (False, error_message)."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
         with patch("core.parsers.character_sheet_parser.sync_characters") as mock_sync:
-            with patch("core.parsers.character_sheet_parser.neo4j_manager") as mock_manager:
+            with patch_service('database') as mock_manager:
                 mock_sync.side_effect = RuntimeError("DB write failed")
                 mock_manager.execute_write_query = AsyncMock(return_value=None)
 

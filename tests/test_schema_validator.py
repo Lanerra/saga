@@ -18,9 +18,9 @@ class TestValidateEntityType:
         normalize: bool = True,
         log: bool = False,
     ) -> SchemaValidationService:
-        monkeypatch.setattr("core.schema_validator.ENFORCE_SCHEMA_VALIDATION", enabled)
-        monkeypatch.setattr("core.schema_validator.NORMALIZE_COMMON_VARIANTS", normalize)
-        monkeypatch.setattr("core.schema_validator.LOG_SCHEMA_VIOLATIONS", log)
+        monkeypatch.setattr("config.ENFORCE_SCHEMA_VALIDATION", enabled)
+        monkeypatch.setattr("config.NORMALIZE_COMMON_VARIANTS", normalize)
+        monkeypatch.setattr("config.LOG_SCHEMA_VIOLATIONS", log)
         return SchemaValidationService()
 
     def test_exact_canonical_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -59,9 +59,9 @@ class TestValidateEntityType:
 
 class TestValidateCategory:
     def _make_service(self, monkeypatch: pytest.MonkeyPatch) -> SchemaValidationService:
-        monkeypatch.setattr("core.schema_validator.ENFORCE_SCHEMA_VALIDATION", True)
-        monkeypatch.setattr("core.schema_validator.NORMALIZE_COMMON_VARIANTS", True)
-        monkeypatch.setattr("core.schema_validator.LOG_SCHEMA_VIOLATIONS", False)
+        monkeypatch.setattr("config.ENFORCE_SCHEMA_VALIDATION", True)
+        monkeypatch.setattr("config.NORMALIZE_COMMON_VARIANTS", True)
+        monkeypatch.setattr("config.LOG_SCHEMA_VIOLATIONS", False)
         return SchemaValidationService()
 
     def test_known_category(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,16 +143,16 @@ class TestValidateKgObject:
 
 class TestValidateNodeLabels:
     def test_valid_labels(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("core.schema_validator.ENFORCE_SCHEMA_VALIDATION", True)
-        monkeypatch.setattr("core.schema_validator.NORMALIZE_COMMON_VARIANTS", True)
-        monkeypatch.setattr("core.schema_validator.LOG_SCHEMA_VIOLATIONS", False)
+        monkeypatch.setattr("config.ENFORCE_SCHEMA_VALIDATION", True)
+        monkeypatch.setattr("config.NORMALIZE_COMMON_VARIANTS", True)
+        monkeypatch.setattr("config.LOG_SCHEMA_VIOLATIONS", False)
         errors = validate_node_labels(["Character", "Location"])
         assert errors == []
 
     def test_invalid_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("core.schema_validator.ENFORCE_SCHEMA_VALIDATION", True)
-        monkeypatch.setattr("core.schema_validator.NORMALIZE_COMMON_VARIANTS", True)
-        monkeypatch.setattr("core.schema_validator.LOG_SCHEMA_VIOLATIONS", False)
+        monkeypatch.setattr("config.ENFORCE_SCHEMA_VALIDATION", True)
+        monkeypatch.setattr("config.NORMALIZE_COMMON_VARIANTS", True)
+        monkeypatch.setattr("config.LOG_SCHEMA_VIOLATIONS", False)
         errors = validate_node_labels(["Spaceship"])
         assert len(errors) == 1
         assert "Invalid label 'Spaceship'" in errors[0]

@@ -65,7 +65,7 @@ async def assemble_chapter(state: NarrativeState) -> NarrativeState:
         scene_drafts,
         "scenes",
         f"chapter_{chapter_number}",
-        current_version,
+        content_manager.get_latest_version("scenes", f"chapter_{chapter_number}") + 1,
     )
 
     # Externalize draft_text

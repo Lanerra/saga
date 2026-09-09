@@ -9,127 +9,29 @@ Error/cleanup policy at this boundary is intentionally mixed:
 
 - Strict: Neo4j connection/setup failures and workflow construction/streaming
   errors propagate to the caller.
-- Best-effort: restoring patched `llm_service` module attributes is attempted
-  during cleanup and must not mask the original workflow failure.
+- Run-owned services close on success, failure and cancellation.
 """
 
-import importlib
 import time
-from contextlib import asynccontextmanager
 from pathlib import Path
-from types import ModuleType
 from typing import Any, cast
 
 import structlog
 import yaml
 
 import config
-from core.db_manager import neo4j_manager
-from core.exceptions import CheckpointResumeConflictError
+from core.exceptions import CheckpointResumeConflictError, WorkflowExecutionError
+from core.graph_ownership import load_graph_project_id
+from core.langgraph.chapter_lifecycle import ChapterLifecycle, reconcile_checkpoint
 from core.langgraph.initialization.validation import validate_initialization_artifacts
-from core.langgraph.state import NarrativeState, create_initial_state
+from core.langgraph.state import NarrativeState, create_initial_state, validate_state_contract
 from core.langgraph.workflow import create_checkpointer, create_full_workflow_graph
-from core.llm_interface_refactored import async_llm_context
 from core.project_config import NarrativeProjectConfig
+from core.service_context import RunServices, get_services, service_lifetime
 from data_access import chapter_queries
 from ui.rich_display import RichDisplayManager
 
 logger = structlog.get_logger(__name__)
-
-
-# Modules that directly import `llm_service` via `from core.llm_interface_refactored import llm_service`.
-#
-# Because that pattern binds the object into each module namespace at import-time,
-# orchestrator/workflow boundaries must explicitly override those module attributes
-# for the duration of a workflow run to ensure the underlying HTTP client lifecycle
-# is managed (opened/closed) deterministically.
-_LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
-    # Root singleton module (defensive; some tests patch this directly)
-    "core.llm_interface_refactored",
-    # LangGraph generation + extraction + embedding + revision + summary
-    "core.langgraph.nodes.embedding_node",
-    "core.langgraph.nodes.extraction_nodes",
-    "core.langgraph.nodes.revision_node",
-    "core.langgraph.nodes.summary_node",
-    # LangGraph scene-level generation/extraction
-    "core.langgraph.nodes.scene_generation_node",
-    "core.langgraph.nodes.scene_extraction",
-    # Finalization
-    "core.langgraph.nodes.finalize_node",
-    # LangGraph initialization nodes
-    "core.langgraph.initialization.character_sheets_node",
-    "core.langgraph.initialization.global_outline_node",
-    "core.langgraph.initialization.act_outlines_node",
-    "core.langgraph.initialization.chapter_outline_node",
-    "core.langgraph.initialization.commit_init_node",
-    "core.langgraph.initialization.outline_relationships_node",
-    # Validation subgraph (LLM-based quality eval + world rule checks)
-    "core.langgraph.subgraphs.validation",
-    # Parsers that import llm_service at module level
-    "core.parsers.act_outline_parser",
-    "core.parsers.global_outline_parser",
-    "core.parsers.narrative_enrichment_parser",
-    # Services invoked by workflow nodes that also import `llm_service`
-    "core.entity_embedding_service",
-    "core.graph_healing_service",
-    "core.relationship_normalization_service",
-    # UI telemetry
-    "ui.rich_display",
-    # Processing utilities that call LLM embeddings
-    "processing.text_deduplicator",
-    # Defensive: other nodes occasionally used in graphs
-    "core.langgraph.nodes.context_retrieval_node",
-    "core.langgraph.nodes.scene_planning_node",
-)
-
-
-@asynccontextmanager
-async def _managed_llm_lifecycle_for_workflow() -> Any:
-    """Manage an explicit LLM HTTP-client lifecycle for a workflow run.
-
-    This context manager creates a fresh `llm_service` instance via
-    [`async_llm_context()`](core/llm_interface_refactored.py:37) and temporarily
-    patches workflow-related modules that import `llm_service` into their module
-    namespace at import time.
-
-    The patching is scoped to the context manager and is intended to make the
-    orchestrator/workflow boundary responsible for client cleanup, rather than
-    individual nodes.
-
-    Yields:
-        The managed `llm_service` instance used by the workflow.
-
-    Notes:
-        - Missing or optional modules are ignored during patching.
-        - Restoring prior module attributes is best-effort and must not mask an
-          error raised by the workflow itself.
-    """
-    async with async_llm_context() as (managed_llm_service, _embedding_service):
-        patched: list[tuple[ModuleType, Any]] = []
-
-        for module_name in _LLM_SERVICE_PATCH_MODULES:
-            try:
-                module = importlib.import_module(module_name)
-            except Exception:
-                # Defensive: missing/optional modules should not break orchestration.
-                continue
-
-            module_any = cast(Any, module)
-            if hasattr(module_any, "llm_service"):
-                patched.append((module, module_any.llm_service))
-                module_any.llm_service = managed_llm_service
-
-        try:
-            yield managed_llm_service
-        finally:
-            # Restore in reverse order for sanity.
-            for module, previous in reversed(patched):
-                try:
-                    cast(Any, module).llm_service = previous
-                except Exception:
-                    # Best-effort restore; failing to restore should not mask the
-                    # original workflow error.
-                    continue
 
 
 class LangGraphOrchestrator:
@@ -147,12 +49,12 @@ class LangGraphOrchestrator:
     Notes:
         - Checkpoint persistence is owned by the workflow checkpointer context,
           not by the state creation step.
-        - The per-chapter loop is best-effort: certain chapter-level failures
-          stop generation early without raising to the caller.
+        - State-signaled fatal completion raises with retained diagnostics.
     """
 
-    def __init__(self, *, project_dir: Path | None = None) -> None:
+    def __init__(self, *, project_dir: Path | None = None, services: RunServices | None = None) -> None:
         logger.info("Initializing LangGraph Orchestrator...")
+        self.services = services
         # Use settings.BASE_OUTPUT_DIR which is the Pydantic field
         self.project_dir = Path(project_dir) if project_dir is not None else Path(config.settings.BASE_OUTPUT_DIR)
         self.checkpointer_path = self.project_dir / "checkpoints" / "saga.db"
@@ -164,6 +66,10 @@ class LangGraphOrchestrator:
         logger.info("LangGraph Orchestrator initialized.")
 
     async def run_novel_generation_loop(self, narrative_config: NarrativeProjectConfig | None = None) -> None:
+        async with service_lifetime(self.services):
+            await self._run_novel_generation_loop(narrative_config)
+
+    async def _run_novel_generation_loop(self, narrative_config: NarrativeProjectConfig | None = None) -> None:
         """Run the end-to-end LangGraph novel generation loop.
 
         This method owns the orchestration boundary and associated cleanup:
@@ -184,9 +90,8 @@ class LangGraphOrchestrator:
         Error policy:
             - Neo4j connection/setup failures and workflow construction/streaming
               failures propagate to the caller.
-            - Chapter generation is best-effort: chapter-level failures inside
-              [`_run_chapter_generation_loop()`](orchestration/langgraph_orchestrator.py:343)
-              are logged and stop the loop without raising.
+            - State-signaled fatal completion raises `WorkflowExecutionError`.
+              Cancellation propagates without a success event.
 
         Cleanup:
             The Rich display is stopped in a `finally` block. If display shutdown
@@ -216,26 +121,15 @@ class LangGraphOrchestrator:
             requested_project_id = self._get_requested_project_id()
             thread_id = self._checkpoint_thread_id(requested_project_id)
 
-            # Step 2: Create workflow with checkpointing and load checkpoint-first state
-            # AsyncSqliteSaver.from_conn_string() returns an async context manager
-            #
-            # IMPORTANT: Establish an explicit LLM client lifecycle boundary at the
-            # orchestrator/workflow boundary (not inside individual nodes).
-            async with _managed_llm_lifecycle_for_workflow():
-                async with create_checkpointer(str(self.checkpointer_path)) as checkpointer:
-                    state = await self._load_state_for_run(
-                        checkpointer=checkpointer,
-                        requested_project_id=requested_project_id,
-                        thread_id=thread_id,
-                        narrative_config=narrative_config,
-                    )
-
-                    graph = create_full_workflow_graph(checkpointer=checkpointer)
-
-                    # Step 3: Generate chapters
-                    # The graph will automatically run initialization on first run
-                    # via the conditional routing node
-                    await self._run_chapter_generation_loop(graph, state)
+            async with create_checkpointer(str(self.checkpointer_path)) as checkpointer:
+                graph = create_full_workflow_graph(checkpointer=checkpointer)
+                state = await self._load_state_for_run(
+                    graph=graph,
+                    requested_project_id=requested_project_id,
+                    thread_id=thread_id,
+                    narrative_config=narrative_config,
+                )
+                await self._run_chapter_generation_loop(graph, state)
 
             logger.info("=" * 60)
             logger.info("SAGA: LangGraph Generation Complete")
@@ -263,12 +157,14 @@ class LangGraphOrchestrator:
         propagate to the caller.
 
         Side Effects:
-            - Opens a Neo4j connection via the global manager.
+            - Opens a Neo4j connection via the run's manager.
             - Creates or updates the database schema (intended to be idempotent).
         """
         logger.info("Connecting to Neo4j...")
-        await neo4j_manager.connect()
-        await neo4j_manager.create_db_schema()
+        database = get_services().database
+        database.bind_project(load_graph_project_id(self.project_dir))
+        await database.connect()
+        await database.create_db_schema()
         logger.info("✓ Neo4j connected")
 
     async def _load_or_create_state(
@@ -280,15 +176,14 @@ class LangGraphOrchestrator:
         """Create a fresh workflow state seed for this run (non-resume path).
 
         This method is used only when no checkpoint is present for the project's checkpoint
-        thread. It derives the starting chapter from persisted chapters in Neo4j and
+        thread. It derives the starting chapter from contiguous finalized chapters and
         constructs a new [`NarrativeState`](core/langgraph/state.py:1) via
         [`create_initial_state()`](core/langgraph/state.py:343).
 
         Initialization detection contract:
-            - For chapter 1, initialization is artifact-driven: initialization is
-              considered complete only if the expected on-disk initialization
-              artifacts are present.
-            - For continuation runs (when chapters already exist in Neo4j),
+            - For chapter 1, initialization requires a retained plan and its exact
+              graph receipt. Human-readable artifacts are not acceptance evidence.
+            - For continuation runs (when a finalized prefix exists in Neo4j),
               initialization is treated as complete.
 
         Args:
@@ -304,37 +199,40 @@ class LangGraphOrchestrator:
             Any exception raised by the underlying database query or filesystem
             validation helpers.
         """
-        # Check if we have existing chapters to determine current chapter
-        chapter_count = await chapter_queries.load_chapter_count_from_db()
-        current_chapter = chapter_count + 1
+        progress = await chapter_queries.load_chapter_progress_from_db()
+        current_chapter = progress.last_finalized_chapter + 1
 
-        logger.info(f"Current chapter: {current_chapter} (existing: {chapter_count})")
+        logger.info("Chapter progress loaded", current_chapter=current_chapter, last_finalized_chapter=progress.last_finalized_chapter)
 
-        # Determine whether initialization should run.
-        #
-        # Contract:
-        # - For chapter 1 (chapter_count == 0), initialization is artifact-driven. We must run init unless
-        #   the expected initialization artifacts exist on disk. This avoids skipping init just because
-        #   Neo4j contains leftover :Character nodes from a prior run.
-        # - For continuation runs (chapter_count > 0), initialization is treated as complete.
         initialization_artifacts_ok = False
         missing_artifacts: list[str] = []
+        initialization_import_state: NarrativeState = {}
         if self.project_dir.exists():
             initialization_artifacts_ok, missing_artifacts = validate_initialization_artifacts(self.project_dir)
 
-        if chapter_count == 0:
-            initialization_complete = initialization_artifacts_ok
-            logger.info(
-                "Initialization detection (chapter 1): using filesystem artifacts",
-                initialization_complete=initialization_complete,
-                missing_artifacts=missing_artifacts,
-            )
+        if progress.last_finalized_chapter == 0:
+            from core.langgraph.initialization.staged_import import InitializationImport
+
+            importer = InitializationImport(str(self.project_dir))
+            initialization_complete = False
+            if importer.files.exists(f"{importer.root}/selected"):
+                plan = importer.load()
+                if plan.snapshot.project_id != load_graph_project_id(self.project_dir):
+                    raise ValueError("Selected initialization receipt belongs to another graph project")
+                initialization_import_state = importer.state(plan)
+                if initialization_import_state["project_id"] != project_id:
+                    raise ValueError("Selected initialization receipt belongs to another workflow project")
+                if not await importer.receipt(plan):
+                    raise ValueError("Missing accepted initialization receipt; accept the retained import before generation")
+                initialization_complete = True
+            elif initialization_artifacts_ok:
+                raise ValueError("Missing initialization receipt; existing user files cannot authorize generation or reinitialization")
         else:
             initialization_complete = True
             logger.info(
-                "Initialization detection (continuation): chapters already exist",
+                "Initialization detection (continuation): finalized prefix exists",
                 initialization_complete=initialization_complete,
-                existing_chapters=chapter_count,
+                last_finalized_chapter=progress.last_finalized_chapter,
             )
 
         if narrative_config is not None:
@@ -349,7 +247,7 @@ class LangGraphOrchestrator:
                 genre=narrative_config.genre,
                 theme=narrative_config.theme,
                 setting=narrative_config.setting,
-                target_word_count=config.TARGET_WORD_COUNT,
+                target_word_count=narrative_config.target_word_count,
                 total_chapters=narrative_config.total_chapters,
                 project_dir=str(self.project_dir),
                 protagonist_name=narrative_config.protagonist_name,
@@ -388,7 +286,7 @@ class LangGraphOrchestrator:
                 max_iterations=config.MAX_REVISION_CYCLES_PER_CHAPTER,
             )
 
-        # Update current chapter and initialization status
+        state.update(initialization_import_state)
         state["current_chapter"] = current_chapter
         state["initialization_complete"] = initialization_complete
         state["run_start_chapter"] = current_chapter
@@ -407,6 +305,7 @@ class LangGraphOrchestrator:
                     "; ".join(missing_artifacts),
                 )
 
+        validate_state_contract(state)
         return state
 
     async def _run_chapter_generation_loop(self, graph: Any, state: NarrativeState) -> None:
@@ -447,7 +346,11 @@ class LangGraphOrchestrator:
         try:
             # Use astream() for event-based progress tracking across all chapters.
             # The workflow now handles the loop internally.
-            async for event in graph.astream(state, config=config_dict):
+            workflow_input: NarrativeState | None = state
+            if getattr(self, "_resume_checkpoint", False) and "lifecycle_version" in state:
+                state = await reconcile_checkpoint(graph, state, config_dict)
+                workflow_input = None
+            async for event in graph.astream(workflow_input, config=config_dict):
                 if not isinstance(event, dict) or not event:
                     continue
 
@@ -483,17 +386,25 @@ class LangGraphOrchestrator:
                         )
 
             # Final summary of the run
+            rollback_failure = state.get("revision_rollback_failure")
+            if state.get("has_fatal_error") or rollback_failure is not None:
+                raise WorkflowExecutionError(
+                    "Workflow terminated with fatal error",
+                    details={
+                        "project_id": project_id,
+                        "current_chapter": state.get("current_chapter"),
+                        "last_error": state.get("last_error"),
+                        "error_node": state.get("error_node"),
+                        "revision_rollback_failure": rollback_failure,
+                        "final_node": last_node,
+                    },
+                )
+
             if last_node in ["finalize", "heal_graph", "check_quality", "init_complete"]:
                 logger.info(
                     "Workflow stream finished successfully",
                     final_chapter=state.get("current_chapter"),
                     final_node=last_node,
-                )
-            elif state.get("has_fatal_error"):
-                logger.error(
-                    "Workflow stream terminated with fatal error",
-                    error=state.get("last_error"),
-                    node=state.get("error_node"),
                 )
             else:
                 logger.warning(
@@ -513,7 +424,7 @@ class LangGraphOrchestrator:
 
     async def _handle_workflow_event(
         self,
-        event: dict[str, Any],
+        event: object,
         chapter_number: int,
         event_index: int = 0,
     ) -> None:
@@ -724,46 +635,48 @@ class LangGraphOrchestrator:
     async def _load_state_for_run(
         self,
         *,
-        checkpointer: Any,
+        graph: Any,
         requested_project_id: str,
         thread_id: str,
         narrative_config: NarrativeProjectConfig | None,
     ) -> NarrativeState:
         """Load checkpointed state when available; otherwise create a fresh seed state.
 
-        This implements checkpoint-first resume. When a checkpoint exists for the project's
-        thread id, it is treated as the single source of truth for in-flight fields like
-        `current_chapter`. Narrative configuration is only applied when no checkpoint
-        is available.
+        Use the latest native snapshot, including successful pending task writes.
+        Raw saver channel values can lag completed work. Do not specify a checkpoint
+        ID here: LangGraph treats that as historical replay without pending writes.
+        Narrative configuration only seeds a thread with no checkpoint.
         """
-        checkpoint = await checkpointer.aget({"configurable": {"thread_id": thread_id}})
-        if checkpoint is None:
-            return await self._load_or_create_state(
+        snapshot = await graph.aget_state({"configurable": {"thread_id": thread_id}})
+        self._resume_checkpoint = snapshot.created_at is not None
+        if not self._resume_checkpoint:
+            state = await self._load_or_create_state(
                 project_id=requested_project_id,
                 narrative_config=narrative_config,
             )
+            if state.get("current_chapter", 1) != 1:
+                raise CheckpointResumeConflictError("Missing checkpoint for existing graph progress; restore the project checkpoint or use an explicit migration")
+            return {**state, "lifecycle_version": 1, "graph_project_id": load_graph_project_id(self.project_dir), "attempt_id": None}
 
-        if not isinstance(checkpoint, dict):
+        if not isinstance(snapshot.values, dict):
             raise CheckpointResumeConflictError(
-                "Resume conflict: checkpointer returned an unexpected checkpoint type",
-                details={"type": type(checkpoint).__name__},
+                "Resume conflict: native checkpoint is missing required state mapping",
             )
 
-        channel_values = checkpoint.get("channel_values")
-        if not isinstance(channel_values, dict):
-            raise CheckpointResumeConflictError(
-                "Resume conflict: checkpoint is missing required channel_values mapping",
-                details={"checkpoint_keys": sorted(list(checkpoint.keys()))},
-            )
-
-        checkpoint_state = cast(NarrativeState, channel_values)
+        checkpoint_state = cast(NarrativeState, snapshot.values)
         await self._validate_resume_state_or_raise_async(
             checkpoint_state=checkpoint_state,
             requested_project_id=requested_project_id,
         )
 
-        checkpoint_state["run_start_chapter"] = checkpoint_state.get("current_chapter", 1)
+        if checkpoint_state.get("lifecycle_version") != 1:
+            raise CheckpointResumeConflictError("Legacy checkpoint has no attempt lifecycle; explicit migration is required")
+        if checkpoint_state.get("initialization_id") and not checkpoint_state.get("initialization_complete"):
+            from core.langgraph.initialization.staged_import import InitializationImport
 
+            checkpoint_state = await InitializationImport(str(self.project_dir)).reconcile_checkpoint(
+                graph, checkpoint_state, {"configurable": {"thread_id": thread_id}},
+            )
         return checkpoint_state
 
     def _validate_resume_state_or_raise(
@@ -794,10 +707,27 @@ class LangGraphOrchestrator:
             requested_project_id=requested_project_id,
         )
 
+        if "lifecycle_version" in checkpoint_state:
+            try:
+                validate_state_contract(checkpoint_state)
+            except ValueError as error:
+                raise CheckpointResumeConflictError(f"Resume conflict: state contract: {error}") from error
+
         current_chapter = cast(int, checkpoint_state.get("current_chapter"))
-        neo4j_chapter_count = await chapter_queries.load_chapter_count_from_db()
-        if neo4j_chapter_count >= current_chapter:
-            raise CheckpointResumeConflictError(f"Resume conflict: Neo4j reports chapter_count={neo4j_chapter_count} which is at or ahead of checkpoint current_chapter={current_chapter}")
+        progress = await chapter_queries.load_chapter_progress_from_db()
+        current_accepted = False
+        if "lifecycle_version" in checkpoint_state:
+            lifecycle = ChapterLifecycle(checkpoint_state)
+            if checkpoint_state.get("attempt_id") is not None or lifecycle.files.exists(lifecycle.selection_path()):
+                lifecycle.stage()
+                receipt = await lifecycle.graph_receipt()
+                current_accepted = receipt is not None and receipt["phase"] == "accepted"
+        if any(number > current_chapter or (number == current_chapter and not current_accepted) for number in progress.finalized_chapters):
+            raise CheckpointResumeConflictError(f"Resume conflict: Neo4j has finalized chapters at or ahead of checkpoint current_chapter={current_chapter}")
+        if progress.last_finalized_chapter + (0 if current_accepted else 1) != current_chapter:
+            raise CheckpointResumeConflictError(
+                f"Resume conflict: contiguous finalized prefix ends at {progress.last_finalized_chapter}, but checkpoint current_chapter={current_chapter}"
+            )
 
         # Conflict: checkpoint references missing artifact files.
         for key, value in checkpoint_state.items():

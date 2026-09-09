@@ -38,6 +38,11 @@ class CharacterProfile(BaseModel):
         - Unknown/extra fields from upstream sources are stored in `updates` by
           [`from_dict()`](models/kg_models.py:32) and flattened by [`to_dict()`](models/kg_models.py:44).
         - `relationships` stores relationship payloads keyed by target character name.
+        - Motivations, background, skills, internal conflict, protagonist status and
+          physical description are graph-backed fields. The frozen initialization
+          snapshot/YAML retain their original author values; enrichment changes the
+          live graph, not those immutable projections. `updates` is file/prompt-only
+          overflow, not an arbitrary graph-property write channel.
     """
 
     name: str
@@ -49,6 +54,11 @@ class CharacterProfile(BaseModel):
     status: str = "Unknown"
     # Phase 1: Add physical_description
     physical_description: str | None = None
+    motivations: str = ""
+    background: str = ""
+    skills: list[str] = Field(default_factory=list)
+    internal_conflict: str = ""
+    is_protagonist: bool = False
     # Phase 1: Add arc properties (Stage 2)
     arc_start: str | None = None
     arc_end: str | None = None
@@ -146,16 +156,13 @@ class CharacterProfile(BaseModel):
         # Phase 1: Handle backward compatibility for description -> personality_description
         personality_description = node_dict.get("personality_description", node_dict.get("description", ""))
 
-        return cls(
-            name=node_dict.get("name", ""),
-            personality_description=personality_description,
-            traits=traits,
-            status=node_dict.get("status", "Unknown"),
-            relationships=relationships,
-            created_chapter=node_dict.get("created_chapter", 0),
-            is_provisional=node_dict.get("is_provisional", False),
-            updates={},  # Will be populated as needed
-        )
+        return cls(**{
+            **{key: value for key, value in node_dict.items() if key in cls.model_fields},
+            "name": node_dict.get("name", ""),
+            "personality_description": personality_description,
+            "traits": traits,
+            "relationships": relationships,
+        })
 
     @classmethod
     def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
@@ -182,21 +189,7 @@ class CharacterProfile(BaseModel):
         Returns:
             A populated character profile.
         """
-        node_dict = node if isinstance(node, dict) else dict(node)
-
-        # Phase 1: Handle backward compatibility for description -> personality_description
-        personality_description = node_dict.get("personality_description", node_dict.get("description", ""))
-
-        return cls(
-            name=node_dict.get("name", ""),
-            personality_description=personality_description,
-            traits=node_dict.get("traits", []),
-            status=node_dict.get("status", "Unknown"),
-            relationships={},  # Relationships handled separately
-            created_chapter=node_dict.get("created_chapter", 0),
-            is_provisional=node_dict.get("is_provisional", False),
-            updates={},
-        )
+        return cls.from_dict_record({"c": node})
 
     def to_cypher_params(self) -> dict[str, Any]:
         """Build a parameter dictionary for Cypher writes.

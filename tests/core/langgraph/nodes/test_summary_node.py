@@ -8,6 +8,7 @@ import pytest
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.summary_node import ChapterSummaryContractError, summarize_chapter
 from core.langgraph.state import create_initial_state
+from tests.fakes.service_context import patch_service
 
 
 def _valid_summary_json(summary: str) -> str:
@@ -43,8 +44,8 @@ async def test_summarize_chapter_retries_on_non_json_then_succeeds(tmp_path: Pat
     valid_second_response = _valid_summary_json("A reveal changes everything.")
 
     with (
-        patch(
-            "core.langgraph.nodes.summary_node.llm_service.async_call_llm",
+        patch_service(
+            'language_model.async_call_llm',
             new_callable=AsyncMock,
         ) as mock_llm,
         patch(
@@ -102,8 +103,8 @@ async def test_summarize_chapter_raises_after_retry_exhaustion(tmp_path: Path) -
     invalid_response = "Not JSON."
 
     with (
-        patch(
-            "core.langgraph.nodes.summary_node.llm_service.async_call_llm",
+        patch_service(
+            'language_model.async_call_llm',
             new_callable=AsyncMock,
         ) as mock_llm,
         patch(
@@ -158,8 +159,8 @@ async def test_summarize_chapter_retries_and_fails_when_json_missing_required_fi
     invalid_schema_response = json.dumps({"not_summary": "Missing required key."})
 
     with (
-        patch(
-            "core.langgraph.nodes.summary_node.llm_service.async_call_llm",
+        patch_service(
+            'language_model.async_call_llm',
             new_callable=AsyncMock,
         ) as mock_llm,
         patch(

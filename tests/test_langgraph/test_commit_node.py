@@ -5,10 +5,13 @@ Tests for LangGraph commit node (Step 1.2.1).
 Tests the commit_to_graph node and its helper functions.
 """
 
+from pathlib import Path
+from typing import get_type_hints
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import config
 from core.langgraph.nodes.commit_node import (
     _build_chapter_node_statement,
     _build_entity_persistence_statements,
@@ -18,6 +21,33 @@ from core.langgraph.nodes.commit_node import (
     commit_to_graph,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship
+from core.service_context import get_services
+from models.kg_models import CharacterProfile, WorldItem
+from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.test_langgraph import InlineExtractionState, LegacyEmbeddingRef
+
+
+@pytest.fixture(autouse=True)
+def synthetic_entity_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float64")
+    async def embedding_batch(texts: list[str]) -> list[list[float]]:
+        return [[0.25, 0.75, 0.0] for text in texts]
+
+    monkeypatch.setattr(get_services().language_model, 'async_get_embeddings_batch', embedding_batch)
+
+
+def test_persistence_builder_annotations_resolve() -> None:
+    annotations = get_type_hints(_build_entity_persistence_statements)
+    assert annotations["characters"] == list[CharacterProfile]
+    assert annotations["world_items"] == list[WorldItem]
+
+
+def test_deduplication_annotations_resolve() -> None:
+    from core.langgraph.nodes.commit_validation import _deduplicate_entity_list
+
+    annotations = get_type_hints(_deduplicate_entity_list)
+    assert annotations == {"entities": list[ExtractedEntity], "return": list[ExtractedEntity]}
 
 
 @pytest.mark.asyncio
@@ -26,9 +56,9 @@ class TestCommitToGraph:
 
     async def test_commit_with_no_entities(
         self,
-        sample_state_with_extraction,
-        fake_neo4j,
-    ):
+        sample_state_with_extraction: InlineExtractionState,
+        fake_neo4j: FakeNeo4jManager,
+    ) -> None:
         """Test commit with no extracted entities."""
         state = sample_state_with_extraction
         state["extracted_entities"] = {}
@@ -56,9 +86,9 @@ class TestCommitToGraph:
 
     async def test_commit_with_entities_and_relationships(
         self,
-        sample_state_with_extraction,
-        fake_neo4j,
-    ):
+        sample_state_with_extraction: InlineExtractionState,
+        fake_neo4j: FakeNeo4jManager,
+    ) -> None:
         """Test commit with entities and relationships."""
         state = sample_state_with_extraction
 
@@ -83,7 +113,7 @@ class TestCommitToGraph:
             assert mock_clear_world.called
             assert mock_clear_kg.called
 
-    async def test_extraction_normalization_commit_reads_normalized_ref(self, tmp_path, fake_neo4j):
+    async def test_extraction_normalization_commit_reads_normalized_ref(self, tmp_path: Path, fake_neo4j: FakeNeo4jManager) -> None:
         """
         End-to-end-ish unit test for remediation item 8:
         “Resolve normalization bypass (ref/version mismatch) so relationship normalization is effective”.
@@ -144,7 +174,7 @@ class TestCommitToGraph:
         entities_ref = save_extracted_entities(content_manager, entities_data, 1, 1)
         relationships_ref = save_extracted_relationships(content_manager, relationships_data, 1, 1)
 
-        state = {
+        state: InlineExtractionState = {
             "project_dir": project_dir,
             "current_chapter": 1,
             "draft_ref": draft_ref,
@@ -191,6 +221,7 @@ class TestCommitToGraph:
 
         state = {**state, **normalization_update}
 
+        assert state["extracted_relationships_ref"] is not None
         assert state["extracted_relationships_ref"]["version"] >= 2
 
         # Re-poison after normalization: commit should still ignore in-memory and read via ref.
@@ -208,7 +239,7 @@ class TestCommitToGraph:
         # Step 3: Commit reads from extracted_relationships_ref (single source of truth) and uses WORKS_WITH.
         # Avoid relying on real chapter query builder in this focused test.
         with patch(
-            "core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement",
+            "core.langgraph.nodes.commit_graph_ops.chapter_queries.build_chapter_upsert_statement",
             return_value=(
                 "CHAPTER_UPSERT",
                 {
@@ -243,8 +274,9 @@ class TestCommitToGraph:
 
     async def test_commit_handles_errors_gracefully(
         self,
-        sample_state_with_extraction,
-    ):
+        sample_state_with_extraction: InlineExtractionState,
+        fake_neo4j: FakeNeo4jManager,
+    ) -> None:
         """Test that commit handles errors gracefully."""
         state = sample_state_with_extraction
 
@@ -260,14 +292,13 @@ class TestCommitToGraph:
 
     async def test_commit_with_embedding_from_ref(
         self,
-        sample_state_with_extraction,
-        fake_neo4j,
-    ):
+        sample_state_with_extraction: InlineExtractionState,
+        fake_neo4j: FakeNeo4jManager,
+    ) -> None:
         """Test commit with embedding loaded from content ref."""
-        from core.langgraph.state import ContentRef
 
         state = sample_state_with_extraction
-        state["embedding_ref"] = ContentRef(
+        state["embedding_ref"] = LegacyEmbeddingRef(
             path="embeddings/chapter_1.npy",
             format="npy",
             content_type="embedding",
@@ -288,14 +319,13 @@ class TestCommitToGraph:
 
     async def test_commit_with_embedding_load_failure(
         self,
-        sample_state_with_extraction,
-        fake_neo4j,
-    ):
+        sample_state_with_extraction: InlineExtractionState,
+        fake_neo4j: FakeNeo4jManager,
+    ) -> None:
         """Test commit when embedding load fails."""
-        from core.langgraph.state import ContentRef
 
         state = sample_state_with_extraction
-        state["embedding_ref"] = ContentRef(
+        state["embedding_ref"] = LegacyEmbeddingRef(
             path="embeddings/chapter_1.npy",
             format="npy",
             content_type="embedding",
@@ -315,12 +345,13 @@ class TestCommitToGraph:
 
     async def test_commit_with_fallback_embedding(
         self,
-        sample_state_with_extraction,
-        fake_neo4j,
-    ):
-        """Test commit with fallback to generated_embedding field."""
+        sample_state_with_extraction: InlineExtractionState,
+        fake_neo4j: FakeNeo4jManager,
+    ) -> None:
+        """Test commit with an identified chapter artifact when scene vectors are absent."""
+        from core.langgraph.content_manager import ContentManager, save_embedding
         state = sample_state_with_extraction
-        state["generated_embedding"] = [0.4, 0.5, 0.6]
+        state["embedding_ref"] = save_embedding(ContentManager(state["project_dir"]), [0.4, 0.5, 0.6], 1, embedding_model=config.EMBEDDING_MODEL)
 
         with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
             mock_builder = mock_builder_class.return_value
@@ -333,9 +364,9 @@ class TestCommitToGraph:
 
     async def test_commit_with_duplicate_world_items_in_batch(
         self,
-        sample_state_with_extraction,
-        fake_neo4j,
-    ):
+        sample_state_with_extraction: InlineExtractionState,
+        fake_neo4j: FakeNeo4jManager,
+    ) -> None:
         """Test that within-batch duplicate world items are detected."""
         state = sample_state_with_extraction
         state["extracted_entities"] = {
@@ -363,7 +394,7 @@ class TestCommitToGraph:
             mock_builder.world_item_upsert_cypher.return_value = ("query", {})
 
             with patch(
-                "core.langgraph.nodes.commit_node.generate_entity_id",
+                "utils.text_processing.generate_entity_id",
                 return_value="castle_001",
             ):
                 result = await commit_to_graph(state)
@@ -374,7 +405,7 @@ class TestCommitToGraph:
 class TestConvertToCharacterProfiles:
     """Tests for _convert_to_character_profiles function."""
 
-    def test_convert_character_entities(self):
+    def test_convert_character_entities(self) -> None:
         """Test converting ExtractedEntity to CharacterProfile."""
         entities = [
             ExtractedEntity(
@@ -401,7 +432,7 @@ class TestConvertToCharacterProfiles:
         assert profiles[0].status == "alive"
         assert "Bob" in profiles[0].relationships
 
-    def test_convert_with_deduplication_mapping(self):
+    def test_convert_with_deduplication_mapping(self) -> None:
         """Test conversion applies deduplication mappings."""
         entities = [
             ExtractedEntity(
@@ -419,12 +450,12 @@ class TestConvertToCharacterProfiles:
         assert len(profiles) == 1
         assert profiles[0].name == "ExistingCharacter"  # Mapped name
 
-    def test_convert_empty_list(self):
+    def test_convert_empty_list(self) -> None:
         """Test converting empty entity list."""
         profiles = _convert_to_character_profiles([], {}, 1)
         assert profiles == []
 
-    def test_convert_character_with_no_traits(self):
+    def test_convert_character_with_no_traits(self) -> None:
         """Test converting character without traits attribute defaults to empty list."""
         entities = [
             ExtractedEntity(
@@ -450,7 +481,7 @@ class TestConvertToCharacterProfiles:
 class TestConvertToWorldItems:
     """Tests for _convert_to_world_items function."""
 
-    def test_convert_world_item_entities(self):
+    def test_convert_world_item_entities(self) -> None:
         """Test converting ExtractedEntity to WorldItem."""
         entities = [
             ExtractedEntity(
@@ -475,7 +506,7 @@ class TestConvertToWorldItems:
         assert items[0].category == "artifact"
         assert items[0].description == "A legendary blade"
 
-    def test_convert_with_deduplication_mapping(self):
+    def test_convert_with_deduplication_mapping(self) -> None:
         """Test conversion applies deduplication mappings."""
         entities = [
             ExtractedEntity(
@@ -493,7 +524,7 @@ class TestConvertToWorldItems:
         assert len(items) == 1
         assert items[0].id == "existing_castle_id"  # Mapped ID
 
-    def test_convert_handles_list_attributes(self):
+    def test_convert_handles_list_attributes(self) -> None:
         """Test conversion handles list attributes correctly."""
         entities = [
             ExtractedEntity(
@@ -518,7 +549,7 @@ class TestConvertToWorldItems:
         assert len(items[0].rules) == 1
         assert len(items[0].key_elements) == 3
 
-    def test_convert_empty_list(self):
+    def test_convert_empty_list(self) -> None:
         """Test converting empty entity list."""
         items = _convert_to_world_items([], {}, 1)
         assert items == []
@@ -527,7 +558,7 @@ class TestConvertToWorldItems:
 class TestDeduplicateEntityList:
     """Tests for _deduplicate_entity_list function."""
 
-    def test_removes_duplicate_names(self):
+    def test_removes_duplicate_names(self) -> None:
         """Test that duplicate entity names are removed."""
         from core.langgraph.nodes.commit_node import _deduplicate_entity_list
 
@@ -562,14 +593,14 @@ class TestDeduplicateEntityList:
         assert result[0].description == "First Alice"
         assert result[1].name == "Bob"
 
-    def test_empty_list(self):
+    def test_empty_list(self) -> None:
         """Test with empty list."""
         from core.langgraph.nodes.commit_node import _deduplicate_entity_list
 
         result = _deduplicate_entity_list([])
         assert result == []
 
-    def test_no_duplicates(self):
+    def test_no_duplicates(self) -> None:
         """Test with no duplicates."""
         from core.langgraph.nodes.commit_node import _deduplicate_entity_list
 
@@ -598,7 +629,7 @@ class TestDeduplicateEntityList:
 class TestBuildEntityPersistenceStatements:
     """Tests for _build_entity_persistence_statements function."""
 
-    async def test_builds_statements_for_characters_and_world_items(self):
+    async def test_builds_statements_for_characters_and_world_items(self) -> None:
         """Test building statements for both characters and world items."""
         from models.kg_models import CharacterProfile, WorldItem
 
@@ -653,7 +684,7 @@ class TestBuildEntityPersistenceStatements:
             assert mock_builder.character_upsert_cypher.called
             assert mock_builder.world_item_upsert_cypher.called
 
-    async def test_empty_entities(self):
+    async def test_empty_entities(self) -> None:
         """Test with empty entity lists."""
         statements = await _build_entity_persistence_statements([], [], 1)
         assert statements == []
@@ -663,7 +694,7 @@ class TestBuildEntityPersistenceStatements:
 class TestBuildRelationshipStatements:
     """Tests for _build_relationship_statements function."""
 
-    async def test_builds_relationship_statements(self):
+    async def test_builds_relationship_statements(self) -> None:
         """Test building relationship statements."""
         relationships = [
             ExtractedRelationship(
@@ -716,13 +747,13 @@ class TestBuildRelationshipStatements:
             assert params["subject_name"] == "Alice"
             assert params["object_name"] == "Bob"
 
-    async def test_empty_relationships(self):
+    async def test_empty_relationships(self) -> None:
         """Test with empty relationships list. Must still include the DELETE for the chapter."""
         statements = await _build_relationship_statements([], [], [], {}, {}, 1, False)
         assert len(statements) == 1
         assert "DELETE r" in statements[0][0]
 
-    async def test_applies_character_mappings(self):
+    async def test_applies_character_mappings(self) -> None:
         """Test that deduplication mappings are applied."""
         relationships = [
             ExtractedRelationship(
@@ -769,7 +800,8 @@ class TestBuildRelationshipStatements:
             query, params = statements[1]
             assert params["subject_name"] == "ExistingAlice"
 
-    async def test_applies_world_item_mappings(self):
+    @pytest.mark.usefixtures("offline_graph_reads")
+    async def test_applies_world_item_mappings(self) -> None:
         """Test that world item mappings are applied."""
         relationships = [
             ExtractedRelationship(
@@ -802,25 +834,17 @@ class TestBuildRelationshipStatements:
             )
         ]
 
-        with patch("core.langgraph.nodes.commit_node._get_cypher_labels") as mock_labels:
-            mock_labels.return_value = ":Object"
+        statements = await _build_relationship_statements(
+            relationships, char_entities, world_entities, {"Alice": "Alice"}, {"Magic Sword": "sword_001"}, 1, False,
+        )
+        assert len(statements) == 2
+        query, params = statements[1]
+        assert params["object_name"] == "Magic Sword"
+        assert params["object_id"] == "sword_001"
+        assert params["object_label"] == "Item"
 
-            statements = await _build_relationship_statements(
-                relationships,
-                char_entities,
-                world_entities,
-                {"Alice": "Alice"},
-                {"Magic Sword": "sword_001"},
-                1,
-                False,
-            )
-
-            assert len(statements) == 2
-            query, params = statements[1]
-            assert params["object_name"] == "Magic Sword"
-            assert params["object_id"] == "sword_001"
-
-    async def test_validates_entity_types(self):
+    @pytest.mark.usefixtures("offline_graph_reads")
+    async def test_validates_entity_types(self) -> None:
         """Test that entity types are validated."""
         relationships = [
             ExtractedRelationship(
@@ -869,7 +893,7 @@ class TestBuildRelationshipStatements:
 
             assert len(statements) == 2
 
-    async def test_canonicalizes_subtype_labels_for_persistence(self):
+    async def test_canonicalizes_subtype_labels_for_persistence(self) -> None:
         """
         CORE-011: Subtype labels (e.g., "Guild") must not cross persistence boundaries.
 
@@ -918,7 +942,7 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-    async def test_commit_rejects_unknown_entity_label_at_persistence_boundary(self, tmp_path, fake_neo4j):
+    async def test_commit_rejects_unknown_entity_label_at_persistence_boundary(self, tmp_path: Path, fake_neo4j: FakeNeo4jManager) -> None:
         """
         CORE-011: Unknown/unmappable labels must be rejected at persistence boundary.
 
@@ -926,7 +950,7 @@ class TestBuildRelationshipStatements:
         """
         project_dir = str(tmp_path)
 
-        state = {
+        state: InlineExtractionState = {
             "project_dir": project_dir,
             "current_chapter": 1,
             "draft_word_count": 0,
@@ -963,7 +987,7 @@ class TestBuildRelationshipStatements:
 
         # Avoid relying on real chapter query builder in this focused test.
         with patch(
-            "core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement",
+            "core.langgraph.nodes.commit_graph_ops.chapter_queries.build_chapter_upsert_statement",
             return_value=(
                 "CHAPTER_UPSERT",
                 {
@@ -991,7 +1015,7 @@ class TestBuildRelationshipStatements:
 class TestBuildChapterNodeStatement:
     """Tests for _build_chapter_node_statement function."""
 
-    def test_builds_statement_with_all_fields(self):
+    def test_builds_statement_with_all_fields(self) -> None:
         """Test building statement with all fields (must include Chapter.id)."""
         query, params = _build_chapter_node_statement(
             chapter_number=1,
@@ -1014,7 +1038,7 @@ class TestBuildChapterNodeStatement:
         # commit node sets is_provisional=false deterministically
         assert params["is_provisional_param"] is False
 
-    def test_builds_statement_without_optional_fields(self):
+    def test_builds_statement_without_optional_fields(self) -> None:
         """Test building statement without summary and embedding (must still include Chapter.id)."""
         query, params = _build_chapter_node_statement(
             chapter_number=2,
@@ -1034,7 +1058,7 @@ class TestBuildChapterNodeStatement:
 class TestConversionEdgeCases:
     """Tests for edge cases in conversion functions."""
 
-    def test_character_with_non_list_traits(self):
+    def test_character_with_non_list_traits(self) -> None:
         """Test converting character when traits is not a list."""
         entities = [
             ExtractedEntity(
@@ -1052,7 +1076,7 @@ class TestConversionEdgeCases:
 
         assert len(profiles) == 1
 
-    def test_character_with_invalid_traits(self):
+    def test_character_with_invalid_traits(self) -> None:
         """Test that invalid traits are filtered out."""
         entities = [
             ExtractedEntity(
@@ -1072,7 +1096,7 @@ class TestConversionEdgeCases:
         assert "123" not in profiles[0].traits
         assert "" not in profiles[0].traits
 
-    def test_character_with_non_string_status(self):
+    def test_character_with_non_string_status(self) -> None:
         """Test that non-string status is converted to Unknown."""
         entities = [
             ExtractedEntity(
@@ -1091,7 +1115,7 @@ class TestConversionEdgeCases:
         assert len(profiles) == 1
         assert profiles[0].status == "Unknown"
 
-    def test_world_item_with_non_list_attributes(self):
+    def test_world_item_with_non_list_attributes(self) -> None:
         """Test converting world item when list attributes are not lists."""
         entities = [
             ExtractedEntity(
@@ -1115,7 +1139,7 @@ class TestConversionEdgeCases:
         assert isinstance(items[0].rules, list)
         assert isinstance(items[0].key_elements, list)
 
-    def test_world_item_preserves_additional_properties(self):
+    def test_world_item_preserves_additional_properties(self) -> None:
         """Test that additional properties are preserved."""
         entities = [
             ExtractedEntity(

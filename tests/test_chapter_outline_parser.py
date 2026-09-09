@@ -4,6 +4,7 @@
 import json
 import os
 import tempfile
+from collections.abc import Iterator
 
 import pytest
 
@@ -11,7 +12,7 @@ from core.parsers import ChapterOutlineParser
 
 
 @pytest.fixture
-def sample_chapter_outline_data():
+def sample_chapter_outline_data() -> dict[str, object]:
     """Create sample chapter outline data for testing."""
     return {
         "chapter_number": 1,
@@ -29,7 +30,7 @@ def sample_chapter_outline_data():
 
 
 @pytest.fixture
-def temp_chapter_outline_file(sample_chapter_outline_data):
+def temp_chapter_outline_file(sample_chapter_outline_data: dict[str, object]) -> Iterator[str]:
     """Create a temporary chapter outline file for testing."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(sample_chapter_outline_data, f)
@@ -43,7 +44,7 @@ def temp_chapter_outline_file(sample_chapter_outline_data):
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_initialization():
+async def test_chapter_outline_parser_initialization() -> None:
     """Test that ChapterOutlineParser initializes correctly."""
     parser = ChapterOutlineParser(chapter_outline_path="test_path.json", chapter_number=1)
 
@@ -52,7 +53,7 @@ async def test_chapter_outline_parser_initialization():
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_parse_chapter_outline(temp_chapter_outline_file, sample_chapter_outline_data):
+async def test_chapter_outline_parser_parse_chapter_outline(temp_chapter_outline_file: str, sample_chapter_outline_data: dict[str, object]) -> None:
     """Test that parse_chapter_outline correctly reads and parses JSON."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
 
@@ -62,7 +63,7 @@ async def test_chapter_outline_parser_parse_chapter_outline(temp_chapter_outline
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_parse_chapter(temp_chapter_outline_file):
+async def test_chapter_outline_parser_parse_chapter(temp_chapter_outline_file: str) -> None:
     """Test that _parse_chapter correctly parses chapter data."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
 
@@ -81,7 +82,7 @@ async def test_chapter_outline_parser_parse_chapter(temp_chapter_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_parse_scenes(temp_chapter_outline_file):
+async def test_chapter_outline_parser_parse_scenes(temp_chapter_outline_file: str) -> None:
     """Test that _parse_scenes correctly parses scene data."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
 
@@ -104,7 +105,7 @@ async def test_chapter_outline_parser_parse_scenes(temp_chapter_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_parse_scene_events(temp_chapter_outline_file):
+async def test_chapter_outline_parser_parse_scene_events(temp_chapter_outline_file: str) -> None:
     """Test that _parse_scene_events correctly parses event data."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
 
@@ -136,7 +137,7 @@ async def test_chapter_outline_parser_parse_scene_events(temp_chapter_outline_fi
 
 
 @pytest.mark.asyncio
-async def test_parse_locations_matches_known_locations(temp_chapter_outline_file):
+async def test_parse_locations_matches_known_locations(temp_chapter_outline_file: str) -> None:
     """_parse_locations returns locations whose names appear in outline text."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
     chapter_outline_data = await parser.parse_chapter_outline()
@@ -155,7 +156,7 @@ async def test_parse_locations_matches_known_locations(temp_chapter_outline_file
 
 
 @pytest.mark.asyncio
-async def test_parse_locations_case_insensitive(temp_chapter_outline_file):
+async def test_parse_locations_case_insensitive(temp_chapter_outline_file: str) -> None:
     """_parse_locations matches location names regardless of case."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
     chapter_outline_data = await parser.parse_chapter_outline()
@@ -172,7 +173,7 @@ async def test_parse_locations_case_insensitive(temp_chapter_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_parse_locations_no_matches(temp_chapter_outline_file):
+async def test_parse_locations_no_matches(temp_chapter_outline_file: str) -> None:
     """_parse_locations creates a provisional location from scene_description when no known locations match."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
     chapter_outline_data = await parser.parse_chapter_outline()
@@ -193,7 +194,7 @@ async def test_parse_locations_no_matches(temp_chapter_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_parse_locations_empty_known_locations(temp_chapter_outline_file):
+async def test_parse_locations_empty_known_locations(temp_chapter_outline_file: str) -> None:
     """_parse_locations creates a provisional location from scene_description when known_locations is empty."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
     chapter_outline_data = await parser.parse_chapter_outline()
@@ -210,7 +211,7 @@ async def test_parse_locations_empty_known_locations(temp_chapter_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_generate_id():
+async def test_chapter_outline_parser_generate_id() -> None:
     """Test that _generate_id generates consistent IDs."""
     parser = ChapterOutlineParser()
 
@@ -232,7 +233,7 @@ async def test_chapter_outline_parser_generate_id():
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_missing_scenes(temp_chapter_outline_file):
+async def test_chapter_outline_parser_missing_scenes(temp_chapter_outline_file: str) -> None:
     """Test that parser handles missing scenes gracefully."""
     # Create a chapter outline without scenes
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -263,7 +264,7 @@ async def test_chapter_outline_parser_missing_scenes(temp_chapter_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_invalid_json():
+async def test_chapter_outline_parser_invalid_json() -> None:
     """Test that parser handles invalid JSON gracefully."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write("invalid json {{{")
@@ -281,7 +282,7 @@ async def test_chapter_outline_parser_invalid_json():
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_file_not_found():
+async def test_chapter_outline_parser_file_not_found() -> None:
     """Test that parser handles missing file gracefully."""
     parser = ChapterOutlineParser(chapter_outline_path="/nonexistent/file.json", chapter_number=1)
 

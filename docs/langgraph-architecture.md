@@ -1,5 +1,13 @@
 # SAGA Architecture: LangGraph Workflow Orchestration
 
+> Historical architecture reference (2026-02-13). The diagrams, node tables,
+> paths, API examples, rollback and performance claims below describe an older
+> design, not the repaired runtime. Use the [current guide](../README.md) for
+> commands, storage, recovery and offline visualization. Current definitions are
+> in [workflow.py](../core/langgraph/workflow.py),
+> [state.py](../core/langgraph/state.py) and
+> [the orchestrator](../orchestration/langgraph_orchestrator.py).
+
 ## 1. Executive Summary
 
 SAGA (Semantic And Graph-enhanced Authoring) is a local-first Python CLI application for AI-driven long-form fiction generation. It uses **LangGraph** for workflow orchestration and **Neo4j** as a knowledge graph for persistent world state management.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -11,9 +12,11 @@ from core.langgraph.initialization.outline_relationships_node import (
     _parse_relationships_extraction,
     extract_outline_relationships,
 )
+from core.langgraph.state import NarrativeState
+from tests.fakes.service_context import patch_service
 
 
-def _make_state(tmp_path: str) -> dict:
+def _make_state(tmp_path: str) -> NarrativeState:
     return {
         "project_dir": tmp_path,
         "title": "The Lost Kingdom",
@@ -98,7 +101,7 @@ class TestParseRelationshipsExtraction:
         result = _parse_relationships_extraction(response)
         assert result == []
 
-    def test_skips_incomplete_triples(self) -> None:
+    def test_rejects_incomplete_triples(self) -> None:
         response = json.dumps(
             {
                 "kg_triples": [
@@ -108,10 +111,8 @@ class TestParseRelationshipsExtraction:
             }
         )
 
-        result = _parse_relationships_extraction(response)
-
-        assert len(result) == 1
-        assert result[0]["source_name"] == "C"
+        with pytest.raises(ValueError, match="Relationship triple has an incomplete identity"):
+            _parse_relationships_extraction(response)
 
     def test_handles_dict_subject_and_object(self) -> None:
         response = json.dumps(
@@ -186,7 +187,7 @@ class TestParseRelationshipsExtraction:
 class TestExtractOutlineRelationships:
     """Tests for the extract_outline_relationships node."""
 
-    async def test_no_outlines_returns_none_ref(self, tmp_path) -> None:
+    async def test_no_outlines_returns_none_ref(self, tmp_path: Path) -> None:
         state = _make_state(str(tmp_path))
 
         with (
@@ -204,7 +205,7 @@ class TestExtractOutlineRelationships:
         assert result["outline_relationships_ref"] is None
         assert result["current_node"] == "outline_relationships"
 
-    async def test_successful_extraction(self, tmp_path) -> None:
+    async def test_successful_extraction(self, tmp_path: Path) -> None:
         state = _make_state(str(tmp_path))
 
         with (
@@ -216,7 +217,7 @@ class TestExtractOutlineRelationships:
                 "core.langgraph.initialization.outline_relationships_node.get_act_outlines",
                 return_value={1: {"raw_text": "Act one begins."}},
             ),
-            patch("core.langgraph.initialization.outline_relationships_node.llm_service") as fake_llm,
+            patch_service('language_model') as fake_llm,
         ):
             fake_llm.async_call_llm = AsyncMock(return_value=(EXAMPLE_LLM_RESPONSE, {"prompt_tokens": 100, "completion_tokens": 50}))
 
@@ -228,7 +229,7 @@ class TestExtractOutlineRelationships:
         ref = result["outline_relationships_ref"]
         assert ref["content_type"] == "outline_relationships"
 
-    async def test_parse_failure_retries_then_returns_none(self, tmp_path) -> None:
+    async def test_parse_failure_retries_then_raises(self, tmp_path: Path) -> None:
         state = _make_state(str(tmp_path))
 
         with (
@@ -240,12 +241,12 @@ class TestExtractOutlineRelationships:
                 "core.langgraph.initialization.outline_relationships_node.get_act_outlines",
                 return_value={},
             ),
-            patch("core.langgraph.initialization.outline_relationships_node.llm_service") as fake_llm,
+            patch_service('language_model') as fake_llm,
         ):
             # LLM returns unparseable text on both attempts
             fake_llm.async_call_llm = AsyncMock(return_value=("this is not json", {"prompt_tokens": 50, "completion_tokens": 20}))
 
-            result = await extract_outline_relationships(state)
+            with pytest.raises(json.JSONDecodeError):
+                await extract_outline_relationships(state)
 
-        assert result["outline_relationships_ref"] is None
-        assert result["current_node"] == "outline_relationships"
+        assert not (tmp_path / ".saga/content/outline_relationships/all_v1.json").exists()

@@ -4,7 +4,7 @@
 from core.langgraph.initialization.chapter_outline_node import _parse_chapter_outline
 
 
-def test_parse_chapter_outline_with_object():
+def test_parse_chapter_outline_with_object() -> None:
     """Test that _parse_chapter_outline correctly handles a JSON object response."""
     # Simulate a valid JSON object response from LLM
     response = """{
@@ -28,7 +28,7 @@ def test_parse_chapter_outline_with_object():
     assert result["plot_point"] == "The protagonist realizes they are being hunted."
 
 
-def test_parse_chapter_outline_with_array_fallback():
+def test_parse_chapter_outline_with_array_fallback() -> None:
     """Test that _parse_chapter_outline handles array responses gracefully via fallback parsing."""
     # Simulate an array response (which shouldn't happen with the fixed prompt)
     # but test that the fallback parsing doesn't crash
@@ -47,7 +47,7 @@ def test_parse_chapter_outline_with_array_fallback():
     assert result["raw_text"] == response
 
 
-def test_parse_chapter_outline_with_invalid_json():
+def test_parse_chapter_outline_with_invalid_json() -> None:
     """Test that _parse_chapter_outline handles invalid JSON gracefully."""
     response = "This is not valid JSON but contains some text about a scene."
 
@@ -60,7 +60,7 @@ def test_parse_chapter_outline_with_invalid_json():
     assert result["scene_description"] == response
 
 
-def test_parse_chapter_outline_missing_keys():
+def test_parse_chapter_outline_missing_keys() -> None:
     """Test that _parse_chapter_outline handles missing keys with defaults."""
     response = """{
         "scene_description": "A scene description"

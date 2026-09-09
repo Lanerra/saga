@@ -1,0 +1,5784 @@
+[
+  {
+    "path": "core/entity_embedding_service.py",
+    "name": "build_entity_embedding_update_statements",
+    "line": 69,
+    "complexity": 43,
+    "rank": "F"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "create_relationships",
+    "line": 647,
+    "complexity": 39,
+    "rank": "E"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "user_story_to_objects",
+    "line": 99,
+    "complexity": 39,
+    "rank": "E"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_node.py",
+    "name": "_validate_entities_before_commit",
+    "line": 70,
+    "complexity": 37,
+    "rank": "E"
+  },
+  {
+    "path": "core/schema_validator.py",
+    "name": "validate_kg_object",
+    "line": 191,
+    "complexity": 36,
+    "rank": "E"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "get_completion",
+    "line": 302,
+    "complexity": 34,
+    "rank": "E"
+  },
+  {
+    "path": "processing/text_deduplicator.py",
+    "name": "deduplicate",
+    "line": 52,
+    "complexity": 34,
+    "rank": "E"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_node.py",
+    "name": "commit_to_graph",
+    "line": 287,
+    "complexity": 33,
+    "rank": "E"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "find_merge_candidates",
+    "line": 390,
+    "complexity": 32,
+    "rank": "E"
+  },
+  {
+    "path": "processing/parsing_utils.py",
+    "name": "parse_llm_triples",
+    "line": 387,
+    "complexity": 32,
+    "rank": "E"
+  },
+  {
+    "path": "core/langgraph/nodes/validation_node.py",
+    "name": "_validate_relationships",
+    "line": 251,
+    "complexity": 30,
+    "rank": "D"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "get_character_state_snippet_for_prompt",
+    "line": 644,
+    "complexity": 30,
+    "rank": "D"
+  },
+  {
+    "path": "data_access/plot_queries.py",
+    "name": "save_plot_outline_to_db",
+    "line": 15,
+    "complexity": 28,
+    "rank": "D"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_format_dict_for_plain_text_prompt",
+    "line": 164,
+    "complexity": 28,
+    "rank": "D"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "infer_entity_type_from_relationship",
+    "line": 565,
+    "complexity": 27,
+    "rank": "D"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "add_kg_triples_batch_to_db",
+    "line": 246,
+    "complexity": 27,
+    "rank": "D"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_gather_character_facts",
+    "line": 879,
+    "complexity": 27,
+    "rank": "D"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_node.py",
+    "name": "_build_relationship_statements",
+    "line": 654,
+    "complexity": 26,
+    "rank": "D"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "verify_entity_presence",
+    "line": 237,
+    "complexity": 24,
+    "rank": "D"
+  },
+  {
+    "path": "core/langgraph/initialization/character_sheets_node.py",
+    "name": "_generate_character_list",
+    "line": 310,
+    "complexity": 24,
+    "rank": "D"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "extract_new_world_items",
+    "line": 463,
+    "complexity": 23,
+    "rank": "D"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "clean_text",
+    "line": 366,
+    "complexity": 22,
+    "rank": "D"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "heal_graph",
+    "line": 826,
+    "complexity": 22,
+    "rank": "D"
+  },
+  {
+    "path": "core/langgraph/nodes/relationship_normalization_node.py",
+    "name": "normalize_relationships",
+    "line": 33,
+    "complexity": 22,
+    "rank": "D"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "get_filtered_world_data_for_prompt_plain_text",
+    "line": 480,
+    "complexity": 22,
+    "rank": "D"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "find_quote_and_sentence_offsets_with_spacy",
+    "line": 403,
+    "complexity": 22,
+    "rank": "D"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "should_classify_as_character",
+    "line": 175,
+    "complexity": 21,
+    "rank": "D"
+  },
+  {
+    "path": "core/langgraph/nodes/context_retrieval_node.py",
+    "name": "retrieve_context",
+    "line": 50,
+    "complexity": 21,
+    "rank": "D"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_outline_node.py",
+    "name": "_parse_chapter_outline",
+    "line": 373,
+    "complexity": 21,
+    "rank": "D"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "_query_kg_from_db_cached",
+    "line": 527,
+    "complexity": 21,
+    "rank": "D"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_handle_workflow_event",
+    "line": 514,
+    "complexity": 21,
+    "rank": "D"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "process",
+    "line": 55,
+    "complexity": 20,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/initialization/character_sheets_node.py",
+    "name": "_parse_character_sheet_response",
+    "line": 68,
+    "complexity": 20,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "create_event_relationships",
+    "line": 812,
+    "complexity": 19,
+    "rank": "C"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "get_world_item_by_id",
+    "line": 114,
+    "complexity": 19,
+    "rank": "C"
+  },
+  {
+    "path": "processing/text_deduplicator.py",
+    "name": "TextDeduplicator",
+    "line": 37,
+    "complexity": 19,
+    "rank": "C"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_add_provisional_notes_and_filter_developments",
+    "line": 245,
+    "complexity": 19,
+    "rank": "C"
+  },
+  {
+    "path": "core/logging_config.py",
+    "name": "setup_saga_logging",
+    "line": 37,
+    "complexity": 18,
+    "rank": "C"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "_is_likely_alias",
+    "line": 581,
+    "complexity": 18,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/initialization/act_outlines_node.py",
+    "name": "generate_act_outlines",
+    "line": 135,
+    "complexity": 18,
+    "rank": "C"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "get_character_profile_by_name",
+    "line": 81,
+    "complexity": 18,
+    "rank": "C"
+  },
+  {
+    "path": "processing/parsing_utils.py",
+    "name": "_should_filter_entity",
+    "line": 257,
+    "complexity": 18,
+    "rank": "C"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "get_text_segments",
+    "line": 529,
+    "complexity": 18,
+    "rank": "C"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "calculate_node_confidence",
+    "line": 75,
+    "complexity": 17,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "parse_and_persist",
+    "line": 1045,
+    "complexity": 17,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "_check_relationship_evolution",
+    "line": 544,
+    "complexity": 17,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/initialization/outline_relationships_node.py",
+    "name": "_parse_relationships_extraction",
+    "line": 204,
+    "complexity": 17,
+    "rank": "C"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "get_character_profile_by_id",
+    "line": 237,
+    "complexity": 17,
+    "rank": "C"
+  },
+  {
+    "path": "processing/parsing_utils.py",
+    "name": "_get_entity_type_and_name_from_text",
+    "line": 17,
+    "complexity": 17,
+    "rank": "C"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "extract_json_candidates_from_response",
+    "line": 98,
+    "complexity": 17,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "parse_and_persist",
+    "line": 671,
+    "complexity": 16,
+    "rank": "C"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "simple_log_format_rich",
+    "line": 468,
+    "complexity": 15,
+    "rank": "C"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "validate",
+    "line": 451,
+    "complexity": 15,
+    "rank": "C"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "normalize_relationship_type",
+    "line": 136,
+    "complexity": 15,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_planning_node.py",
+    "name": "_validate_scene_plan_structure",
+    "line": 48,
+    "complexity": 15,
+    "rank": "C"
+  },
+  {
+    "path": "data_access/cypher_builders/native_builders.py",
+    "name": "world_item_upsert_cypher",
+    "line": 159,
+    "complexity": 15,
+    "rank": "C"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_apply_protagonist_proximity_filtering",
+    "line": 790,
+    "complexity": 15,
+    "rank": "C"
+  },
+  {
+    "path": "utils/similarity.py",
+    "name": "find_semantically_closest_segment",
+    "line": 75,
+    "complexity": 15,
+    "rank": "C"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "_extract_balanced_json_substring",
+    "line": 64,
+    "complexity": 15,
+    "rank": "C"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "clean_response",
+    "line": 285,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "core/schema_validator.py",
+    "name": "validate_entity_type",
+    "line": 63,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "post_json",
+    "line": 50,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_extract_pov_character_from_beats",
+    "line": 175,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "parse_and_persist",
+    "line": 973,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/validation_node.py",
+    "name": "validate_consistency",
+    "line": 98,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/validation_node.py",
+    "name": "_check_character_traits",
+    "line": 384,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/revision_node.py",
+    "name": "_format_contradictions_for_prompt",
+    "line": 303,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "get_most_recent_value_from_db",
+    "line": 670,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "get_world_state_snippet_for_prompt",
+    "line": 974,
+    "complexity": 14,
+    "rank": "C"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "truncate_text_by_tokens",
+    "line": 111,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "CompletionService",
+    "line": 279,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "parse_and_persist",
+    "line": 526,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_extract_item_possessions",
+    "line": 569,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "_parse_character_sheet",
+    "line": 85,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_generation_node.py",
+    "name": "draft_scene",
+    "line": 26,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/revision_node.py",
+    "name": "revise_chapter",
+    "line": 109,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/quality_assurance_node.py",
+    "name": "check_quality",
+    "line": 32,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/embedding_node.py",
+    "name": "generate_scene_embeddings",
+    "line": 25,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_run_chapter_generation_loop",
+    "line": 412,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "processing/parsing_utils.py",
+    "name": "_is_proper_noun",
+    "line": 178,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_discover_characters_of_interest",
+    "line": 754,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "extract_json_from_text",
+    "line": 52,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "main.py",
+    "name": "main",
+    "line": 67,
+    "complexity": 13,
+    "rank": "C"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "extract_sentences",
+    "line": 451,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "_find_most_similar",
+    "line": 332,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "GraphHealingService",
+    "line": 37,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "enrich_node_from_context",
+    "line": 195,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "validate_merge",
+    "line": 610,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_parse_world_items_extraction",
+    "line": 274,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_parse_location_enrichment",
+    "line": 161,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_collect_act_narrative_text",
+    "line": 428,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_extract_event_item_involvements",
+    "line": 644,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_act_outlines",
+    "line": 1022,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/summary_node.py",
+    "name": "summarize_chapter",
+    "line": 48,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "_has_contradictory_height",
+    "line": 212,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "commit_initialization_to_graph",
+    "line": 35,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "get_chapter_context_for_entity",
+    "line": 832,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_gather_novel_info_facts",
+    "line": 835,
+    "complexity": 12,
+    "rank": "C"
+  },
+  {
+    "path": "config/validator.py",
+    "name": "validate_all",
+    "line": 53,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "simple_log_format_plain",
+    "line": 535,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "map_to_canonical",
+    "line": 66,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/parser_runner.py",
+    "name": "main",
+    "line": 181,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "connect",
+    "line": 69,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "extract_physical_descriptions",
+    "line": 97,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "parse_relationships",
+    "line": 267,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/finalize_node.py",
+    "name": "finalize_chapter",
+    "line": 35,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_entity_conversion.py",
+    "name": "_convert_to_world_items",
+    "line": 83,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_parse_character_extraction_response",
+    "line": 362,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "find_candidate_duplicate_entities",
+    "line": 999,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict_record",
+    "line": 352,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "validate_world_item_fields",
+    "line": 99,
+    "complexity": 11,
+    "rank": "C"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "SpacyService",
+    "line": 72,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "normalize_entity_name",
+    "line": 313,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "update_vocabulary_usage",
+    "line": 497,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "async_call_llm_json_object",
+    "line": 670,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_validate_content_ref_integrity",
+    "line": 193,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "detect_contradictions",
+    "line": 463,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_normalization.py",
+    "name": "consolidate_scene_extractions",
+    "line": 21,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "_extract_color_near_context",
+    "line": 245,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/context_plot_retrieval.py",
+    "name": "get_act_events_context",
+    "line": 170,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_parse_world_items_extraction",
+    "line": 471,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "consolidate_similar_relationships",
+    "line": 1325,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/chapter_queries.py",
+    "name": "find_semantic_context_native",
+    "line": 288,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "update",
+    "line": 194,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "flatten_dict",
+    "line": 28,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "try_load_json_from_response",
+    "line": 148,
+    "complexity": 10,
+    "rank": "B"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "load_model",
+    "line": 83,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/schema_validator.py",
+    "name": "canonicalize_entity_type_for_persistence",
+    "line": 150,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/schema_validator.py",
+    "name": "validate_node_labels",
+    "line": 281,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "suggest_story_structure",
+    "line": 170,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "_extract_completion_content",
+    "line": 498,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "_extract_and_validate_embedding",
+    "line": 220,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "_classify_non_entity_candidate",
+    "line": 148,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "execute_merge",
+    "line": 665,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "update_character_physical_descriptions",
+    "line": 417,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "_find_character_by_name",
+    "line": 237,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_extract_character_names",
+    "line": 240,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/validation_node.py",
+    "name": "_is_plot_stagnant",
+    "line": 485,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction.py",
+    "name": "_extract_relationships_from_scene",
+    "line": 474,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/context_scene_retrieval.py",
+    "name": "get_location_context",
+    "line": 267,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/context_plot_retrieval.py",
+    "name": "get_character_items_context",
+    "line": 116,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_validation.py",
+    "name": "_filter_invalid_relationships",
+    "line": 24,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/outline_relationships_node.py",
+    "name": "extract_outline_relationships",
+    "line": 24,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/global_outline_node.py",
+    "name": "_validate_chapter_allocations",
+    "line": 201,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_outline_node.py",
+    "name": "generate_chapter_outline",
+    "line": 40,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_outline_node.py",
+    "name": "_enrich_skeleton_outline",
+    "line": 461,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/act_outlines_node.py",
+    "name": "_get_act_role",
+    "line": 389,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "get_bootstrap_world_elements",
+    "line": 510,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "_infer_specific_node_type",
+    "line": 74,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "_get_cypher_labels",
+    "line": 186,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/cypher_builders/native_builders.py",
+    "name": "character_upsert_cypher",
+    "line": 31,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "validate_plot_outline_consistency",
+    "line": 49,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict_record",
+    "line": 112,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_validate_resume_state_or_raise_async",
+    "line": 786,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "safe_json_loads",
+    "line": 216,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "utils/__init__.py",
+    "name": "format_scene_plan_for_prompt",
+    "line": 43,
+    "complexity": 9,
+    "rank": "B"
+  },
+  {
+    "path": "core/schema_validator.py",
+    "name": "SchemaValidationService",
+    "line": 55,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "validate_semantic_compatibility",
+    "line": 413,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "_llm_disambiguate",
+    "line": 398,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "apply_enrichment",
+    "line": 297,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "_check_for_contradictions",
+    "line": 385,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_score_location_match",
+    "line": 332,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "ActOutlineParser",
+    "line": 33,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_extract_event_location",
+    "line": 328,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_chapter_outlines",
+    "line": 965,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_planning_node.py",
+    "name": "_ensure_scene_characters_exist",
+    "line": 129,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "NarrativeEnrichmentNode",
+    "line": 41,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/context_scene_retrieval.py",
+    "name": "get_semantic_context",
+    "line": 319,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/character_sheets_node.py",
+    "name": "_generate_character_sheet",
+    "line": 450,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_outline_node.py",
+    "name": "_generate_single_chapter_outline",
+    "line": 196,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_allocation.py",
+    "name": "compute_balanced_act_ranges",
+    "line": 83,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/act_outlines_node.py",
+    "name": "_generate_single_act_outline",
+    "line": 285,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/plot_queries.py",
+    "name": "get_plot_outline_from_db",
+    "line": 225,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "_get_novel_info_property_from_db_cached",
+    "line": 753,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "merge_entities",
+    "line": 1237,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 70,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "models/db_extraction_utils.py",
+    "name": "safe_int_extract",
+    "line": 41,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "get_context_snippet_for_patch",
+    "line": 76,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "classify_category_label",
+    "line": 124,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "utils/similarity.py",
+    "name": "numpy_cosine_similarity",
+    "line": 41,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "split_text_into_chapters",
+    "line": 305,
+    "complexity": 8,
+    "rank": "B"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "ResponseCleaningService",
+    "line": 198,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "extract_entities",
+    "line": 147,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "RelationshipValidator",
+    "line": 320,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "RelationshipNormalizationService",
+    "line": 33,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "_ensure_canonical_embeddings",
+    "line": 304,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "find_resume_project",
+    "line": 96,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/parser_runner.py",
+    "name": "_create_parser_instance",
+    "line": 111,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "get_embedding",
+    "line": 135,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "get_embeddings_batch",
+    "line": 191,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/entity_embedding_service.py",
+    "name": "compute_entity_embedding_text",
+    "line": 31,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_sync_execute_cypher_batch",
+    "line": 271,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "refresh_property_keys_cache",
+    "line": 476,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_create_constraints_and_indexes",
+    "line": 537,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_create_type_placeholders",
+    "line": 659,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "CharacterSheetParser",
+    "line": 29,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_parse_locations",
+    "line": 262,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/visualization.py",
+    "name": "_export_ascii",
+    "line": 137,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/graph_context.py",
+    "name": "build_context_from_graph",
+    "line": 29,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_scene_embeddings",
+    "line": 746,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_scene_embeddings",
+    "line": 768,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_latest_version",
+    "line": 596,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "_parse_quality_scores",
+    "line": 252,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "_check_scene_duplication",
+    "line": 376,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "_calculate_text_similarity",
+    "line": 430,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_planning_node.py",
+    "name": "plan_scenes",
+    "line": 205,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_parsing.py",
+    "name": "normalize_dict_items",
+    "line": 143,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/context_scene_retrieval.py",
+    "name": "get_previous_scenes_context",
+    "line": 72,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/context_plot_retrieval.py",
+    "name": "get_scene_events_context",
+    "line": 19,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/run_parsers_node.py",
+    "name": "run_initialization_parsers",
+    "line": 21,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_write_outline_files",
+    "line": 301,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/outline_relationships_node.py",
+    "name": "_extract_relationships_from_outline",
+    "line": 125,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/global_outline_node.py",
+    "name": "_parse_global_outline",
+    "line": 244,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/character_sheets_node.py",
+    "name": "generate_character_sheets",
+    "line": 197,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_allocation.py",
+    "name": "extract_explicit_act_ranges",
+    "line": 43,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_allocation.py",
+    "name": "determine_act_for_chapter",
+    "line": 157,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "get_world_item_by_name",
+    "line": 86,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "get_world_elements_for_snippet_from_db",
+    "line": 259,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "get_world_building",
+    "line": 427,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/cypher_builders/native_builders.py",
+    "name": "NativeCypherBuilder",
+    "line": 27,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/cypher_builders/native_builders.py",
+    "name": "world_item_fetch_cypher",
+    "line": 395,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "suggest_corrections",
+    "line": 230,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "LangGraphOrchestrator",
+    "line": 135,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_get_requested_project_id",
+    "line": 705,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "get_reliable_kg_facts_for_drafting_prompt",
+    "line": 552,
+    "complexity": 7,
+    "rank": "B"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "TokenizerService",
+    "line": 26,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "validate",
+    "line": 135,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "prune_vocabulary",
+    "line": 551,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "find_candidate_project",
+    "line": 77,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "EmbeddingService",
+    "line": 109,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "get_statistics",
+    "line": 260,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "async_call_llm_json_array",
+    "line": 775,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "_purge_expired_locked",
+    "line": 55,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "HTTPClientService",
+    "line": 24,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "cleanup_orphaned_nodes",
+    "line": 757,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "has_property_key",
+    "line": 506,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "embedding_to_list",
+    "line": 755,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "NarrativeEnrichmentParser",
+    "line": 64,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "extract_chapter_embeddings",
+    "line": 253,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "GlobalOutlineParser",
+    "line": 34,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "ChapterOutlineParser",
+    "line": 30,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_parse_act_key_events",
+    "line": 97,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/state.py",
+    "name": "ExtractedEntity",
+    "line": 27,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/graph_context.py",
+    "name": "_get_recent_summaries",
+    "line": 227,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/export.py",
+    "name": "_iter_chapter_files",
+    "line": 12,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_validate_checksum_if_present",
+    "line": 164,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_resolve_ref_path",
+    "line": 392,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/subgraphs/generation.py",
+    "name": "should_continue_scenes",
+    "line": 26,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/validation_node.py",
+    "name": "_coerce_traits_list",
+    "line": 49,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/summary_node.py",
+    "name": "_parse_summary_response",
+    "line": 227,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_parsing.py",
+    "name": "normalize_triple_entities",
+    "line": 115,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction.py",
+    "name": "_extract_characters_from_scene",
+    "line": 139,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction.py",
+    "name": "_extract_locations_from_scene",
+    "line": 262,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction.py",
+    "name": "_extract_events_from_scene",
+    "line": 368,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "enrich_narrative",
+    "line": 432,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/nodes/context_plot_retrieval.py",
+    "name": "get_character_relationships_context",
+    "line": 68,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "persist_initialization_files",
+    "line": 89,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_extract_world_items_from_outline",
+    "line": 423,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_build_outline_relationship_statements",
+    "line": 542,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_outline_node.py",
+    "name": "build_character_summary",
+    "line": 337,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_allocation.py",
+    "name": "choose_act_ranges",
+    "line": 127,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+    "name": "generate_all_chapter_outlines",
+    "line": 28,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "get_character_info_for_snippet_from_db",
+    "line": 418,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "data_access/chapter_queries.py",
+    "name": "get_embedding_from_db",
+    "line": 252,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "BootstrapContentValidator",
+    "line": 35,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "validate_world_building_consistency",
+    "line": 153,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "models/db_extraction_utils.py",
+    "name": "Neo4jExtractor",
+    "line": 17,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_load_or_create_state",
+    "line": 274,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_managed_llm_lifecycle_for_workflow",
+    "line": 87,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "get_filtered_character_profiles_for_prompt_plain_text",
+    "line": 372,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_get_world_data_dict_with_notes",
+    "line": 418,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "load_yaml_file",
+    "line": 286,
+    "complexity": 6,
+    "rank": "B"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "get_statistics",
+    "line": 367,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "get_tokenizer",
+    "line": 39,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/schema_validator.py",
+    "name": "validate_category",
+    "line": 121,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "RelationshipValidationRule",
+    "line": 105,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "generate_metadata",
+    "line": 111,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "_ensure_service",
+    "line": 119,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_sync_probe_apoc_version",
+    "line": 161,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "is_apoc_available",
+    "line": 431,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_execute_schema_batch",
+    "line": 721,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "_generate_embedding_vector",
+    "line": 312,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "validate_character_enrichment",
+    "line": 334,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_extract_world_items_from_outline",
+    "line": 230,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "parse_character_sheets",
+    "line": 52,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "create_relationships",
+    "line": 326,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "parse_and_persist",
+    "line": 378,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_get_all_locations",
+    "line": 400,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "should_revise_or_handle_error",
+    "line": 61,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "should_continue_to_next_chapter",
+    "line": 243,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/visualization.py",
+    "name": "print_workflow_summary",
+    "line": 189,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state.py",
+    "name": "validate_entity_type",
+    "line": 43,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/export.py",
+    "name": "_extract_body",
+    "line": 46,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/export.py",
+    "name": "generate_full_export",
+    "line": 94,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "set_extracted_relationships",
+    "line": 1177,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_chapter_plan",
+    "line": 1244,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_binary",
+    "line": 507,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "evaluate_quality",
+    "line": 67,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "_build_quality_evaluation_prompt",
+    "line": 197,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/summary_node.py",
+    "name": "_write_chapter_summary_file",
+    "line": 305,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_planning_node.py",
+    "name": "_parse_scene_plan_json_from_llm_response",
+    "line": 89,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_validation.py",
+    "name": "_validate_entity_with_spacy",
+    "line": 35,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_parsing.py",
+    "name": "parse_world_updates",
+    "line": 47,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction.py",
+    "name": "extract_from_scenes",
+    "line": 582,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "_validate_embedding",
+    "line": 369,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/graph_healing_node.py",
+    "name": "heal_graph",
+    "line": 23,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/extraction_nodes.py",
+    "name": "consolidate_extraction",
+    "line": 22,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/context_scene_retrieval.py",
+    "name": "get_scene_items_context",
+    "line": 26,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/context_character_retrieval.py",
+    "name": "get_scene_character_context",
+    "line": 29,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_write_character_files",
+    "line": 262,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/global_outline_node.py",
+    "name": "generate_global_outline",
+    "line": 60,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_parse_character_sheets_to_profiles",
+    "line": 174,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_extract_structured_character_data",
+    "line": 257,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_build_entity_persistence_statements",
+    "line": 625,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/character_sheets_node.py",
+    "name": "_get_existing_traits",
+    "line": 32,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/act_outlines_node.py",
+    "name": "ActOutlineSectionsSchema",
+    "line": 39,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "rebuild_world_name_map",
+    "line": 37,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "update_world_name_map",
+    "line": 52,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "sync_world_items",
+    "line": 379,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/plot_queries.py",
+    "name": "append_plot_point",
+    "line": 307,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "validate_relationship_type_for_cypher_interpolation",
+    "line": 151,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "find_contradictory_trait_characters",
+    "line": 954,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "get_shortest_path_length_between_entities",
+    "line": 1397,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "sync_characters",
+    "line": 542,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/chapter_queries.py",
+    "name": "get_chapter_data_from_db",
+    "line": 191,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cypher_builders/native_builders.py",
+    "name": "character_fetch_cypher",
+    "line": 341,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "models/db_extraction_utils.py",
+    "name": "safe_list_extract",
+    "line": 71,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_validate_resume_state_or_raise",
+    "line": 769,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_get_character_profiles_dict_with_notes",
+    "line": 318,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "RichDisplayManager",
+    "line": 68,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "validate_and_filter_traits",
+    "line": 350,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "normalize_keys_recursive",
+    "line": 274,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "main.py",
+    "name": "run_generation_mode",
+    "line": 39,
+    "complexity": 5,
+    "rank": "A"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "filter_internal_keys",
+    "line": 447,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "config/docs_generator.py",
+    "name": "_format_default",
+    "line": 28,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "validate_entity_types",
+    "line": 375,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "ProjectManager",
+    "line": 12,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "sanitize_project_title",
+    "line": 21,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "ProjectBootstrapper",
+    "line": 97,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "generate_world_building_questions",
+    "line": 184,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parser_runner.py",
+    "name": "run_parser_command",
+    "line": 148,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parser_runner.py",
+    "name": "ParserRunner",
+    "line": 29,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "get_statistics",
+    "line": 575,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "_validate_embedding_list",
+    "line": 241,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "async_llm_context",
+    "line": 43,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "get",
+    "line": 72,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "get_statistics",
+    "line": 140,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "EmbeddingHTTPClient",
+    "line": 151,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "get_embedding",
+    "line": 162,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "Neo4jManagerSingleton",
+    "line": 32,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_meets_minimum_version",
+    "line": 190,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "_extract_mentioned_characters",
+    "line": 204,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "update_chapter_embeddings",
+    "line": 487,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_parse_major_plot_points",
+    "line": 99,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_parse_locations",
+    "line": 153,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_parse_items",
+    "line": 184,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_parse_character_arcs",
+    "line": 205,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "create_major_plot_point_nodes",
+    "line": 341,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "create_location_nodes",
+    "line": 400,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "create_item_nodes",
+    "line": 456,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "enrich_character_arcs",
+    "line": 512,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_get_all_characters",
+    "line": 555,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "create_item_possession_relationships",
+    "line": 630,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "_normalize_character_name",
+    "line": 162,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_derive_location_name",
+    "line": 360,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "create_chapter_nodes",
+    "line": 384,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "create_scene_nodes",
+    "line": 443,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "create_scene_event_nodes",
+    "line": 517,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "create_location_nodes",
+    "line": 591,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_get_all_character_names",
+    "line": 885,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_find_best_act_key_event",
+    "line": 952,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_parse_character_involvements",
+    "line": 211,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_get_all_character_names",
+    "line": 386,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_get_all_items",
+    "line": 414,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "create_new_location_nodes",
+    "line": 562,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "create_new_item_nodes",
+    "line": 603,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "create_act_key_event_nodes",
+    "line": 705,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "enrich_location_names",
+    "line": 773,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "should_continue_init",
+    "line": 154,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/visualization.py",
+    "name": "visualize_workflow",
+    "line": 23,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/graph_context.py",
+    "name": "_get_characters_by_names",
+    "line": 139,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/graph_context.py",
+    "name": "_get_character_relationships",
+    "line": 168,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/graph_context.py",
+    "name": "_get_location_details",
+    "line": 281,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_embedding",
+    "line": 728,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_global_outline",
+    "line": 998,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_extracted_entities",
+    "line": 1121,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_extracted_relationships",
+    "line": 1149,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "_fetch_validation_data",
+    "line": 321,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_validation.py",
+    "name": "_get_normalized_entity_key",
+    "line": 73,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_parsing.py",
+    "name": "parse_character_updates",
+    "line": 17,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_parsing.py",
+    "name": "parse_kg_triples",
+    "line": 89,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "_validate_physical_description",
+    "line": 161,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "_has_contradictory_attribute",
+    "line": 283,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/context_world_retrieval.py",
+    "name": "_extract_scene_characters",
+    "line": 79,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/context_scene_retrieval.py",
+    "name": "_summarize_scene_text",
+    "line": 163,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/context_scene_retrieval.py",
+    "name": "_smart_truncate_scene",
+    "line": 217,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/context_retrieval_node.py",
+    "name": "_extract_scene_characters",
+    "line": 273,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/context_character_retrieval.py",
+    "name": "_extract_scene_characters",
+    "line": 77,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_validation.py",
+    "name": "_deduplicate_entity_list",
+    "line": 104,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_node.py",
+    "name": "_build_entity_persistence_statements",
+    "line": 598,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_graph_ops.py",
+    "name": "_aggregate_scene_embeddings_to_chapter",
+    "line": 57,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_entity_conversion.py",
+    "name": "_convert_to_character_profiles",
+    "line": 24,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_normalize_prose",
+    "line": 54,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_parse_character_sheet_text",
+    "line": 222,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/global_outline_node.py",
+    "name": "_build_character_context_from_sheets",
+    "line": 178,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/act_outlines_node.py",
+    "name": "validate_key_events_length_and_sequence",
+    "line": 53,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "get_world_items_for_chapter_context_native",
+    "line": 464,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/scene_queries.py",
+    "name": "get_act_events",
+    "line": 83,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/plot_queries.py",
+    "name": "get_last_plot_point_id",
+    "line": 385,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "rebuild_character_name_map",
+    "line": 28,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "update_character_name_map",
+    "line": 43,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "get_character_profiles",
+    "line": 593,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "get_characters_for_chapter_context_native",
+    "line": 622,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/chapter_queries.py",
+    "name": "load_chapter_count_from_db",
+    "line": 111,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/chapter_queries.py",
+    "name": "get_chapter_content_batch_native",
+    "line": 437,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "CharacterProfile",
+    "line": 32,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "WorldItem",
+    "line": 221,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "models/db_extraction_utils.py",
+    "name": "safe_string_extract",
+    "line": 26,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_get_step_description",
+    "line": 644,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_load_state_for_run",
+    "line": 724,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "stop",
+    "line": 167,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "is_single_word_trait",
+    "line": 286,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "normalize_trait_name",
+    "line": 312,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "ensure_exact_keys",
+    "line": 247,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "ensure_required_keys",
+    "line": 256,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "utils/__init__.py",
+    "name": "remove_spans_from_text",
+    "line": 97,
+    "complexity": 4,
+    "rank": "A"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "SagaSettings",
+    "line": 166,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "config/loader.py",
+    "name": "reload_settings",
+    "line": 51,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "config/docs_generator.py",
+    "name": "generate_docs",
+    "line": 47,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "_compile_cleaning_patterns",
+    "line": 230,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "count_tokens",
+    "line": 83,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "get_statistics",
+    "line": 188,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "validate_relationship_type",
+    "line": 343,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "validate_relationship_semantics_strict",
+    "line": 535,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "_cache_embedding",
+    "line": 48,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "_reject",
+    "line": 57,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "_canonicalize",
+    "line": 280,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "promote_candidate",
+    "line": 65,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "create_default_project",
+    "line": 124,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parser_runner.py",
+    "name": "run_all_parsers",
+    "line": 43,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "RefactoredLLMService",
+    "line": 586,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "get_cache_metrics",
+    "line": 154,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "_ServiceCache",
+    "line": 45,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "_cosine_similarity",
+    "line": 570,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "create_error_context",
+    "line": 73,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "handle_database_error",
+    "line": 85,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "SAGACoreError",
+    "line": 11,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/entity_embedding_service.py",
+    "name": "compute_entity_embedding_text_hash",
+    "line": 52,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_sync_fetch_neo4j_server_info",
+    "line": 173,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "close",
+    "line": 217,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_ensure_connected",
+    "line": 230,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_execute_schema_individually",
+    "line": 742,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "list_to_embedding",
+    "line": 772,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "_extract_last_mentioned_character",
+    "line": 184,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "_extract_character_description",
+    "line": 225,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "parse_global_outline",
+    "line": 60,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "parse_chapter_outline",
+    "line": 56,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_parse_scene_events",
+    "line": 215,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_get_all_locations",
+    "line": 899,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_extract_characters_from_text",
+    "line": 985,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_match_items_in_text",
+    "line": 1002,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_get_all_items",
+    "line": 1023,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "parse_act_outline",
+    "line": 57,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_parse_location_involvements",
+    "line": 302,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/visualization.py",
+    "name": "_export_mermaid",
+    "line": 71,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/visualization.py",
+    "name": "_export_png",
+    "line": 100,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_outline",
+    "line": 679,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_extracted_entities",
+    "line": 803,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_extracted_relationships",
+    "line": 821,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_chapter_plan",
+    "line": 839,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_draft_text",
+    "line": 850,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_character_sheets",
+    "line": 941,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "require_project_dir",
+    "line": 1271,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "ContentManager",
+    "line": 94,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "__init__",
+    "line": 101,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_binary",
+    "line": 334,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "delete",
+    "line": 588,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/validation_node.py",
+    "name": "_normalize_trait",
+    "line": 31,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/validation_node.py",
+    "name": "_get_character_trait_values_for_validation",
+    "line": 80,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/relationship_normalization_node.py",
+    "name": "_get_top_relationships",
+    "line": 222,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/context_world_retrieval.py",
+    "name": "get_scene_kg_facts",
+    "line": 22,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_node.py",
+    "name": "_get_existing_entity_names",
+    "line": 270,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_write_saga_yaml",
+    "line": 418,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_load_json_with_contract_then_salvage",
+    "line": 331,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_allocation.py",
+    "name": "ActRange",
+    "line": 18,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "find_thin_world_elements_for_enrichment",
+    "line": 351,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/scene_queries.py",
+    "name": "get_character_relationships_for_scene",
+    "line": 167,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/scene_queries.py",
+    "name": "get_character_items",
+    "line": 230,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/plot_queries.py",
+    "name": "plot_point_exists",
+    "line": 366,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "_to_pascal_case",
+    "line": 119,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "validate_relationship_type",
+    "line": 128,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "get_entity_context_for_resolution",
+    "line": 1185,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "_execute_atomic_merge",
+    "line": 1265,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "deduplicate_relationships",
+    "line": 1308,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "get_all_character_names",
+    "line": 369,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "_process_snippet_result",
+    "line": 383,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/chapter_queries.py",
+    "name": "save_chapter_data_to_db",
+    "line": 131,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/__init__.py",
+    "name": "__getattr__",
+    "line": 177,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "validate_character_profiles_consistency",
+    "line": 110,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "validate_all_components",
+    "line": 187,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 250,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "models/db_extraction_utils.py",
+    "name": "extract_core_fields_from_node",
+    "line": 87,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "run_novel_generation_loop",
+    "line": 166,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_ensure_cache_is_scoped_to_chapter",
+    "line": 75,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_deterministic_character_order",
+    "line": 98,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_cached_character_info",
+    "line": 111,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "__init__",
+    "line": 109,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "normalize_entity_name",
+    "line": 17,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "_normalize_for_id",
+    "line": 37,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "generate_entity_id",
+    "line": 53,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "_token_similarity",
+    "line": 394,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "load_json_with_contract_then_salvage",
+    "line": 192,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "truncate_for_log",
+    "line": 266,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "main.py",
+    "name": "run_bootstrap_mode",
+    "line": 21,
+    "complexity": 3,
+    "rank": "A"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "model_post_init",
+    "line": 388,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "TextProcessingService",
+    "line": 382,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "_ensure_loaded",
+    "line": 142,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "get_spacy_service",
+    "line": 509,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "__init__",
+    "line": 331,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "get_relationship_validator",
+    "line": 527,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "_get_embedding",
+    "line": 381,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "save_config",
+    "line": 37,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "load_config",
+    "line": 49,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "load_candidate_config",
+    "line": 57,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "count_completed_chapters",
+    "line": 116,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "generate_metadata_from_template",
+    "line": 157,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/parser_runner.py",
+    "name": "run_parser",
+    "line": 69,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/parser_runner.py",
+    "name": "_run_parser",
+    "line": 94,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/logging_config.py",
+    "name": "RichHandler",
+    "line": 32,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "aclose",
+    "line": 611,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "__init__",
+    "line": 48,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "_evict_lru_locked",
+    "line": 67,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "set",
+    "line": 87,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "CompletionHTTPClient",
+    "line": 188,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "get_node_by_element_id",
+    "line": 346,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "graduate_node",
+    "line": 368,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "__init__",
+    "line": 14,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "__str__",
+    "line": 19,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "__new__",
+    "line": 40,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "__init__",
+    "line": 46,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_sync_execute_query_tx",
+    "line": 245,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_sync_execute_read_query",
+    "line": 255,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_sync_execute_write_query",
+    "line": 264,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "_ensure_connected_sync",
+    "line": 341,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_parse_scenes",
+    "line": 128,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "should_handle_error",
+    "line": 40,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "create_checkpointer",
+    "line": 130,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "should_initialize",
+    "line": 183,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "create_full_workflow_graph",
+    "line": 288,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/export.py",
+    "name": "_strip_bom",
+    "line": 39,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_get_content_path",
+    "line": 125,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_text",
+    "line": 426,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_text_strict",
+    "line": 453,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_json",
+    "line": 466,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_json_strict",
+    "line": 494,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_list_of_texts",
+    "line": 571,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "exists",
+    "line": 582,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_draft",
+    "line": 646,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_character_sheets",
+    "line": 696,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_scene_drafts",
+    "line": 879,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_previous_summaries",
+    "line": 900,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "get_hybrid_context",
+    "line": 921,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "FrozenContentRef",
+    "line": 30,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/subgraphs/_shared.py",
+    "name": "_should_continue_or_error",
+    "line": 9,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/summary_node.py",
+    "name": "_save_summary_to_neo4j",
+    "line": 266,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_validation.py",
+    "name": "_get_text_processing_service",
+    "line": 24,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction_validation.py",
+    "name": "load_spacy_model_if_enabled",
+    "line": 98,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/scene_extraction.py",
+    "name": "extract_from_scene",
+    "line": 44,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/revision_node.py",
+    "name": "_rollback_chapter_data",
+    "line": 36,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/finalize_node.py",
+    "name": "_save_chapter_to_filesystem",
+    "line": 208,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_node.py",
+    "name": "_rollback_commit",
+    "line": 207,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/assemble_chapter_node.py",
+    "name": "assemble_chapter",
+    "line": 17,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/validation.py",
+    "name": "_require_file",
+    "line": 18,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/validation.py",
+    "name": "_require_any",
+    "line": 25,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/validation.py",
+    "name": "validate_initialization_artifacts",
+    "line": 32,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_literal_string_representer",
+    "line": 42,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_create_directory_structure",
+    "line": 201,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_write_world_items_file",
+    "line": 384,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_outline_node.py",
+    "name": "_determine_act_for_chapter",
+    "line": 311,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_allocation.py",
+    "name": "chapters_in_act",
+    "line": 26,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_allocation.py",
+    "name": "_is_int",
+    "line": 37,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/act_outlines_node.py",
+    "name": "_synthesize_act_outline_raw_text",
+    "line": 78,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/world_queries.py",
+    "name": "resolve_world_name",
+    "line": 67,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/scene_queries.py",
+    "name": "get_scene_events",
+    "line": 18,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/scene_queries.py",
+    "name": "get_scene_items",
+    "line": 292,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "resolve_character_name",
+    "line": 58,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/character_queries.py",
+    "name": "find_thin_characters_for_enrichment",
+    "line": 516,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/chapter_queries.py",
+    "name": "compute_chapter_id",
+    "line": 18,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cache_coordinator.py",
+    "name": "_best_effort_cache_clear",
+    "line": 21,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cypher_builders/native_builders.py",
+    "name": "batch_character_upsert_cypher",
+    "line": 453,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cypher_builders/native_builders.py",
+    "name": "batch_world_item_upsert_cypher",
+    "line": 470,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "ConfigurationValidationError",
+    "line": 24,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_db_node",
+    "line": 176,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_db_node",
+    "line": 445,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_cypher_params",
+    "line": 494,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "Scene",
+    "line": 523,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "Location",
+    "line": 598,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "RelationshipUsage",
+    "line": 655,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "MajorPlotPoint",
+    "line": 696,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "ActKeyEvent",
+    "line": 766,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "Chapter",
+    "line": 845,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "SceneEvent",
+    "line": 917,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "__init__",
+    "line": 154,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "prompts/prompt_renderer.py",
+    "name": "get_system_prompt",
+    "line": 75,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "_cached_world_item_by_id",
+    "line": 139,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "get_shared_console",
+    "line": 95,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "start",
+    "line": 151,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "_auto_refresh",
+    "line": 184,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "Live",
+    "line": 37,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "Text",
+    "line": 49,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "Group",
+    "line": 55,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "Panel",
+    "line": 61,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "_normalize_text_for_matching",
+    "line": 383,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "utils/similarity.py",
+    "name": "_LLMServiceProxy",
+    "line": 14,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "utils/file_io.py",
+    "name": "_atomic_write",
+    "line": 12,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "utils/common.py",
+    "name": "_is_fill_in",
+    "line": 46,
+    "complexity": 2,
+    "rank": "A"
+  },
+  {
+    "path": "config/validator.py",
+    "name": "_add_issue",
+    "line": 33,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "SchemaEnforcementSettings",
+    "line": 37,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "ValidationSettings",
+    "line": 64,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "RelationshipNormalizationSettings",
+    "line": 76,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "config/settings.py",
+    "name": "Temperatures",
+    "line": 400,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "config/loader.py",
+    "name": "_import_settings_module",
+    "line": 36,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "config/__init__.py",
+    "name": "reload",
+    "line": 172,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "__init__",
+    "line": 201,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "__init__",
+    "line": 29,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "__init__",
+    "line": 385,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "load_spacy_model",
+    "line": 393,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "clean_text_with_spacy",
+    "line": 404,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "extract_sentences_with_spacy",
+    "line": 420,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "get_combined_statistics",
+    "line": 431,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "count_tokens",
+    "line": 447,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "truncate_text_by_tokens",
+    "line": 452,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "clean_text_with_spacy",
+    "line": 462,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/text_processing_service.py",
+    "name": "extract_sentences_with_spacy",
+    "line": 475,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "__init__",
+    "line": 75,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "is_loaded",
+    "line": 134,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "nlp",
+    "line": 492,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/spacy_service.py",
+    "name": "get_model_name",
+    "line": 497,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/schema_validator.py",
+    "name": "__init__",
+    "line": 58,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_validation.py",
+    "name": "__init__",
+    "line": 112,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "__init__",
+    "line": 42,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/relationship_normalization_service.py",
+    "name": "_get_threshold",
+    "line": 320,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "ensure_projects_root",
+    "line": 16,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_manager.py",
+    "name": "project_directory_from_title",
+    "line": 32,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_config.py",
+    "name": "NarrativeProjectConfig",
+    "line": 7,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "__init__",
+    "line": 98,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "get_genre_templates",
+    "line": 103,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "get_story_structures",
+    "line": 108,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/project_bootstrapper.py",
+    "name": "save_config",
+    "line": 214,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parser_runner.py",
+    "name": "__init__",
+    "line": 32,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/logging_config.py",
+    "name": "emit",
+    "line": 33,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "__init__",
+    "line": 282,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "__init__",
+    "line": 112,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "_compute_text_hash",
+    "line": 131,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "__init__",
+    "line": 589,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "async_call_llm",
+    "line": 616,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "async_get_embedding",
+    "line": 856,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "async_get_embeddings_batch",
+    "line": 860,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "count_tokens",
+    "line": 864,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "truncate_text_by_tokens",
+    "line": 868,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "get_combined_statistics",
+    "line": 878,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "create_llm_service",
+    "line": 888,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/llm_interface_refactored.py",
+    "name": "close_llm_service",
+    "line": 904,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "invalidate",
+    "line": 100,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "clear",
+    "line": 104,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "size",
+    "line": 108,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "_now",
+    "line": 27,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "get_cached_value",
+    "line": 135,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "set_cached_value",
+    "line": 140,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "invalidate_cache_key",
+    "line": 149,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "get_cache_size",
+    "line": 172,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "register_cache_service",
+    "line": 177,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "clear_service_cache",
+    "line": 186,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/lightweight_cache.py",
+    "name": "_CacheEntry",
+    "line": 40,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "__init__",
+    "line": 27,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "aclose",
+    "line": 45,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "__init__",
+    "line": 154,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "__init__",
+    "line": 191,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/http_client_service.py",
+    "name": "get_completion",
+    "line": 199,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/graph_healing_service.py",
+    "name": "identify_provisional_nodes",
+    "line": 56,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "DatabaseError",
+    "line": 25,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "DatabaseConnectionError",
+    "line": 29,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "DatabaseTransactionError",
+    "line": 33,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "KnowledgeGraphPersistenceError",
+    "line": 37,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "ValidationError",
+    "line": 47,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "ContentIntegrityError",
+    "line": 51,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "MissingDraftReferenceError",
+    "line": 55,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "LLMServiceError",
+    "line": 59,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/exceptions.py",
+    "name": "CheckpointResumeConflictError",
+    "line": 63,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "execute_read_query",
+    "line": 360,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "execute_write_query",
+    "line": 364,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "execute_cypher_batch",
+    "line": 368,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "execute_in_transaction",
+    "line": 372,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/db_manager.py",
+    "name": "create_db_schema",
+    "line": 520,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "__init__",
+    "line": 80,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "_word_in_text",
+    "line": 381,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "PhysicalDescriptionExtractionResult",
+    "line": 44,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/narrative_enrichment_parser.py",
+    "name": "ChapterEmbeddingExtractionResult",
+    "line": 54,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "__init__",
+    "line": 49,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/global_outline_parser.py",
+    "name": "_generate_event_id",
+    "line": 83,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "__init__",
+    "line": 42,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/character_sheet_parser.py",
+    "name": "create_character_nodes",
+    "line": 314,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "__init__",
+    "line": 46,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_generate_id",
+    "line": 79,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_parse_chapter",
+    "line": 97,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_get_character_by_name",
+    "line": 922,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/chapter_outline_parser.py",
+    "name": "_get_act_key_events_for_act",
+    "line": 935,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "__init__",
+    "line": 47,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/parsers/act_outline_parser.py",
+    "name": "_generate_event_id",
+    "line": 80,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "handle_fatal_error",
+    "line": 109,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/workflow.py",
+    "name": "advance_chapter",
+    "line": 207,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state_helpers.py",
+    "name": "clear_generation_artifacts",
+    "line": 9,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state_helpers.py",
+    "name": "clear_validation_state",
+    "line": 26,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state_helpers.py",
+    "name": "clear_error_state",
+    "line": 39,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state_helpers.py",
+    "name": "clear_extraction_state",
+    "line": 52,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state.py",
+    "name": "create_initial_state",
+    "line": 286,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state.py",
+    "name": "ExtractedRelationship",
+    "line": 61,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state.py",
+    "name": "Contradiction",
+    "line": 76,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/state.py",
+    "name": "NarrativeState",
+    "line": 88,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "clear_cache",
+    "line": 115,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_get_relative_path",
+    "line": 154,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_compute_checksum",
+    "line": 158,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_text",
+    "line": 235,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_json",
+    "line": 275,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_write_bytes_atomically",
+    "line": 320,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_list_of_texts",
+    "line": 561,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_raise_immutable",
+    "line": 45,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "__setitem__",
+    "line": 48,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "__delitem__",
+    "line": 51,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "clear",
+    "line": 54,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "pop",
+    "line": 57,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "popitem",
+    "line": 60,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "setdefault",
+    "line": 63,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "update",
+    "line": 66,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "_freeze_content_ref",
+    "line": 70,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_draft",
+    "line": 636,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_scenes",
+    "line": 653,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_scenes",
+    "line": 663,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_outline",
+    "line": 668,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_character_sheets",
+    "line": 687,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_summaries",
+    "line": 704,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "load_summaries",
+    "line": 713,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_embedding",
+    "line": 718,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_extracted_entities",
+    "line": 793,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_extracted_relationships",
+    "line": 811,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "save_chapter_plan",
+    "line": 829,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/content_manager.py",
+    "name": "ContentRef",
+    "line": 75,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "validate_consistency",
+    "line": 49,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/subgraphs/validation.py",
+    "name": "create_validation_subgraph",
+    "line": 668,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/subgraphs/scene_extraction.py",
+    "name": "create_scene_extraction_subgraph",
+    "line": 21,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/subgraphs/generation.py",
+    "name": "create_generation_subgraph",
+    "line": 57,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/summary_node.py",
+    "name": "ChapterSummaryContractError",
+    "line": 40,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "__init__",
+    "line": 52,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+    "name": "_extract_words",
+    "line": 205,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/nodes/commit_graph_ops.py",
+    "name": "_build_chapter_node_statement",
+    "line": 20,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_write_world_rules_stub",
+    "line": 454,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_write_world_history_stub",
+    "line": 467,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_write_summaries_readme",
+    "line": 480,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/persist_files_node.py",
+    "name": "_LiteralString",
+    "line": 38,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/global_outline_node.py",
+    "name": "_fallback_parse_outline",
+    "line": 318,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/global_outline_node.py",
+    "name": "ActOutline",
+    "line": 26,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/global_outline_node.py",
+    "name": "CharacterArc",
+    "line": 37,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/global_outline_node.py",
+    "name": "GlobalOutlineSchema",
+    "line": 46,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/commit_init_node.py",
+    "name": "_log_json_decode_error",
+    "line": 307,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/chapter_allocation.py",
+    "name": "contains",
+    "line": 32,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/act_outlines_node.py",
+    "name": "ActOutlineKeyEventSchema",
+    "line": 30,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "core/langgraph/initialization/act_outlines_node.py",
+    "name": "ActOutlineSchema",
+    "line": 68,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "_infer_from_category_simple",
+    "line": 54,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "query_kg_from_db",
+    "line": 633,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/kg_queries.py",
+    "name": "get_novel_info_property_from_db",
+    "line": 796,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/chapter_queries.py",
+    "name": "build_chapter_upsert_statement",
+    "line": 40,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cache_coordinator.py",
+    "name": "clear_character_read_caches",
+    "line": 42,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cache_coordinator.py",
+    "name": "clear_world_read_caches",
+    "line": 62,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cache_coordinator.py",
+    "name": "clear_kg_read_caches",
+    "line": 79,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cache_coordinator.py",
+    "name": "clear_plot_read_caches",
+    "line": 97,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cache_coordinator.py",
+    "name": "clear_chapter_read_caches",
+    "line": 115,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "data_access/cache_coordinator.py",
+    "name": "clear_all_data_access_caches",
+    "line": 134,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "__init__",
+    "line": 46,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/validation_utils.py",
+    "name": "__init__",
+    "line": 27,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "NovelConceptModel",
+    "line": 18,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "RelationshipModel",
+    "line": 27,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "ProtagonistModel",
+    "line": 35,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "CharacterGroupModel",
+    "line": 46,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "KeyLocationModel",
+    "line": 54,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "SettingModel",
+    "line": 62,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "PlotElementsModel",
+    "line": 69,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/user_input_models.py",
+    "name": "UserStoryInputModel",
+    "line": 78,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 97,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_db_record",
+    "line": 161,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_cypher_params",
+    "line": 201,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 336,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_db_record",
+    "line": 430,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 548,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 574,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 617,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 637,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 675,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 684,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 727,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 747,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 799,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 823,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 875,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 897,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "from_dict",
+    "line": 956,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/kg_models.py",
+    "name": "to_dict",
+    "line": 982,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/agent_models.py",
+    "name": "SceneDetail",
+    "line": 17,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/agent_models.py",
+    "name": "ProblemDetail",
+    "line": 42,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/agent_models.py",
+    "name": "EvaluationResult",
+    "line": 59,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "models/agent_models.py",
+    "name": "PatchInstruction",
+    "line": 67,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_ensure_neo4j_connection",
+    "line": 259,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "orchestration/langgraph_orchestrator.py",
+    "name": "_checkpoint_thread_id",
+    "line": 701,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "processing/text_deduplicator.py",
+    "name": "__init__",
+    "line": 40,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "prompts/prompt_renderer.py",
+    "name": "render_prompt",
+    "line": 44,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "prompts/prompt_data_getters.py",
+    "name": "clear_context_cache",
+    "line": 58,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "__init__",
+    "line": 40,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "start",
+    "line": 43,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "stop",
+    "line": 46,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "__init__",
+    "line": 52,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "__init__",
+    "line": 58,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "ui/rich_display.py",
+    "name": "__init__",
+    "line": 64,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "utils/text_processing.py",
+    "name": "_get_spacy_nlp",
+    "line": 375,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "utils/similarity.py",
+    "name": "__init__",
+    "line": 28,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "utils/file_io.py",
+    "name": "write_text_file",
+    "line": 27,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "utils/file_io.py",
+    "name": "write_yaml_file",
+    "line": 43,
+    "complexity": 1,
+    "rank": "A"
+  },
+  {
+    "path": "main.py",
+    "name": "run_quick_mode",
+    "line": 61,
+    "complexity": 1,
+    "rank": "A"
+  }
+]

@@ -1,9 +1,10 @@
 # core/langgraph/initialization/persist_files_node.py
 """Persist initialization artifacts to the project filesystem.
 
-This node writes initialization outputs (outlines, character sheets, world items) into
-human-readable YAML files under the project directory. These files are intended to be
-the canonical on-disk inputs for subsequent phases and for user inspection.
+This node creates human-readable projections for a new project. Published files,
+including empty world stubs, are user-owned and are never replaced. Generated
+parser inputs live separately in `.saga/content`; projections are not an import
+contract. Reinitialization requires the separate B18 acceptance protocol.
 
 Notes:
     After writing, this node validates that required artifacts exist via
@@ -12,8 +13,12 @@ Notes:
 
 from __future__ import annotations
 
+import os
+import unicodedata
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import structlog
@@ -32,6 +37,80 @@ from core.langgraph.state import NarrativeState
 from utils.file_io import write_yaml_file
 
 logger = structlog.get_logger(__name__)
+
+
+def _portable_name(name: str) -> str:
+    return unicodedata.normalize("NFKC", name).casefold().rstrip(" .")
+
+
+def _existing_project_error(path: Path) -> FileExistsError:
+    return FileExistsError(
+        f"Reinitialization is blocked: existing project artifact {path}. "
+        "Preserve the project and resume its active workflow or use a new project directory; "
+        "import/reconciliation requires the B18 acceptance protocol."
+    )
+
+
+def assert_initialization_files_absent(project_dir: Path) -> None:
+    """Reject existing user-owned projections before any initialization file write."""
+    if project_dir.is_symlink():
+        raise _existing_project_error(project_dir)
+    if not project_dir.exists():
+        return
+    directories = {"outline", "characters", "world", "chapters", "summaries", "exports"}
+    for entry in project_dir.iterdir():
+        name = _portable_name(entry.name)
+        if name == "saga.yaml":
+            raise _existing_project_error(entry)
+        if name in directories:
+            if entry.name != name or entry.is_symlink() or not entry.is_dir() or any(entry.iterdir()):
+                raise _existing_project_error(entry)
+    chapter_directory = project_dir / ".saga" / "content" / "chapter_outlines"
+    if chapter_directory.exists():
+        for entry in chapter_directory.iterdir():
+            if _portable_name(entry.name) == "all_v1.json":
+                raise _existing_project_error(entry)
+
+
+def _assert_projection_target_absent(path: Path) -> None:
+    if path.parent.exists():
+        for entry in path.parent.iterdir():
+            if _portable_name(entry.name) == _portable_name(path.name):
+                raise _existing_project_error(entry)
+
+
+def _publish_new_file(path: Path, data: Any, *, writer: Callable[[Path, Any], None] = write_yaml_file) -> None:
+    """Serialize completely, then publish without replacing an existing destination."""
+    _assert_projection_target_absent(path)
+    with TemporaryDirectory(prefix=".saga-publish-", dir=path.parent) as temporary:
+        source = Path(temporary) / "artifact"
+        writer(source, data)
+        _assert_projection_target_absent(path)
+        os.link(source, path)
+
+
+def _character_projection_paths(project_dir: Path, character_sheets: dict[str, dict]) -> dict[str, Path]:
+    paths = {}
+    owners: dict[str, str] = {}
+    for name in character_sheets:
+        safe_name = name.lower().replace(" ", "_").replace("'", "")
+        portable = _portable_name(safe_name)
+        device = portable.split(".")[0]
+        if (
+            not safe_name
+            or safe_name.endswith((".", " "))
+            or any(character in '<>:"/\\|?*' or ord(character) < 32 for character in unicodedata.normalize("NFKC", safe_name))
+            or device in {"con", "prn", "aux", "nul", "conin$", "conout$"}
+            or device in {f"{prefix}{number}" for prefix in ("com", "lpt") for number in range(1, 10)}
+        ):
+            raise ValueError(f"Invalid character projection name: {name!r}")
+        if portable in owners:
+            raise ValueError(f"Character projection collision: {owners[portable]!r} and {name!r}")
+        owners[portable] = name
+        paths[name] = project_dir / "characters" / f"{safe_name}.yaml"
+    for path in paths.values():
+        _assert_projection_target_absent(path)
+    return paths
 
 
 # Custom YAML string class for literal block scalar (|) formatting
@@ -102,8 +181,8 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         [`ContentManager`](core/langgraph/content_manager.py:42) and then writes a stable
         on-disk representation for later steps and user inspection.
 
-        The filesystem write is best-effort; unexpected exceptions are captured into the
-        returned state via `last_error` without raising.
+        Publication failures are fatal. Any partial publication remains protected
+        and blocks retry; this is not an all-files transaction or an import protocol.
     """
     project_dir_str = require_project_dir(state)
 
@@ -114,15 +193,25 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
 
     project_dir = Path(project_dir_str)
 
-    # Initialize content manager for reading externalized content
-    content_manager = ContentManager(project_dir_str)
-
-    # Get character sheets, global outline, and act outlines (from external files)
-    character_sheets = get_character_sheets(state, content_manager)
-    global_outline = get_global_outline(state, content_manager)
-    act_outlines = get_act_outlines(state, content_manager)
-
     try:
+        if state.get("initialization_id"):
+            from core.langgraph.initialization.staged_import import InitializationImport
+
+            importer = InitializationImport(project_dir_str)
+            with importer.files.exclusive_lock(f"{importer.root}/writer.lock"):
+                plan = importer.load()
+                if plan.identity != state["initialization_id"]:
+                    raise ValueError("Initialization projection identity mismatch")
+                importer.verify_sources(plan)
+                importer.publish_projections(plan)
+            return {"current_node": "persist_files", "last_error": None, "initialization_step": "files_persisted"}
+        assert_initialization_files_absent(project_dir)
+        content_manager = ContentManager(project_dir_str)
+        character_sheets = get_character_sheets(state, content_manager)
+        global_outline = get_global_outline(state, content_manager)
+        act_outlines = get_act_outlines(state, content_manager)
+        _character_projection_paths(project_dir, character_sheets)
+
         # Create directory structure
         _create_directory_structure(project_dir)
 
@@ -194,6 +283,8 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         return {
             "current_node": "persist_files",
             "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "persist_files",
             "initialization_step": "file_persistence_failed",
         }
 
@@ -261,12 +352,10 @@ def _parse_character_sheet_text(text: str) -> dict:
 
 def _write_character_files(project_dir: Path, character_sheets: dict) -> None:
     """Write one YAML file per character under `characters/`."""
-    characters_dir = project_dir / "characters"
+    paths = _character_projection_paths(project_dir, character_sheets)
 
     for name, sheet in character_sheets.items():
-        # Sanitize filename
-        safe_name = name.lower().replace(" ", "_").replace("'", "")
-        file_path = characters_dir / f"{safe_name}.yaml"
+        file_path = paths[name]
 
         # Parse character sheet into structured fields
         description_text = sheet.get("description", "")
@@ -284,12 +373,16 @@ def _write_character_files(project_dir: Path, character_sheets: dict) -> None:
         character_data = {
             "name": name,
             "role": "protagonist" if sheet.get("is_protagonist") else "character",
-            **normalized_parsed,  # Merge parsed fields
+            **normalized_parsed,
+            **{key: _normalize_prose(sheet[key]) if isinstance(sheet[key], str) else sheet[key] for key in (
+                "description", "traits", "status", "motivations", "background", "skills",
+                "internal_conflict", "physical_description", "relationships", "is_protagonist",
+            ) if key in sheet},
             "generated_at": datetime.now(UTC).isoformat(),
             "source": "initialization",
         }
 
-        write_yaml_file(file_path, character_data)
+        _publish_new_file(file_path, character_data)
 
         logger.debug(
             "_write_character_files: wrote character file",
@@ -341,7 +434,7 @@ def _write_outline_files(
             }
 
     structure_path = outline_dir / "structure.yaml"
-    write_yaml_file(structure_path, structure_data)
+    _publish_new_file(structure_path, structure_data)
 
     logger.debug(
         "_write_outline_files: wrote structure file",
@@ -373,7 +466,7 @@ def _write_outline_files(
             }
 
     beats_path = outline_dir / "beats.yaml"
-    write_yaml_file(beats_path, beats_data)
+    _publish_new_file(beats_path, beats_data)
 
     logger.debug(
         "_write_outline_files: wrote beats file",
@@ -406,7 +499,7 @@ def _write_world_items_file(project_dir: Path, world_items: list[Any], setting: 
         )
 
     items_path = world_dir / "items.yaml"
-    write_yaml_file(items_path, world_data)
+    _publish_new_file(items_path, world_data)
 
     logger.debug(
         "_write_world_items_file: wrote world items file",
@@ -443,7 +536,7 @@ def _write_saga_yaml(project_dir: Path, state: NarrativeState) -> None:
     }
 
     saga_path = project_dir / "saga.yaml"
-    write_yaml_file(saga_path, saga_data)
+    _publish_new_file(saga_path, saga_data)
 
     logger.debug(
         "_write_saga_yaml: wrote saga manifest",
@@ -454,7 +547,7 @@ def _write_saga_yaml(project_dir: Path, state: NarrativeState) -> None:
 def _write_world_rules_stub(project_dir: Path) -> None:
     """Write `world/rules.yaml` placeholder for user-defined world rules."""
     rules_path = project_dir / "world" / "rules.yaml"
-    write_yaml_file(
+    _publish_new_file(
         rules_path,
         {
             "rules": [],
@@ -467,7 +560,7 @@ def _write_world_rules_stub(project_dir: Path) -> None:
 def _write_world_history_stub(project_dir: Path) -> None:
     """Write `world/history.yaml` placeholder for user-defined lore."""
     history_path = project_dir / "world" / "history.yaml"
-    write_yaml_file(
+    _publish_new_file(
         history_path,
         {
             "events": [],
@@ -503,7 +596,7 @@ by providing context to the LLM during generation of subsequent chapters.
 
     from utils.file_io import write_text_file
 
-    write_text_file(readme_path, readme_content)
+    _publish_new_file(readme_path, readme_content, writer=write_text_file)
 
     logger.debug(
         "_write_summaries_readme: wrote summaries README",

@@ -1,6 +1,8 @@
 # tests/fakes/test_fake_neo4j_manager.py
 """Validate FakeNeo4jManager behavior."""
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -28,7 +30,7 @@ class TestQueryRecording:
         assert params == {"name": "Alice"}
 
     async def test_records_batch_statements(self, fake: FakeNeo4jManager) -> None:
-        statements = [
+        statements: list[tuple[str, dict[str, Any]]] = [
             ("MERGE (n:Chapter {number: $number})", {"number": 1}),
             ("MERGE (n:Character {name: $name})", {"name": "Alice"}),
         ]

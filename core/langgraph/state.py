@@ -17,7 +17,7 @@ from typing import Any, Literal, TypedDict
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Import settings for model configuration
-from config.settings import settings
+import config
 
 # Import ContentRef for externalized content
 from core.langgraph.content_manager import ContentRef
@@ -85,12 +85,38 @@ class Contradiction(BaseModel):
     model_config = ConfigDict(frozen=False, validate_assignment=True)
 
 
+SceneExtractionType = Literal["characters", "locations", "events", "relationships"]
+
+
+class SceneExtractionOutcome(TypedDict):
+    """Record completion of one scene/type slot, independently of deduplication."""
+
+    chapter_number: int
+    scene_index: int
+    extraction_type: SceneExtractionType
+    status: Literal["succeeded", "failed"]
+    item_count: int
+    error_type: str
+    error: str
+
+
+class RevisionRollbackFailure(TypedDict):
+    """Retain the rejected attempt and diagnostics until lifecycle reconciliation."""
+
+    chapter_number: int
+    iteration_count: int
+    error: str
+    previous_error: str | None
+    previous_error_node: str | None
+
+
 class NarrativeState(TypedDict, total=False):
     """Represent LangGraph workflow state for narrative generation.
 
     Notes:
-        - This TypedDict uses `total=False`, but callers should treat the state as
-          fully initialized via [`create_initial_state()`](core/langgraph/state.py:383).
+        - This is the checkpoint channel superset and the partial node-update type.
+          Admission validates required fields through phase-specific projections.
+        - Optional telemetry is absent until produced; absence is not a completed check.
         - Large payloads are typically externalized to disk via `*_ref` fields
           (see [`ContentManager`](core/langgraph/content_manager.py:42)).
         - Extraction is designed to be sequential per chapter:
@@ -103,6 +129,14 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     project_id: str
     title: str
+    graph_project_id: str
+    lifecycle_version: Literal[1]
+    quality_policy: dict[str, Any]
+    quality_checks: dict[str, Any]
+    graph_quality_check: dict[str, Any]
+    attempt_id: str | None
+    lifecycle_phase: str
+    extraction_source: dict[str, Any] | None
     genre: str
     theme: str
     setting: str
@@ -131,7 +165,8 @@ class NarrativeState(TypedDict, total=False):
     # Externalized content references
     draft_ref: ContentRef | None  # Reference to externalized draft text
     embedding_ref: ContentRef | None  # Reference to externalized embedding
-    generated_embedding: ContentRef | None  # Reference to generated text embedding
+    # Input-only compatibility channel: reject non-null legacy payloads at admission.
+    generated_embedding: object
     scene_embeddings_ref: ContentRef | None  # Reference to externalized scene embeddings (per chapter)
 
     # =========================================================================
@@ -152,6 +187,10 @@ class NarrativeState(TypedDict, total=False):
     extracted_entities_ref: ContentRef | None  # Reference to externalized extracted entities
     extracted_relationships_ref: ContentRef | None  # Reference to externalized extracted relationships
 
+    extraction_policy: Literal["fail_closed"]
+    extraction_status: Literal["complete", "failed"]
+    extraction_outcomes: list[SceneExtractionOutcome]
+
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)
     # =========================================================================
@@ -170,14 +209,14 @@ class NarrativeState(TypedDict, total=False):
     total_qa_fixes: int
 
     # =========================================================================
-    # Quality Metrics (LLM-evaluated quality scores)
+    # Quality metrics retained in acceptance evidence and checkpoints.
     # =========================================================================
-    coherence_score: float | None  # 0.0-1.0 score for narrative coherence
-    prose_quality_score: float | None  # 0.0-1.0 score for prose quality
-    plot_advancement_score: float | None  # 0.0-1.0 score for plot advancement
-    pacing_score: float | None  # 0.0-1.0 score for narrative pacing
-    tone_consistency_score: float | None  # 0.0-1.0 score for tone consistency
-    quality_feedback: str | None  # Free-form feedback summarizing strengths/weaknesses
+    coherence_score: float | None
+    prose_quality_score: float | None
+    plot_advancement_score: float | None
+    pacing_score: float | None
+    tone_consistency_score: float | None
+    quality_feedback: str | None
 
     # =========================================================================
     # Model Configuration
@@ -202,6 +241,7 @@ class NarrativeState(TypedDict, total=False):
     # Error Handling
     # =========================================================================
     last_error: str | None
+    revision_rollback_failure: RevisionRollbackFailure | None
     has_fatal_error: bool  # True if workflow should stop due to unrecoverable error
     error_node: str | None  # Which node encountered the fatal error
 
@@ -238,6 +278,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Externalized initialization content references
     character_sheets_ref: ContentRef | None  # Reference to externalized character sheets
+    initialization_id: str
     global_outline_ref: ContentRef | None  # Reference to externalized global outline
     act_outlines_ref: ContentRef | None  # Reference to externalized act outlines
     outline_relationships_ref: ContentRef | None  # Reference to externalized outline relationships
@@ -250,22 +291,23 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Relationship Vocabulary (for normalization)
     # =========================================================================
+    # Vocabulary and normalization telemetry persist across checkpoints.
     relationship_vocabulary: dict[str, Any]  # Maps canonical_type -> RelationshipUsage dict
-    relationship_vocabulary_size: int  # Track vocabulary growth
-    relationships_normalized_this_chapter: int  # Monitoring metric
-    relationships_novel_this_chapter: int  # Monitoring metric
+    relationship_vocabulary_size: int
+    relationships_normalized_this_chapter: int
+    relationships_novel_this_chapter: int
     last_pruned_chapter: int  # Track last chapter where vocabulary pruning ran
 
     # =========================================================================
     # Graph Healing State (for provisional node enrichment and merging)
     # =========================================================================
     provisional_count: int  # Number of provisional nodes in the graph
-    last_healing_chapter: int  # Last chapter where healing was run
+    last_healing_chapter: int
     healing_history: list[dict[str, Any]]
-    nodes_graduated: int  # Count of nodes graduated from provisional status
-    nodes_merged: int  # Count of nodes merged in this session
-    nodes_enriched: int  # Count of nodes enriched in this session
-    nodes_removed: int  # Count of nodes removed during healing
+    nodes_graduated: int
+    nodes_merged: int
+    nodes_enriched: int
+    nodes_removed: int
 
     # Graph healing diagnostics (cached from the last run).
     last_healing_warnings: list[str]
@@ -274,6 +316,75 @@ class NarrativeState(TypedDict, total=False):
 
 # Type alias for improved readability in node signatures
 State = NarrativeState
+
+
+class AuthoringState(BaseModel):
+    """Required admission projection, never a replacement for checkpoint values."""
+
+    model_config = ConfigDict(strict=True, extra="ignore", frozen=True)
+
+    project_id: str = Field(min_length=1)
+    project_dir: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    genre: str
+    theme: str
+    setting: str
+    protagonist_name: str = Field(min_length=1)
+    narrative_style: str = Field(min_length=1)
+    target_word_count: int = Field(gt=0)
+    total_chapters: int = Field(gt=0)
+    current_chapter: int = Field(gt=0)
+    run_start_chapter: int = Field(gt=0)
+    initialization_complete: bool
+    large_model: str = Field(min_length=1)
+    medium_model: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def require_word_allocation(self) -> AuthoringState:
+        if self.target_word_count < self.total_chapters:
+            raise ValueError("target_word_count must allocate at least one word per chapter")
+        return self
+
+
+class InitializationState(AuthoringState):
+    """Inputs required while producing the retained initialization artifacts."""
+
+    initialization_complete: Literal[False]
+
+
+class GenerationState(AuthoringState):
+    """Inputs required for scene generation and subsequent chapter attempts."""
+
+    initialization_complete: Literal[True]
+    narrative_model: str = Field(min_length=1)
+    extraction_model: str = Field(min_length=1)
+    revision_model: str = Field(min_length=1)
+    small_model: str = Field(min_length=1)
+    iteration_count: int = Field(ge=0)
+    max_iterations: int = Field(ge=0)
+    current_scene_index: int = Field(ge=0)
+    chapter_plan_scene_count: int = Field(ge=0)
+    force_continue: bool
+    quality_policy: dict[str, Any]
+
+
+def validate_state_contract(state: NarrativeState) -> None:
+    """Admit retained values without filling policy from current configuration.
+
+    Historical null/absent generated_embedding channels are compatible. Every
+    other value requires explicit offline recovery from identified artifacts;
+    neither raw vectors nor references in that ambiguous channel are reinterpreted.
+    Keep the channel so native loading cannot silently discard recovery evidence.
+    """
+    if state.get("generated_embedding") is not None:
+        raise ValueError(
+            "Legacy generated_embedding is not supported; preserve the checkpoint and artifacts, "
+            "then explicitly recover an identified embedding_ref or scene_embeddings_ref. Producer identity cannot be inferred."
+        )
+    if type(state.get("initialization_complete")) is not bool:
+        raise ValueError("initialization_complete must be an explicit boolean")
+    contract = GenerationState if state["initialization_complete"] else InitializationState
+    contract.model_validate(state)
 
 
 def create_initial_state(
@@ -287,14 +398,14 @@ def create_initial_state(
     total_chapters: int,
     project_dir: str,
     protagonist_name: str,
-    narrative_style: str = settings.DEFAULT_NARRATIVE_STYLE,
-    extraction_model: str = settings.SMALL_MODEL,
-    revision_model: str = settings.MEDIUM_MODEL,
+    narrative_style: str | None = None,
+    extraction_model: str | None = None,
+    revision_model: str | None = None,
     # New model params with defaults
-    large_model: str = settings.LARGE_MODEL,
-    medium_model: str = settings.MEDIUM_MODEL,
-    small_model: str = settings.SMALL_MODEL,
-    narrative_model: str = settings.NARRATIVE_MODEL,
+    large_model: str | None = None,
+    medium_model: str | None = None,
+    small_model: str | None = None,
+    narrative_model: str | None = None,
     max_iterations: int = 2,
 ) -> NarrativeState:
     """Create an initial, ready-to-run LangGraph workflow state.
@@ -329,7 +440,7 @@ def create_initial_state(
         "theme": theme,
         "setting": setting,
         "target_word_count": target_word_count,
-        "narrative_style": narrative_style,
+        "narrative_style": config.settings.DEFAULT_NARRATIVE_STYLE if narrative_style is None else narrative_style,
         # Position
         "current_chapter": 1,
         "total_chapters": total_chapters,
@@ -340,7 +451,6 @@ def create_initial_state(
         # Externalized content references
         "draft_ref": None,
         "embedding_ref": None,
-        "generated_embedding": None,
         "scene_embeddings_ref": None,
         "summaries_ref": None,
         "scene_drafts_ref": None,
@@ -361,26 +471,16 @@ def create_initial_state(
         # Validation
         "contradictions": [],
         "needs_revision": False,
+        "quality_checks": {},
+        "graph_quality_check": {},
         "current_summary": None,
-        "last_qa_chapter": 0,
-        "qa_results": {},
-        "qa_history": [],
-        "total_qa_issues": 0,
-        "total_qa_fixes": 0,
-        # Quality metrics
-        "coherence_score": None,
-        "prose_quality_score": None,
-        "plot_advancement_score": None,
-        "pacing_score": None,
-        "tone_consistency_score": None,
-        "quality_feedback": None,
         # Model configuration
-        "extraction_model": extraction_model,
-        "revision_model": revision_model,
-        "large_model": large_model,
-        "medium_model": medium_model,
-        "small_model": small_model,
-        "narrative_model": narrative_model,
+        "extraction_model": config.settings.SMALL_MODEL if extraction_model is None else extraction_model,
+        "revision_model": config.settings.MEDIUM_MODEL if revision_model is None else revision_model,
+        "large_model": config.settings.LARGE_MODEL if large_model is None else large_model,
+        "medium_model": config.settings.MEDIUM_MODEL if medium_model is None else medium_model,
+        "small_model": config.settings.SMALL_MODEL if small_model is None else small_model,
+        "narrative_model": config.settings.NARRATIVE_MODEL if narrative_model is None else narrative_model,
         # Workflow control
         "current_node": "init",
         "iteration_count": 0,
@@ -388,6 +488,7 @@ def create_initial_state(
         "force_continue": False,
         # Error handling
         "last_error": None,
+        "revision_rollback_failure": None,
         "has_fatal_error": False,
         "error_node": None,
         # Filesystem paths
@@ -406,22 +507,12 @@ def create_initial_state(
         "initialization_step": None,
         # Relationship normalization
         "relationship_vocabulary": {},
-        "relationship_vocabulary_size": 0,
-        "relationships_normalized_this_chapter": 0,
-        "relationships_novel_this_chapter": 0,
-        "last_pruned_chapter": 0,
-        # Graph healing
-        "provisional_count": 0,
-        "last_healing_chapter": 0,
-        "healing_history": [],
-        "nodes_graduated": 0,
-        "nodes_merged": 0,
-        "nodes_enriched": 0,
-        "nodes_removed": 0,
-        "last_healing_warnings": [],
-        "last_apoc_available": None,
     }
 
+    from core.langgraph.quality_policy import configured_policy
+
+    state["quality_policy"] = configured_policy()
+    validate_state_contract(state)
     return state
 
 

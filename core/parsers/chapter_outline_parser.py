@@ -21,7 +21,8 @@ from typing import Any
 
 import structlog
 
-from core.db_manager import neo4j_manager
+from core.service_context import get_services
+from data_access.location_queries import persist_locations
 from models.kg_models import Chapter, CharacterProfile, Location, Scene, SceneEvent
 
 logger = structlog.get_logger(__name__)
@@ -405,14 +406,14 @@ class ChapterOutlineParser:
                     c.created_chapter = $created_chapter,
                     c.is_provisional = $is_provisional,
                     c.created_ts = timestamp(),
+                    c.generation_status = 'planned',
                     c.updated_ts = timestamp()
                 ON MATCH SET
                     c.id = $id,
                     c.title = $title,
-                    c.summary = $summary,
                     c.act_number = $act_number,
                     c.created_chapter = $created_chapter,
-                    c.is_provisional = $is_provisional,
+                    c.outline_summary = $summary,
                     c.updated_ts = timestamp()
                 """
 
@@ -430,7 +431,7 @@ class ChapterOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d Chapter nodes", len(chapters), extra={"chapter": self.chapter_number})
 
@@ -504,7 +505,7 @@ class ChapterOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d Scene nodes", len(scenes), extra={"chapter": self.chapter_number})
 
@@ -578,7 +579,7 @@ class ChapterOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d SceneEvent nodes", len(events), extra={"chapter": self.chapter_number})
 
@@ -598,43 +599,7 @@ class ChapterOutlineParser:
             True if successful, False otherwise
         """
         try:
-            # Build Cypher query for creating location nodes
-            cypher_queries = []
-
-            for location in locations:
-                query = """
-                MERGE (l:Location {id: $id})
-                ON CREATE SET 
-                    l.name = $name,
-                    l.description = $description,
-                    l.category = $category,
-                    l.created_chapter = $created_chapter,
-                    l.is_provisional = $is_provisional,
-                    l.created_ts = timestamp(),
-                    l.updated_ts = timestamp()
-                ON MATCH SET 
-                    l.name = $name,
-                    l.description = $description,
-                    l.category = $category,
-                    l.created_chapter = $created_chapter,
-                    l.is_provisional = $is_provisional,
-                    l.updated_ts = timestamp()
-                """
-
-                params = {
-                    "id": location.id,
-                    "name": location.name,
-                    "description": location.description,
-                    "category": location.category,
-                    "created_chapter": location.created_chapter,
-                    "is_provisional": location.is_provisional,
-                }
-
-                cypher_queries.append((query, params))
-
-            # Execute all queries
-            for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+            await persist_locations(locations)
 
             logger.info("Successfully created %d Location nodes", len(locations), extra={"chapter": self.chapter_number})
 
@@ -872,7 +837,7 @@ class ChapterOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d relationships", len(cypher_queries), extra={"chapter": self.chapter_number})
 
@@ -890,7 +855,7 @@ class ChapterOutlineParser:
         """
         try:
             query = "MATCH (c:Character) RETURN c.name as name ORDER BY c.name"
-            result = await neo4j_manager.execute_read_query(query, {})
+            result = await get_services().database.execute_read_query(query, {})
             return [record["name"] for record in result if record.get("name")]
         except Exception as e:
             logger.error("Error fetching character names: %s", str(e), exc_info=True)
@@ -908,7 +873,7 @@ class ChapterOutlineParser:
         RETURN l.id as id, l.name as name, l.description as description
         ORDER BY l.name
         """
-        result = await neo4j_manager.execute_read_query(query, {})
+        result = await get_services().database.execute_read_query(query, {})
         return [
             {
                 "id": record["id"],
@@ -947,7 +912,7 @@ class ChapterOutlineParser:
                e.sequence_in_act as sequence_in_act
         ORDER BY e.sequence_in_act
         """
-        return await neo4j_manager.execute_read_query(query, {"act_number": act_number})
+        return await get_services().database.execute_read_query(query, {"act_number": act_number})
 
     def _find_best_act_key_event(self, scene_event: SceneEvent, act_key_events: list[dict]) -> dict | None:
         """Find the best-matching ActKeyEvent for a SceneEvent using text similarity.
@@ -1032,7 +997,7 @@ class ChapterOutlineParser:
         RETURN i.name as name, i.description as description
         ORDER BY i.name
         """
-        result = await neo4j_manager.execute_read_query(query, {})
+        result = await get_services().database.execute_read_query(query, {})
         return [
             {
                 "name": record["name"],

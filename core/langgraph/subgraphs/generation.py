@@ -17,7 +17,6 @@ from core.langgraph.nodes.context_retrieval_node import retrieve_context
 from core.langgraph.nodes.scene_generation_node import draft_scene
 from core.langgraph.nodes.scene_planning_node import plan_scenes
 from core.langgraph.state import NarrativeState
-
 from core.langgraph.subgraphs._shared import _should_continue_or_error
 
 logger = structlog.get_logger(__name__)
@@ -36,7 +35,7 @@ def should_continue_scenes(state: NarrativeState) -> Literal["continue", "end", 
         "error" if a fatal error occurred, "continue" to draft another scene,
         or "end" to end the subgraph.
     """
-    if state.get("has_fatal_error", False):
+    if _should_continue_or_error(state) == "error":
         return "error"
 
     scene_count = state.get("chapter_plan_scene_count", 0)

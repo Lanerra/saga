@@ -1,4 +1,6 @@
-import asyncio
+
+from collections.abc import Callable
+from typing import TypedDict
 
 import httpx
 import pytest
@@ -12,20 +14,16 @@ from core.http_client_service import (
 
 
 def _make_service(transport: httpx.MockTransport) -> HTTPClientService:
-    service = HTTPClientService.__new__(HTTPClientService)
-    service._client = httpx.AsyncClient(transport=transport)
-    service._semaphore = asyncio.Semaphore(10)
-    service.request_count = 0
-    service._stats = {
-        "total_requests": 0,
-        "successful_requests": 0,
-        "failed_requests": 0,
-        "retry_attempts": 0,
-    }
-    return service
+    return HTTPClientService(client=httpx.AsyncClient(transport=transport))
 
 
-def _make_transport(handler):
+class CapturedRequest(TypedDict, total=False):
+    url: str
+    headers: dict[str, str]
+    payload: object
+
+
+def _make_transport(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.MockTransport:
     return httpx.MockTransport(handler)
 
 
@@ -59,7 +57,7 @@ class TestHTTPClientService:
 
     async def test_4xx_client_error_breaks_without_retrying(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 3)
-        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0)
+        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
 
         call_count = 0
 
@@ -78,7 +76,7 @@ class TestHTTPClientService:
 
     async def test_429_rate_limit_triggers_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 2)
-        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0)
+        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
 
         call_count = 0
 
@@ -98,7 +96,7 @@ class TestHTTPClientService:
 
     async def test_5xx_server_error_triggers_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 2)
-        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0)
+        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
 
         call_count = 0
 
@@ -118,7 +116,7 @@ class TestHTTPClientService:
 
     async def test_all_retries_exhausted_raises_last_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 2)
-        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0)
+        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
 
         call_count = 0
 
@@ -216,7 +214,7 @@ class TestCompletionHTTPClient:
         monkeypatch.setattr(config, "OPENAI_API_KEY", "test-api-key-123")
         monkeypatch.setattr(config, "LLM_TOP_P", 0.9)
 
-        captured_request = {}
+        captured_request: CapturedRequest = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
             import json
@@ -256,7 +254,7 @@ class TestCompletionHTTPClient:
             import json
 
             captured_payload.update(json.loads(request.content))
-            return httpx.Response(200, json={"choices": []})
+            return httpx.Response(200, json={"choices": [{"message": {"content": "response"}}]})
 
         service = _make_service(_make_transport(handler))
         client = CompletionHTTPClient(service)

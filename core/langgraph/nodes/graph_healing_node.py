@@ -15,6 +15,7 @@ from __future__ import annotations
 import structlog
 
 from core.graph_healing_service import graph_healing_service
+from core.langgraph.quality_policy import retain_maintenance
 from core.langgraph.state import NarrativeState
 
 logger = structlog.get_logger(__name__)
@@ -92,9 +93,10 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             provisional_remaining=provisional_remaining,
         )
 
+        retain_maintenance(state, "healing", results)
         return {
             "current_node": "heal_graph",
-            "last_error": None,
+            "last_error": state.get("last_error"),
             "last_healing_chapter": current_chapter,
             "provisional_count": provisional_remaining,
             "nodes_graduated": total_graduated,
@@ -118,6 +120,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         )
 
         # Don't fail the workflow for healing errors
+        retain_maintenance(state, "healing", {"errors": [str(e)]})
         return {
             "current_node": "heal_graph",
             "last_error": f"Graph healing warning: {str(e)}",

@@ -8,6 +8,7 @@ import pytest
 
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
+from core.langgraph.state import NarrativeState
 
 SCENE_SEPARATOR = "\n\n# ***\n\n"
 
@@ -17,7 +18,7 @@ class TestAssembleChapterEmptyScenes:
 
     @pytest.mark.asyncio
     async def test_no_scene_drafts_ref(self, tmp_path: Path) -> None:
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "scene_drafts_ref": None,
@@ -34,7 +35,7 @@ class TestAssembleChapterEmptyScenes:
         content_manager = ContentManager(str(tmp_path))
         scene_drafts_ref = content_manager.save_list_of_texts([], "scenes", "chapter_1", 1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "scene_drafts_ref": scene_drafts_ref,
@@ -56,7 +57,7 @@ class TestAssembleChapterSingleScene:
         scene_text = "The sun rose over the distant mountains."
         scene_drafts_ref = content_manager.save_list_of_texts([scene_text], "scenes", "chapter_1", 1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "scene_drafts_ref": scene_drafts_ref,
@@ -76,7 +77,7 @@ class TestAssembleChapterSingleScene:
         scene_text = "one two three four five"
         scene_drafts_ref = content_manager.save_list_of_texts([scene_text], "scenes", "chapter_1", 1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "scene_drafts_ref": scene_drafts_ref,
@@ -99,7 +100,7 @@ class TestAssembleChapterMultipleScenes:
         ]
         scene_drafts_ref = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "scene_drafts_ref": scene_drafts_ref,
@@ -107,6 +108,7 @@ class TestAssembleChapterMultipleScenes:
 
         result = await assemble_chapter(state)
 
+        assert result["draft_ref"] is not None
         draft_text = content_manager.load_text(result["draft_ref"])
         expected = SCENE_SEPARATOR.join(scenes)
         assert draft_text == expected
@@ -121,7 +123,7 @@ class TestAssembleChapterMultipleScenes:
         ]
         scene_drafts_ref = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "scene_drafts_ref": scene_drafts_ref,
@@ -129,6 +131,7 @@ class TestAssembleChapterMultipleScenes:
 
         result = await assemble_chapter(state)
 
+        assert result["draft_ref"] is not None
         draft_text = content_manager.load_text(result["draft_ref"])
         assert draft_text.count("# ***") == 2
 
@@ -141,7 +144,7 @@ class TestAssembleChapterMultipleScenes:
         ]
         scene_drafts_ref = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "scene_drafts_ref": scene_drafts_ref,
@@ -163,7 +166,7 @@ class TestAssembleChapterExternalization:
         scenes = ["Scene one.", "Scene two."]
         scene_drafts_ref = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "scene_drafts_ref": scene_drafts_ref,
@@ -171,6 +174,8 @@ class TestAssembleChapterExternalization:
 
         result = await assemble_chapter(state)
 
+        assert result["draft_ref"] is not None
+        assert result["scene_drafts_ref"] is not None
         assert content_manager.exists(result["draft_ref"]) is True
         assert content_manager.exists(result["scene_drafts_ref"]) is True
 
@@ -180,7 +185,7 @@ class TestAssembleChapterExternalization:
         scenes = ["Words here."]
         scene_drafts_ref = content_manager.save_list_of_texts(scenes, "scenes", "chapter_3", 1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 3,
             "scene_drafts_ref": scene_drafts_ref,
@@ -189,6 +194,7 @@ class TestAssembleChapterExternalization:
         result = await assemble_chapter(state)
 
         draft_ref = result["draft_ref"]
+        assert draft_ref is not None
         assert draft_ref["content_type"] == "draft"
         assert draft_ref["version"] == 1
         assert draft_ref["size_bytes"] > 0

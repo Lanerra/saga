@@ -5,8 +5,8 @@ A single-process Python CLI application for single-user autonomous AI novel gene
 
 ## Hard Constraints
 - Single user, single machine only
-- No databases beyond Neo4j/file storage
-- No web servers, APIs, or network services
+- Neo4j for graph storage; files and local SQLite for LangGraph checkpoints
+- No SAGA web server, public API, or distributed service architecture
 - Consumer hardware target
 - Local-first architecture
 
@@ -19,7 +19,9 @@ A single-process Python CLI application for single-user autonomous AI novel gene
 - Container orchestration
 
 ## Neo4j Usage
-- Local embedded instance only. Used for narrative consistency, not web-scale data.
+- A local Neo4j server reached through its Bolt driver, optionally in Docker;
+  it is not embedded in the Python process. Used for narrative consistency,
+  not web-scale data. One database is exclusively owned by one project.
 - Think "personal knowledge base" not "social network backend."
 
 ## Local LLM Endpoints (Clarification)
@@ -33,3 +35,5 @@ A single-process Python CLI application for single-user autonomous AI novel gene
 ## Agent Architecture  
 - Sequential processing pipeline, not concurrent microservices.
 - Agents are functions/classes, not separate processes.
+
+Operational instructions: [current guide](../README.md).

@@ -10,10 +10,11 @@ import pytest
 
 from core.langgraph.nodes.commit_node import _build_relationship_statements
 from core.langgraph.state import ExtractedRelationship
+from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
 
 
 @pytest.mark.asyncio
-async def test_build_relationship_statements_with_existing_entity_by_name():
+async def test_build_relationship_statements_with_existing_entity_by_name(offline_graph_reads: FakeNeo4jManager) -> None:
     """Test that relationships can be created when entities already exist by name.
 
     This simulates the error scenario where:
@@ -21,7 +22,7 @@ async def test_build_relationship_statements_with_existing_entity_by_name():
     - We're trying to create a relationship from this Location to an Item
     - The system should find the existing node by name instead of trying to merge by ID
     """
-    # Mock relationship data that would cause the original error
+
     relationships = [
         ExtractedRelationship(
             source_name="Heron",
@@ -55,21 +56,22 @@ async def test_build_relationship_statements_with_existing_entity_by_name():
     # Regression: Neo4j does not support parameterized labels like `:{$subject_label}`
     assert ":{$" not in query
 
-    # Verify the query uses apoc.merge.node upserts for both endpoints (single-flow Cypher; no UNION/RETURN mid-query)
+    # Endpoint resolution belongs to the same transaction as the relationship write.
     assert "CALL apoc.merge.node" in query
-    assert "YIELD node AS s" in query
-    assert "YIELD node AS o" in query
-
-    # Verify stable id assignment occurs
-    assert "SET s.id = coalesce" in query
-    assert "SET o.id = coalesce" in query
+    assert "RETURN node AS s" in query
+    assert "RETURN node AS o" in query
+    assert len(statements) == 2
+    assert params["subject_id"] is None
+    assert offline_graph_reads.executed_queries == []
+    assert "coalesce(supplied_id, found.id, apoc.util.sha256" in query
+    assert "Ambiguous canonical entity" in query
 
     assert "CALL apoc.merge.relationship" in query
     assert "RETURN rel" in query
 
 
 @pytest.mark.asyncio
-async def test_build_relationship_statements_with_new_entities():
+async def test_build_relationship_statements_with_new_entities(offline_graph_reads: FakeNeo4jManager) -> None:
     """Test that new entities are created correctly when they don't exist."""
     # Mock relationship data with new entities
     relationships = [
@@ -107,13 +109,12 @@ async def test_build_relationship_statements_with_new_entities():
 
     # Verify the query uses apoc.merge.node upserts for both endpoints
     assert "CALL apoc.merge.node" in query
-    assert "YIELD node AS s" in query
-    assert "YIELD node AS o" in query
-
-    # Verify it creates/ensures ids via randomUUID() fallback
-    assert "randomUUID()" in query
-    assert "SET s.id = coalesce" in query
-    assert "SET o.id = coalesce" in query
+    assert "RETURN node AS s" in query
+    assert "RETURN node AS o" in query
+    assert len(statements) == 2
+    assert params["subject_id"] is None
+    assert params["object_id"] is None
+    assert "coalesce(supplied_id, found.id, apoc.util.sha256" in query
 
     assert "CALL apoc.merge.relationship" in query
     assert "RETURN rel" in query

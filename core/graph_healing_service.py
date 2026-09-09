@@ -24,9 +24,9 @@ import numpy as np
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
+from core.embedding_contract import embedding_identity, validate_embedding
 from core.exceptions import ValidationError
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -70,7 +70,7 @@ class GraphHealingService:
                 n.created_chapter AS created_chapter
             ORDER BY n.created_chapter ASC
         """
-        return await neo4j_manager.execute_read_query(query)
+        return await get_services().database.execute_read_query(query)
 
     async def calculate_node_confidence(self, node: dict[str, Any], current_chapter: int = 0) -> float:
         """Calculate a confidence score for a provisional node.
@@ -98,7 +98,7 @@ class GraphHealingService:
             OPTIONAL MATCH (n)-[r]-()
             RETURN count(r) AS rel_count, n.status AS status
         """
-        results = await neo4j_manager.execute_read_query(combined_query, {"element_id": element_id})
+        results = await get_services().database.execute_read_query(combined_query, {"element_id": element_id})
         record = results[0] if results else None
         rel_count = record["rel_count"] if record else 0
 
@@ -260,7 +260,7 @@ class GraphHealingService:
         prompt = base_prompt
         max_attempts = config.JSON_PARSE_RETRY_ATTEMPTS
         for attempt in range(1, max_attempts + 1):
-            response_text, _ = await llm_service.async_call_llm(
+            response_text, _ = await get_services().language_model.async_call_llm(
                 prompt=prompt,
                 model_name=model,
                 temperature=0.3,
@@ -340,7 +340,7 @@ class GraphHealingService:
         """
         params["confidence"] = enriched.get("confidence", 0.7)
 
-        await neo4j_manager.execute_write_query(query, params)
+        await get_services().database.execute_write_query(query, params)
         return True
 
     async def get_node_by_element_id(self, element_id: str) -> dict[str, Any] | None:
@@ -362,7 +362,7 @@ class GraphHealingService:
                 n.traits AS traits,
                 n.created_chapter AS created_chapter
         """
-        results = await neo4j_manager.execute_read_query(query, {"element_id": element_id})
+        results = await get_services().database.execute_read_query(query, {"element_id": element_id})
         return results[0] if results else None
 
     async def graduate_node(self, element_id: str, confidence: float) -> bool:
@@ -375,7 +375,7 @@ class GraphHealingService:
                 n.graduation_confidence = $confidence
             RETURN n.name AS name
         """
-        results = await neo4j_manager.execute_write_query(query, {"element_id": element_id, "confidence": confidence})
+        results = await get_services().database.execute_write_query(query, {"element_id": element_id, "confidence": confidence})
 
         if results:
             record = results[0]
@@ -424,14 +424,19 @@ class GraphHealingService:
                     RETURN
                         n.id AS id,
                         labels(n) AS labels,
-                        n.`{config.ENTITY_EMBEDDING_VECTOR_PROPERTY}` AS embedding_vector
+                        n.`{config.ENTITY_EMBEDDING_VECTOR_PROPERTY}` AS embedding_vector,
+                        n.`{config.ENTITY_EMBEDDING_MODEL_PROPERTY}` AS embedding_model,
+                        n.`{config.ENTITY_EMBEDDING_MODEL_PROPERTY}_identity` AS embedding_identity
                 """
-                embedding_rows = await neo4j_manager.execute_read_query(embedding_query, {"ids": candidate_ids})
+                embedding_rows = await get_services().database.execute_read_query(embedding_query, {"ids": candidate_ids})
                 for row in embedding_rows:
                     node_id = row.get("id")
                     embedding_vector = row.get("embedding_vector")
-                    if node_id and embedding_vector:
-                        embedding_by_id[str(node_id)] = embedding_vector
+                    if node_id and row.get("embedding_identity") == embedding_identity():
+                        try:
+                            embedding_by_id[str(node_id)] = validate_embedding(embedding_vector, model=row.get("embedding_model", ""))
+                        except ValueError:
+                            logger.warning("Ignoring inadmissible stored healing vector")
 
             # Batch-resolve all candidate entity IDs to element IDs in a single query
             all_candidate_ids = sorted({c["id1"] for c in kg_candidates} | {c["id2"] for c in kg_candidates})
@@ -442,7 +447,7 @@ class GraphHealingService:
                     WHERE n.id IN $ids
                     RETURN n.id AS entity_id, elementId(n) AS element_id
                 """
-                element_id_rows = await neo4j_manager.execute_read_query(element_id_query, {"ids": all_candidate_ids})
+                element_id_rows = await get_services().database.execute_read_query(element_id_query, {"ids": all_candidate_ids})
                 for row in element_id_rows:
                     entity_id = row.get("entity_id")
                     element_id = row.get("element_id")
@@ -508,14 +513,14 @@ class GraphHealingService:
                 n.description AS description,
                 labels(n)[0] AS type
         """
-        entities = await neo4j_manager.execute_read_query(query)
+        entities = await get_services().database.execute_read_query(query)
 
         if len(entities) < 2:
             return []
 
         # Generate embeddings for all descriptions
         descriptions = [e["description"] for e in entities]
-        embeddings = await llm_service.async_get_embeddings_batch(descriptions)
+        embeddings = await get_services().language_model.async_get_embeddings_batch(descriptions)
 
         # Compare same-type entities
         for i, e1 in enumerate(entities):
@@ -632,7 +637,7 @@ class GraphHealingService:
             AND (x:Chapter OR x:Event)
             RETURN count(x) AS cooccurrences
         """
-        results = await neo4j_manager.execute_read_query(cooccurrence_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
+        results = await get_services().database.execute_read_query(cooccurrence_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
         record = results[0] if results else None
         cooccurrences = record["cooccurrences"] if record else 0
 
@@ -642,7 +647,7 @@ class GraphHealingService:
             WHERE elementId(n) IN [$primary_id, $duplicate_id]
             RETURN elementId(n) AS node_id, type(r) AS rel_type, count(*) AS count
         """
-        rel_patterns = await neo4j_manager.execute_read_query(rel_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
+        rel_patterns = await get_services().database.execute_read_query(rel_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
 
         # Build relationship fingerprints
         primary_rels = {r["rel_type"]: r["count"] for r in rel_patterns if r["node_id"] == primary_id}
@@ -695,8 +700,8 @@ class GraphHealingService:
 
         try:
             # Get entity IDs from element IDs
-            primary_results = await neo4j_manager.execute_read_query(get_id_query, {"element_id": primary_id})
-            duplicate_results = await neo4j_manager.execute_read_query(get_id_query, {"element_id": duplicate_id})
+            primary_results = await get_services().database.execute_read_query(get_id_query, {"element_id": primary_id})
+            duplicate_results = await get_services().database.execute_read_query(get_id_query, {"element_id": duplicate_id})
 
             if not primary_results or not duplicate_results:
                 logger.error(
@@ -787,7 +792,7 @@ class GraphHealingService:
         """
         cutoff = current_chapter - self.ORPHAN_CLEANUP_CHAPTERS
 
-        orphaned_nodes = await neo4j_manager.execute_read_query(query, {"cutoff_chapter": cutoff})
+        orphaned_nodes = await get_services().database.execute_read_query(query, {"cutoff_chapter": cutoff})
         results["nodes_checked"] = len(orphaned_nodes)
 
         if not orphaned_nodes:
@@ -802,7 +807,7 @@ class GraphHealingService:
             RETURN count(n) AS deleted_count
         """
         try:
-            delete_results = await neo4j_manager.execute_write_query(batch_delete_query, {"element_ids": element_ids})
+            delete_results = await get_services().database.execute_write_query(batch_delete_query, {"element_ids": element_ids})
             deleted_count = delete_results[0]["deleted_count"] if delete_results else 0
             results["nodes_removed"] = deleted_count
 

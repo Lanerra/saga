@@ -19,7 +19,7 @@ from typing import Any
 
 import structlog
 
-from core.db_manager import neo4j_manager
+from core.service_context import get_services
 from data_access import chapter_queries, character_queries, world_queries
 from models.kg_models import CharacterProfile
 
@@ -194,7 +194,7 @@ async def _get_character_relationships(
     """
 
     try:
-        results = await neo4j_manager.execute_read_query(query, {"char_names": character_names})
+        results = await get_services().database.execute_read_query(query, {"char_names": character_names})
 
         relationships = []
         for record in results:
@@ -293,7 +293,7 @@ async def _get_location_details(location_id: str) -> dict[str, Any] | None:
     """
 
     try:
-        results = await neo4j_manager.execute_read_query(query, {"loc_id": location_id})
+        results = await get_services().database.execute_read_query(query, {"loc_id": location_id})
 
         if results and len(results) > 0:
             record = results[0]

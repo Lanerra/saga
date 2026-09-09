@@ -7,9 +7,9 @@ from neo4j.exceptions import Neo4jError
 
 import config
 import utils
-from core.db_manager import neo4j_manager
 from core.exceptions import ValidationError, handle_database_error
 from core.schema_validator import validate_kg_object
+from core.service_context import get_services
 from models import WorldItem
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
@@ -17,6 +17,7 @@ from models.kg_constants import (
     WORLD_ITEM_CANONICAL_LABELS,
 )
 
+from .cache_coordinator import guard_graph_cache
 from .cypher_builders.native_builders import NativeCypherBuilder
 
 # Legacy world cypher builder removed; native builder is the single path.
@@ -110,6 +111,7 @@ def get_world_item_by_name(world_data: dict[str, dict[str, WorldItem]], name: st
     return None
 
 
+@guard_graph_cache
 @alru_cache(maxsize=128)
 async def get_world_item_by_id(item_id: str, *, include_provisional: bool = False) -> WorldItem | None:
     """Return a world item by id, with best-effort name fallback.
@@ -159,12 +161,12 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
 
     query = f"MATCH (we {{id: $id}}) WHERE {label_predicate}" " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)" " RETURN we"
 
-    results = await neo4j_manager.execute_read_query(query, {"id": requested_id, "include_provisional": include_provisional})
+    results = await get_services().database.execute_read_query(query, {"id": requested_id, "include_provisional": include_provisional})
     if not results or not results[0].get("we"):
         alt_id = resolve_world_name(requested_id)
         if alt_id and alt_id != requested_id:
             effective_id = alt_id
-            results = await neo4j_manager.execute_read_query(query, {"id": effective_id, "include_provisional": include_provisional})
+            results = await get_services().database.execute_read_query(query, {"id": effective_id, "include_provisional": include_provisional})
 
     if not results or not results[0].get("we"):
         logger.info(f"No world item found for id '{requested_id}'.")
@@ -236,7 +238,7 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     RETURN elab.summary AS summary, elab.chapter AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
     ORDER BY elab.chapter ASC
     """
-    elab_results = await neo4j_manager.execute_read_query(
+    elab_results = await get_services().database.execute_read_query(
         elab_query,
         {"we_id_param": effective_id, "include_provisional": include_provisional},
     )
@@ -319,7 +321,7 @@ async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: i
     }
     items = []
     try:
-        results = await neo4j_manager.execute_read_query(query, params)
+        results = await get_services().database.execute_read_query(query, params)
         if results:
             for record in results:
                 desc_val = record.get("description")
@@ -371,7 +373,7 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
          RETURN we.id AS id, we.name AS name, we.category as category
     LIMIT 20
     """
-    results = await neo4j_manager.execute_read_query(query)
+    results = await get_services().database.execute_read_query(query)
     return results if results else []
 
 
@@ -409,7 +411,7 @@ async def sync_world_items(
     statements = cypher_builder.batch_world_item_upsert_cypher(world_items, chapter_number)
 
     if statements:
-        await neo4j_manager.execute_cypher_batch(statements)
+        await get_services().database.execute_cypher_batch(statements)
 
     logger.info(
         "Persisted %d world item updates for chapter %d using native models.",
@@ -444,7 +446,7 @@ async def get_world_building(*, include_provisional: bool = False) -> list[World
     cypher_builder = NativeCypherBuilder()
     query, params = cypher_builder.world_item_fetch_cypher()
 
-    results = await neo4j_manager.execute_read_query(query, params)
+    results = await get_services().database.execute_read_query(query, params)
     world_items = []
 
     for record in results:
@@ -482,7 +484,7 @@ async def get_world_items_for_chapter_context_native(chapter_number: int, limit:
     RETURN w
     """
 
-    results = await neo4j_manager.execute_read_query(
+    results = await get_services().database.execute_read_query(
         query,
         {
             "chapter_number": chapter_number,
@@ -544,7 +546,7 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
         "fill_in_marker": config.FILL_IN,
     }
 
-    records = await neo4j_manager.execute_read_query(query, params)
+    records = await get_services().database.execute_read_query(query, params)
 
     bootstrap_elements = []
     for record in records:

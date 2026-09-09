@@ -3,163 +3,43 @@
 
 This module provides scene-level extraction to reduce prompt sizes and improve
 extraction quality by processing smaller text chunks (~5-10K chars each).
+
+拆分说明 (Split overview):
+    - scene_extraction_parsing.py       — LLM output parsing helpers
+    - scene_extraction_validation.py   — spaCy entity validation + lazy TextProcessingService
+    - scene_extraction_normalization.py — entity deduplication across scenes
+    - This file                        — orchestration: extract_from_scenes, per-type extractors
 """
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import structlog
-from pydantic import BaseModel
 
 import config
 from core.exceptions import LLMServiceError
+from core.langgraph.chapter_lifecycle import extraction_binding
 from core.langgraph.content_manager import ContentManager, get_scene_drafts, require_project_dir
-from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
-from core.text_processing_service import TextProcessingService
+from core.langgraph.nodes.scene_extraction_normalization import consolidate_scene_extractions
+from core.langgraph.nodes.scene_extraction_parsing import (
+    normalize_dict_items,
+    normalize_triple_entities,
+    parse_character_updates,
+    parse_kg_triples,
+    parse_world_updates,
+)
+from core.langgraph.nodes.scene_extraction_validation import (
+    _validate_entity_with_spacy,
+    load_spacy_model_if_enabled,
+)
+from core.langgraph.state import NarrativeState, SceneExtractionOutcome, SceneExtractionType
+from core.service_context import get_services
 from models.kg_constants import RELATIONSHIP_TYPES
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
-
-_text_processing_service: TextProcessingService | None = None
-
-
-def _get_text_processing_service() -> TextProcessingService:
-    """Lazily initialize the TextProcessingService to avoid loading spaCy at import time."""
-    global _text_processing_service
-    if _text_processing_service is None:
-        _text_processing_service = TextProcessingService()
-    return _text_processing_service
-
-
-def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
-    """Validate that an extracted entity is actually present in the scene text.
-
-    Args:
-        scene_text: The source scene text.
-        entity_name: The entity name to validate.
-
-    Returns:
-        True if entity is validated (present or validation disabled), False if not found.
-    """
-    if not config.settings.ENABLE_ENTITY_VALIDATION:
-        logger.debug("_validate_entity_with_spacy: entity validation disabled by config")
-        return True
-
-    if not _get_text_processing_service().spacy_service.is_loaded():
-        logger.warning("_validate_entity_with_spacy: spaCy model not loaded, skipping validation")
-        return True
-
-    try:
-        is_present = _get_text_processing_service().spacy_service.verify_entity_presence(scene_text, entity_name, threshold=0.7)
-
-        if not is_present:
-            logger.warning(
-                "_validate_entity_with_spacy: entity not found in text",
-                entity_name=entity_name,
-                entity_length=len(entity_name),
-                scene_text_length=len(scene_text),
-            )
-
-        return is_present
-    except Exception as e:
-        logger.error("_validate_entity_with_spacy: validation failed, using fallback", error=str(e))
-        # Fallback to simple substring matching
-        return entity_name.lower() in scene_text.lower()
-
-
-def _get_normalized_entity_key(name: str) -> str:
-    """Get a normalized key for entity deduplication using spaCy.
-
-    Args:
-        name: The entity name to normalize.
-
-    Returns:
-        Normalized key for deduplication.
-    """
-    if config.settings.ENABLE_ENTITY_VALIDATION and _get_text_processing_service().spacy_service.is_loaded():
-        try:
-            return _get_text_processing_service().spacy_service.normalize_entity_name(name)
-        except Exception as e:
-            logger.warning("_get_normalized_entity_key: spaCy normalization failed, using fallback", error=str(e))
-
-    # Fallback to simple case-insensitive normalization
-    return name.lower()
-
-
-def consolidate_scene_extractions(
-    scene_results: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Merge and deduplicate extraction results from multiple scenes.
-
-    Deduplication strategy:
-    - Characters: Dedupe by name (spaCy-based normalization when available), keep longest description
-    - World items: Dedupe by name (spaCy-based normalization when available), keep longest description
-    - Relationships: Dedupe by (source, target, type) tuple with spaCy normalization
-
-    Args:
-        scene_results: List of extraction results from individual scenes.
-
-    Returns:
-        Consolidated dict with deduplicated characters, world_items, relationships.
-    """
-    characters_map: dict[str, dict[str, Any]] = {}
-    world_items_map: dict[str, dict[str, Any]] = {}
-    relationships_set: set[tuple[str, str, str]] = set()
-    relationships: list[dict[str, Any]] = []
-
-    for scene_result in scene_results:
-        for character in scene_result.get("characters", []):
-            name = character["name"]
-            name_key = _get_normalized_entity_key(name)
-
-            if name_key in characters_map:
-                existing = characters_map[name_key]
-                existing_desc_len = len(existing.get("description", ""))
-                new_desc_len = len(character.get("description", ""))
-
-                if new_desc_len > existing_desc_len:
-                    characters_map[name_key] = character
-            else:
-                characters_map[name_key] = character
-
-        for world_item in scene_result.get("world_items", []):
-            name = world_item["name"]
-            name_key = _get_normalized_entity_key(name)
-
-            if name_key in world_items_map:
-                existing = world_items_map[name_key]
-                existing_desc_len = len(existing.get("description", ""))
-                new_desc_len = len(world_item.get("description", ""))
-
-                if new_desc_len > existing_desc_len:
-                    world_items_map[name_key] = world_item
-            else:
-                world_items_map[name_key] = world_item
-
-        for relationship in scene_result.get("relationships", []):
-            source = relationship.get("source_name", "")
-            target = relationship.get("target_name", "")
-            rel_type = relationship.get("relationship_type", "")
-
-            # Use spaCy normalization for relationship deduplication
-            source_key = _get_normalized_entity_key(source)
-            target_key = _get_normalized_entity_key(target)
-            rel_type_key = rel_type.upper()
-
-            relationship_key = (source_key, target_key, rel_type_key)
-
-            if relationship_key not in relationships_set:
-                relationships_set.add(relationship_key)
-                relationships.append(relationship)
-
-    return {
-        "characters": list(characters_map.values()),
-        "world_items": list(world_items_map.values()),
-        "relationships": relationships,
-    }
 
 
 async def extract_from_scene(
@@ -183,10 +63,8 @@ async def extract_from_scene(
         model_name: The LLM model name to use for extraction.
 
     Returns:
-        Dictionary with keys:
-        - characters: List of character entity dicts with scene_index.
-        - world_items: List of location and event entity dicts with scene_index.
-        - relationships: List of relationship dicts with scene_index.
+        Ordered extraction_outcomes and extraction_status. Only complete scenes
+        include characters, world_items, and relationships payloads.
     """
     logger.info(
         "extract_from_scene: starting",
@@ -195,63 +73,63 @@ async def extract_from_scene(
         scene_text_length=len(scene_text),
     )
 
-    # Clean input text with spaCy if entity validation is enabled
-    if config.settings.ENABLE_ENTITY_VALIDATION:
-        scene_text = _get_text_processing_service().clean_text_with_spacy(scene_text, aggressive=False)
+    preprocessing_error = ""
+    preprocessing_error_type = ""
+    try:
+        if not scene_text.strip():
+            raise ValueError("Scene text must not be blank")
+        if config.settings.ENABLE_ENTITY_VALIDATION:
+            from core.text_processing_service import TextProcessingService
 
-    characters = await _extract_characters_from_scene(
-        scene_text,
-        scene_index,
-        chapter_number,
-        novel_title,
-        novel_genre,
-        protagonist_name,
-        model_name,
-    )
-    locations = await _extract_locations_from_scene(
-        scene_text,
-        scene_index,
-        chapter_number,
-        novel_title,
-        novel_genre,
-        protagonist_name,
-        model_name,
-    )
-    events = await _extract_events_from_scene(
-        scene_text,
-        scene_index,
-        chapter_number,
-        novel_title,
-        novel_genre,
-        protagonist_name,
-        model_name,
-    )
-    relationships = await _extract_relationships_from_scene(
-        scene_text,
-        scene_index,
-        chapter_number,
-        novel_title,
-        novel_genre,
-        protagonist_name,
-        model_name,
-    )
+            processor = TextProcessingService()
+            scene_text = processor.clean_text_with_spacy(scene_text, aggressive=False)
+            if not scene_text.strip():
+                raise ValueError("Scene text must not be blank after cleaning")
+    except Exception as error:
+        preprocessing_error = str(error)
+        preprocessing_error_type = type(error).__name__
 
-    world_items = locations + events
+    outcomes: list[SceneExtractionOutcome] = []
+    payloads: dict[str, list[dict[str, Any]]] = {}
+    extractors: dict[SceneExtractionType, Callable[..., Awaitable[list[dict[str, Any]]]]] = {
+        "characters": _extract_characters_from_scene,
+        "locations": _extract_locations_from_scene,
+        "events": _extract_events_from_scene,
+        "relationships": _extract_relationships_from_scene,
+    }
+    for extraction_type, extractor in extractors.items():
+        outcome: SceneExtractionOutcome = {
+            "chapter_number": chapter_number,
+            "scene_index": scene_index,
+            "extraction_type": extraction_type,
+            "status": "failed",
+            "item_count": 0,
+            "error_type": preprocessing_error_type,
+            "error": preprocessing_error,
+        }
+        if not preprocessing_error_type:
+            try:
+                items = await extractor(
+                    scene_text, scene_index, chapter_number, novel_title,
+                    novel_genre, protagonist_name, model_name,
+                )
+                payloads[extraction_type] = items
+                outcome["status"] = "succeeded"
+                outcome["item_count"] = len(items)
+            except Exception as error:
+                outcome["error_type"] = type(error).__name__
+                outcome["error"] = str(error)
+        outcomes.append(outcome)
 
-    logger.info(
-        "extract_from_scene: complete",
-        scene_index=scene_index,
-        chapter=chapter_number,
-        characters_count=len(characters),
-        locations_count=len(locations),
-        events_count=len(events),
-        relationships_count=len(relationships),
-    )
+    if any(outcome["status"] == "failed" for outcome in outcomes):
+        return {"extraction_outcomes": outcomes, "extraction_status": "failed"}
 
     return {
-        "characters": characters,
-        "world_items": world_items,
-        "relationships": relationships,
+        "characters": payloads["characters"],
+        "world_items": payloads["locations"] + payloads["events"],
+        "relationships": payloads["relationships"],
+        "extraction_outcomes": outcomes,
+        "extraction_status": "complete",
     }
 
 
@@ -278,6 +156,8 @@ async def _extract_characters_from_scene(
     Returns:
         List of character entity dicts with scene_index field.
     """
+    from core.text_processing_service import TextProcessingService
+
     prompt = render_prompt(
         "knowledge_agent/extract_characters.j2",
         {
@@ -291,7 +171,7 @@ async def _extract_characters_from_scene(
     )
 
     try:
-        data, _ = await llm_service.async_call_llm_json_object(
+        data, _ = await get_services().language_model.async_call_llm_json_object(
             model_name=model_name,
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
@@ -301,23 +181,16 @@ async def _extract_characters_from_scene(
             max_attempts=2,
         )
 
-        character_updates = data.get("character_updates", {})
-        if not isinstance(character_updates, dict):
-            logger.warning(
-                "_extract_characters_from_scene: character_updates is not a dict",
-                scene_index=scene_index,
-                chapter=chapter_number,
-            )
-            return []
+        parsed = parse_character_updates(data, scene_index, chapter_number)
+        tp = TextProcessingService()
 
         characters: list[dict[str, Any]] = []
-        for name, info in character_updates.items():
-            if not isinstance(info, dict):
-                continue
-
+        for name, info in parsed:
             character_name = str(name)
 
-            should_classify, classification_reason = _get_text_processing_service().spacy_service.should_classify_as_character(character_name)
+            should_classify, classification_reason = tp.spacy_service.should_classify_as_character(
+                character_name
+            )
 
             if not should_classify:
                 logger.debug(
@@ -371,7 +244,7 @@ async def _extract_characters_from_scene(
             chapter=chapter_number,
             error=str(e),
         )
-        return []
+        raise
     except Exception as e:
         logger.error(
             "_extract_characters_from_scene: failed",
@@ -380,7 +253,7 @@ async def _extract_characters_from_scene(
             error=str(e),
             exc_info=True,
         )
-        return []
+        raise
 
 
 async def _extract_locations_from_scene(
@@ -418,7 +291,7 @@ async def _extract_locations_from_scene(
     )
 
     try:
-        data, _ = await llm_service.async_call_llm_json_object(
+        data, _ = await get_services().language_model.async_call_llm_json_object(
             model_name=model_name,
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
@@ -428,29 +301,10 @@ async def _extract_locations_from_scene(
             max_attempts=2,
         )
 
-        world_updates = data.get("world_updates", {})
-        if not isinstance(world_updates, dict):
-            logger.warning(
-                "_extract_locations_from_scene: world_updates is not a dict",
-                scene_index=scene_index,
-                chapter=chapter_number,
-            )
-            return []
-
-        location_dict = world_updates.get("Location", {})
-        if not isinstance(location_dict, dict):
-            logger.warning(
-                "_extract_locations_from_scene: Location is not a dict",
-                scene_index=scene_index,
-                chapter=chapter_number,
-            )
-            return []
+        parsed = parse_world_updates(data, "Location", scene_index, chapter_number)
 
         locations: list[dict[str, Any]] = []
-        for name, info in location_dict.items():
-            if not isinstance(info, dict):
-                continue
-
+        for name, info in parsed:
             # Validate entity presence using spaCy
             is_validated = _validate_entity_with_spacy(scene_text, str(name))
 
@@ -496,7 +350,7 @@ async def _extract_locations_from_scene(
             chapter=chapter_number,
             error=str(e),
         )
-        return []
+        raise
     except Exception as e:
         logger.error(
             "_extract_locations_from_scene: failed",
@@ -505,7 +359,7 @@ async def _extract_locations_from_scene(
             error=str(e),
             exc_info=True,
         )
-        return []
+        raise
 
 
 async def _extract_events_from_scene(
@@ -543,7 +397,7 @@ async def _extract_events_from_scene(
     )
 
     try:
-        data, _ = await llm_service.async_call_llm_json_object(
+        data, _ = await get_services().language_model.async_call_llm_json_object(
             model_name=model_name,
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
@@ -553,29 +407,10 @@ async def _extract_events_from_scene(
             max_attempts=2,
         )
 
-        world_updates = data.get("world_updates", {})
-        if not isinstance(world_updates, dict):
-            logger.warning(
-                "_extract_events_from_scene: world_updates is not a dict",
-                scene_index=scene_index,
-                chapter=chapter_number,
-            )
-            return []
-
-        event_dict = world_updates.get("Event", {})
-        if not isinstance(event_dict, dict):
-            logger.warning(
-                "_extract_events_from_scene: Event is not a dict",
-                scene_index=scene_index,
-                chapter=chapter_number,
-            )
-            return []
+        parsed = parse_world_updates(data, "Event", scene_index, chapter_number)
 
         events: list[dict[str, Any]] = []
-        for name, info in event_dict.items():
-            if not isinstance(info, dict):
-                continue
-
+        for name, info in parsed:
             # Validate entity presence using spaCy
             is_validated = _validate_entity_with_spacy(scene_text, str(name))
 
@@ -621,7 +456,7 @@ async def _extract_events_from_scene(
             chapter=chapter_number,
             error=str(e),
         )
-        return []
+        raise
     except Exception as e:
         logger.error(
             "_extract_events_from_scene: failed",
@@ -630,7 +465,7 @@ async def _extract_events_from_scene(
             error=str(e),
             exc_info=True,
         )
-        return []
+        raise
 
 
 async def _extract_relationships_from_scene(
@@ -669,7 +504,7 @@ async def _extract_relationships_from_scene(
     )
 
     try:
-        data, _ = await llm_service.async_call_llm_json_object(
+        data, _ = await get_services().language_model.async_call_llm_json_object(
             model_name=model_name,
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
@@ -679,33 +514,11 @@ async def _extract_relationships_from_scene(
             max_attempts=2,
         )
 
-        kg_triples_list = data.get("kg_triples", [])
-        if not isinstance(kg_triples_list, list):
-            logger.warning(
-                "_extract_relationships_from_scene: kg_triples is not a list",
-                scene_index=scene_index,
-                chapter=chapter_number,
-            )
-            return []
+        parsed = parse_kg_triples(data, scene_index, chapter_number)
 
         relationships: list[dict[str, Any]] = []
-        for triple in kg_triples_list:
-            if not isinstance(triple, dict):
-                continue
-
-            subject = triple.get("subject", "")
-            predicate = triple.get("predicate", "RELATES_TO")
-            object_entity = triple.get("object_entity", "")
-            description = triple.get("description", "")
-
-            if isinstance(subject, dict):
-                subject = subject.get("name", str(subject))
-            if isinstance(object_entity, dict):
-                object_entity = object_entity.get("name", str(object_entity))
-
-            subject_text = str(subject) if subject else ""
-            target_text = str(object_entity) if object_entity else ""
-            predicate_text = str(predicate) if predicate else ""
+        for triple in parsed:
+            subject_text, target_text, predicate_text, description = normalize_triple_entities(triple)
 
             # Validate entity presence using spaCy for both subjects and targets
             subject_validated = _validate_entity_with_spacy(scene_text, subject_text)
@@ -728,7 +541,7 @@ async def _extract_relationships_from_scene(
                         "source_name": subject_text,
                         "target_name": target_text,
                         "relationship_type": predicate_text,
-                        "description": str(description),
+                        "description": description,
                         "chapter": chapter_number,
                         "scene_index": scene_index,
                         "confidence": 0.8,
@@ -751,7 +564,7 @@ async def _extract_relationships_from_scene(
             chapter=chapter_number,
             error=str(e),
         )
-        return []
+        raise
     except Exception as e:
         logger.error(
             "_extract_relationships_from_scene: failed",
@@ -760,7 +573,7 @@ async def _extract_relationships_from_scene(
             error=str(e),
             exc_info=True,
         )
-        return []
+        raise
 
 
 async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
@@ -772,7 +585,9 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         state: Workflow state with scene_drafts_ref.
 
     Returns:
-        Partial state update with extracted_entities and extracted_relationships.
+        Completion telemetry and externalized refs, or fatal state with cleared
+        refs when scene input or any extraction slot fails. Partial publication
+        is not supported.
     """
     logger.info(
         "extract_from_scenes: starting scene-level extraction",
@@ -783,52 +598,29 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         logger.warning("extract_from_scenes: skipping due to fatal error")
         return {"current_node": "extract_from_scenes"}
 
-    content_manager = ContentManager(require_project_dir(state))
-
+    failure_update: NarrativeState = {
+        "extraction_status": "failed",
+        "extraction_source": None,
+        "extraction_policy": "fail_closed",
+        "extraction_outcomes": [],
+        "extracted_entities_ref": None,
+        "extracted_relationships_ref": None,
+        "has_fatal_error": True,
+        "error_node": "extract_from_scenes",
+        "current_node": "extract_from_scenes",
+    }
     try:
+        content_manager = ContentManager(require_project_dir(state))
         scene_drafts = get_scene_drafts(state, content_manager)
+        if not scene_drafts:
+            raise ValueError("Scene extraction requires nonempty scene drafts")
+        planned_count = state.get("chapter_plan_scene_count", 0)
+        if planned_count > 0 and len(scene_drafts) != planned_count:
+            raise ValueError(f"Expected {planned_count} scene drafts, received {len(scene_drafts)}")
     except Exception as e:
         error_msg = f"Failed to load scene drafts: {e}"
         logger.error("extract_from_scenes: fatal error", error=error_msg)
-        return {
-            "last_error": error_msg,
-            "has_fatal_error": True,
-            "error_node": "extract_from_scenes",
-            "current_node": "extract_from_scenes",
-        }
-
-    if not scene_drafts:
-        logger.warning("extract_from_scenes: no scene drafts found, creating empty externalized content")
-
-        # Even with no scenes, create empty externalized content for consistency
-        chapter_number = state.get("current_chapter", 1)
-        current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1
-
-        extracted_entities_ref = content_manager.save_json(
-            {"characters": [], "world_items": []},
-            "extracted_entities",
-            f"chapter_{chapter_number}",
-            current_version,
-        )
-
-        extracted_relationships_ref = content_manager.save_json(
-            [],
-            "extracted_relationships",
-            f"chapter_{chapter_number}",
-            current_version,
-        )
-
-        logger.info(
-            "extract_from_scenes: empty content externalized",
-            chapter=chapter_number,
-            version=current_version,
-        )
-
-        return {
-            "extracted_entities_ref": extracted_entities_ref,
-            "extracted_relationships_ref": extracted_relationships_ref,
-            "current_node": "extract_from_scenes",
-        }
+        return {**failure_update, "last_error": error_msg}
 
     chapter_number = state.get("current_chapter", 1)
     novel_title = state.get("title", "")
@@ -837,9 +629,7 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     model_name = state.get("extraction_model", config.MEDIUM_MODEL)
 
     # Load spaCy model for entity validation if enabled
-    if config.settings.ENABLE_ENTITY_VALIDATION:
-        logger.info("extract_from_scenes: loading spaCy model for entity validation")
-        _get_text_processing_service().load_spacy_model()
+    load_spacy_model_if_enabled()
 
     logger.info(
         "extract_from_scenes: processing scenes",
@@ -848,6 +638,7 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     )
 
     scene_results: list[dict[str, Any]] = []
+    outcomes: list[SceneExtractionOutcome] = []
     for scene_index, scene_text in enumerate(scene_drafts):
         scene_result = await extract_from_scene(
             scene_text=scene_text,
@@ -859,6 +650,16 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
             model_name=model_name,
         )
         scene_results.append(scene_result)
+        outcomes.extend(scene_result["extraction_outcomes"])
+
+    failures = [outcome for outcome in outcomes if outcome["status"] == "failed"]
+    if failures:
+        error_message = "; ".join(
+            f"Scene {outcome['scene_index']} {outcome['extraction_type']}: {outcome['error_type']}: {outcome['error']}"
+            for outcome in failures
+        )
+        logger.error("extract_from_scenes: incomplete extraction", chapter=chapter_number, error=error_message)
+        return {**failure_update, "last_error": error_message, "extraction_outcomes": outcomes}
 
     logger.info(
         "extract_from_scenes: consolidating results",
@@ -868,32 +669,11 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
 
     consolidated = consolidate_scene_extractions(scene_results)
 
-    def _normalize_dict_items(*, items: Any, item_kind: str) -> list[dict[str, Any]]:
-        if items is None:
-            return []
-        if not isinstance(items, list):
-            raise TypeError(f"extract_from_scenes: expected {item_kind} to be a list; got {type(items)}")
-
-        normalized: list[dict[str, Any]] = []
-        for item in items:
-            if isinstance(item, BaseModel):
-                normalized_value = item.model_dump(mode="json")
-                if not isinstance(normalized_value, dict):
-                    raise TypeError(f"extract_from_scenes: expected {item_kind} model_dump to produce dict; got {type(normalized_value)}")
-                normalized.append(normalized_value)
-                continue
-
-            if isinstance(item, dict):
-                normalized.append(item)
-                continue
-
-            raise TypeError(f"extract_from_scenes: expected {item_kind} item to be dict-like; got {type(item)}")
-
-        return normalized
-
-    characters = _normalize_dict_items(items=consolidated.get("characters", []), item_kind="characters")
-    world_items = _normalize_dict_items(items=consolidated.get("world_items", []), item_kind="world_items")
-    extracted_relationships = _normalize_dict_items(items=consolidated.get("relationships", []), item_kind="relationships")
+    characters = normalize_dict_items(consolidated.get("characters", []), item_kind="characters")
+    world_items = normalize_dict_items(consolidated.get("world_items", []), item_kind="world_items")
+    extracted_relationships = normalize_dict_items(
+        consolidated.get("relationships", []), item_kind="relationships"
+    )
 
     logger.info(
         "extract_from_scenes: extraction complete",
@@ -917,7 +697,7 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         extracted_relationships,
         "extracted_relationships",
         f"chapter_{chapter_number}",
-        current_version,
+        content_manager.get_latest_version("extracted_relationships", f"chapter_{chapter_number}") + 1,
     )
 
     logger.info(
@@ -932,4 +712,8 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         "extracted_entities_ref": extracted_entities_ref,
         "extracted_relationships_ref": extracted_relationships_ref,
         "current_node": "extract_from_scenes",
+        "extraction_status": "complete",
+        "extraction_policy": "fail_closed",
+        "extraction_outcomes": outcomes,
+        **({"extraction_source": extraction_binding(state, scene_drafts)} if "lifecycle_version" in state else {}),
     }

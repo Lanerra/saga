@@ -1,6 +1,7 @@
 # tests/test_kg_models.py
 """Tests for models/kg_models.py - core knowledge graph data models."""
 
+from collections.abc import Callable, Iterator
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +12,7 @@ from models.kg_models import CharacterProfile, RelationshipUsage, WorldItem
 class TestCharacterProfile:
     """Tests for CharacterProfile model and factory methods."""
 
-    def test_from_dict_basic(self):
+    def test_from_dict_basic(self) -> None:
         """Test creating character from dictionary with known fields."""
         data = {"personality_description": "Protagonist", "traits": ["brave", "intelligent"], "status": "Active", "created_chapter": 1, "is_provisional": False}
 
@@ -25,7 +26,7 @@ class TestCharacterProfile:
         assert result.is_provisional is False
         assert result.updates == {}
 
-    def test_from_dict_with_extra_fields(self):
+    def test_from_dict_with_extra_fields(self) -> None:
         """Test that extra fields are stored in updates."""
         data = {"personality_description": "Side character", "age": 30, "occupation": "Farmer", "extra_field": "value"}
 
@@ -41,7 +42,7 @@ class TestCharacterProfile:
         assert "occupation" in result.updates
         assert "extra_field" in result.updates
 
-    def test_from_dict_with_updates_field(self):
+    def test_from_dict_with_updates_field(self) -> None:
         """Test merging updates field with extra fields."""
         data = {"personality_description": "Mysterious", "updates": {"age": 25, "secret": "hidden"}, "extra_field": "value"}
 
@@ -54,7 +55,7 @@ class TestCharacterProfile:
         assert result.updates["extra_field"] == "value"
         assert result.updates == {"age": 25, "secret": "hidden", "extra_field": "value"}
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         """Test converting character to flat dictionary."""
         profile = CharacterProfile(
             name="Diana", personality_description="Hero", traits=["strong", "compassionate"], status="Active", created_chapter=2, is_provisional=False, updates={"age": 28, "power_level": "high"}
@@ -71,7 +72,7 @@ class TestCharacterProfile:
         assert result["power_level"] == "high"
         assert "name" not in result  # name should be excluded
 
-    def test_from_dict_record_with_relationships(self):
+    def test_from_dict_record_with_relationships(self) -> None:
         """Test creating character from query record with relationships."""
         record = {
             "c": {"name": "Eve", "personality_description": "Spy", "status": "Active", "created_chapter": 3, "is_provisional": False},
@@ -90,7 +91,7 @@ class TestCharacterProfile:
         assert result.relationships["Alice"]["type"] == "FRIENDS_WITH"
         assert result.relationships["Bob"]["description"] == "Colleagues"
 
-    def test_from_dict_record_without_relationships(self):
+    def test_from_dict_record_without_relationships(self) -> None:
         """Test creating character from query record without relationships."""
         record = {"c": {"name": "Frank", "personality_description": "Lone wolf", "status": "Unknown", "created_chapter": 0, "is_provisional": True}}
 
@@ -101,7 +102,7 @@ class TestCharacterProfile:
         assert result.relationships == {}
         assert result.is_provisional is True
 
-    def test_from_dict_record_with_traits_in_node(self):
+    def test_from_dict_record_with_traits_in_node(self) -> None:
         """Test creating character with traits stored in node property."""
         record = {"c": {"name": "Grace", "personality_description": "Leader", "traits": ["charismatic", "decisive"], "status": "Active"}}
 
@@ -110,7 +111,7 @@ class TestCharacterProfile:
         assert result.name == "Grace"
         assert result.traits == ["charismatic", "decisive"]
 
-    def test_from_db_record(self):
+    def test_from_db_record(self) -> None:
         """Test creating character from Neo4j record."""
         # Mock Neo4j record
         mock_record = MagicMock()
@@ -121,7 +122,7 @@ class TestCharacterProfile:
         assert result.name == "Heidi"
         assert result.personality_description == "Explorer"
 
-    def test_from_db_node_with_dict(self):
+    def test_from_db_node_with_dict(self) -> None:
         """Test creating character from dictionary node."""
         node_dict = {"name": "Ivan", "personality_description": "Scholar", "traits": ["wise", "patient"], "status": "Active", "created_chapter": 4, "is_provisional": False}
 
@@ -132,12 +133,12 @@ class TestCharacterProfile:
         assert result.traits == ["wise", "patient"]
         assert result.relationships == {}  # Should be empty for from_db_node
 
-    def test_from_db_node_with_neo4j_node(self):
+    def test_from_db_node_with_neo4j_node(self) -> None:
         """Test creating character from Neo4j node object."""
 
         # Create a proper dict-like object that behaves like a Neo4j node
         class MockNode:
-            def __iter__(self):
+            def __iter__(self) -> Iterator[tuple[str, object]]:
                 return iter([("name", "Judy"), ("personality_description", "Detective"), ("traits", ["observant", "logical"]), ("status", "Active")])
 
         mock_node = MockNode()
@@ -148,7 +149,7 @@ class TestCharacterProfile:
         assert result.personality_description == "Detective"
         assert result.traits == ["observant", "logical"]
 
-    def test_to_cypher_params(self):
+    def test_to_cypher_params(self) -> None:
         """Test building Cypher parameter dictionary."""
         profile = CharacterProfile(name="Kevin", personality_description="Engineer", traits=["technical", "creative"], status="Active", created_chapter=5, is_provisional=False, updates={"age": 35})
 
@@ -168,7 +169,7 @@ class TestCharacterProfile:
 class TestWorldItem:
     """Tests for WorldItem model and factory methods."""
 
-    def test_from_dict_basic(self):
+    def test_from_dict_basic(self) -> None:
         """Test creating world item from dictionary."""
         data = {
             "id": "item-001",
@@ -196,7 +197,7 @@ class TestWorldItem:
         assert result.created_chapter == 1
         assert result.is_provisional is False
 
-    def test_from_dict_with_extra_properties(self):
+    def test_from_dict_with_extra_properties(self) -> None:
         """Test that extra fields are stored in additional_properties."""
         data = {"id": "item-002", "description": "King's castle", "population": 5000, "era": "medieval"}
 
@@ -209,7 +210,7 @@ class TestWorldItem:
         assert "population" in result.additional_properties
         assert "era" in result.additional_properties
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         """Test converting world item to flat dictionary."""
         item = WorldItem(
             id="item-003",
@@ -236,7 +237,7 @@ class TestWorldItem:
         assert "category" not in result
         assert "name" not in result
 
-    def test_from_dict_record_with_relationships(self):
+    def test_from_dict_record_with_relationships(self) -> None:
         """Test creating world item from query record with relationships."""
         record = {
             "w": {"id": "item-004", "category": "Creature", "name": "Dragon", "description": "Mythical beast", "created_chapter": 3, "is_provisional": False},
@@ -253,14 +254,14 @@ class TestWorldItem:
         assert len(result.relationships) == 2
         assert "Excalibur" in result.relationships
 
-    def test_from_dict_record_without_node(self):
+    def test_from_dict_record_without_node(self) -> None:
         """Test error when record doesn't contain world element node."""
         record = {"other": "data"}
 
         with pytest.raises(ValueError, match="No world element node found in record"):
             WorldItem.from_dict_record(record)
 
-    def test_from_dict_record_with_we_alias(self):
+    def test_from_dict_record_with_we_alias(self) -> None:
         """Test creating world item from record with 'we' alias."""
         record = {"we": {"id": "item-005", "category": "Magic", "name": "Spellbook", "description": "Ancient tome"}}
 
@@ -270,15 +271,15 @@ class TestWorldItem:
         assert result.category == "Magic"
         assert result.name == "Spellbook"
 
-    def test_from_db_record(self):
+    def test_from_db_record(self) -> None:
         """Test creating world item from Neo4j record."""
 
         # Create a proper dict-like record
         class MockRecord:
-            def __getitem__(self, key):
+            def __getitem__(self, key: str) -> dict[str, str]:
                 return {"w": {"id": "item-006", "category": "Location", "name": "Forest", "description": "Enchanted woods"}}[key]
 
-            def get(self, key, default=None):
+            def get(self, key: str, default: object = None) -> object:
                 try:
                     return self[key]
                 except KeyError:
@@ -286,12 +287,13 @@ class TestWorldItem:
 
         mock_record = MockRecord()
 
-        result = WorldItem.from_db_record(mock_record)
+        from_record: Callable[..., WorldItem] = WorldItem.from_db_record
+        result = from_record(mock_record)
 
         assert result.id == "item-006"
         assert result.category == "Location"
 
-    def test_from_db_node_with_dict(self):
+    def test_from_db_node_with_dict(self) -> None:
         """Test creating world item from dictionary node."""
         node_dict = {
             "id": "item-007",
@@ -313,12 +315,12 @@ class TestWorldItem:
         # extra_prop should be in additional_properties
         assert "extra_prop" in result.additional_properties
 
-    def test_from_db_node_with_neo4j_node(self):
+    def test_from_db_node_with_neo4j_node(self) -> None:
         """Test creating world item from Neo4j node object."""
 
         # Create a proper dict-like object that behaves like a Neo4j node
         class MockNode:
-            def __iter__(self):
+            def __iter__(self) -> Iterator[tuple[str, object]]:
                 return iter([("id", "item-008"), ("category", "Creature"), ("name", "Phoenix"), ("description", "Fire bird"), ("traits", ["immortal", "powerful"]), ("created_chapter", 5)])
 
         mock_node = MockNode()
@@ -329,7 +331,7 @@ class TestWorldItem:
         assert result.category == "Creature"
         assert result.name == "Phoenix"
 
-    def test_to_cypher_params(self):
+    def test_to_cypher_params(self) -> None:
         """Test building Cypher parameter dictionary for world item."""
         item = WorldItem(
             id="item-009",
@@ -359,7 +361,7 @@ class TestWorldItem:
 class TestRelationshipUsage:
     """Tests for RelationshipUsage dataclass."""
 
-    def test_from_dict_basic(self):
+    def test_from_dict_basic(self) -> None:
         """Test creating relationship usage from dictionary."""
         data = {
             "canonical_type": "FRIENDS_WITH",
@@ -379,7 +381,7 @@ class TestRelationshipUsage:
         assert result.synonyms == ["CLOSE_FRIENDS", "BEST_FRIENDS"]
         assert result.last_used_chapter == 10
 
-    def test_from_dict_with_missing_optional_fields(self):
+    def test_from_dict_with_missing_optional_fields(self) -> None:
         """Test creating relationship usage with missing optional fields."""
         data = {"canonical_type": "WORKS_WITH", "first_used_chapter": 2, "usage_count": 3}
 
@@ -393,7 +395,7 @@ class TestRelationshipUsage:
         assert result.last_used_chapter == 0
         assert result.embedding is None
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         """Test converting relationship usage to dictionary."""
         usage = RelationshipUsage(
             canonical_type="LOVES", first_used_chapter=1, usage_count=2, example_descriptions=["romantic love"], embedding=[0.1, 0.2, 0.3], synonyms=["IN_LOVE_WITH"], last_used_chapter=5
@@ -409,7 +411,7 @@ class TestRelationshipUsage:
         assert result["synonyms"] == ["IN_LOVE_WITH"]
         assert result["last_used_chapter"] == 5
 
-    def test_relationship_usage_equality(self):
+    def test_relationship_usage_equality(self) -> None:
         """Test that relationship usage instances can be compared."""
         usage1 = RelationshipUsage(canonical_type="TEST", first_used_chapter=1, usage_count=1)
 

@@ -1,5 +1,6 @@
 # tests/test_langgraph/test_relationship_normalization_node.py
 from pathlib import Path
+from typing import get_type_hints, is_typeddict
 from unittest.mock import patch
 
 import pytest
@@ -8,8 +9,27 @@ from core.langgraph.nodes.relationship_normalization_node import normalize_relat
 from core.langgraph.state import NarrativeState
 
 
+def test_normalization_update_contract_includes_legacy_telemetry() -> None:
+    update_type = get_type_hints(normalize_relationships)["return"]
+    assert is_typeddict(update_type)
+    assert update_type.__required_keys__ == frozenset()
+    assert update_type.__optional_keys__ == {
+        "extracted_relationships_ref",
+        "extracted_relationships",
+        "relationship_vocabulary",
+        "relationship_vocabulary_size",
+        "relationships_normalized_this_chapter",
+        "relationships_novel_this_chapter",
+        "relationships_rejected_this_chapter",
+        "relationships_property_converted_this_chapter",
+        "relationship_rejection_rate",
+        "last_pruned_chapter",
+        "current_node",
+    }
+
+
 @pytest.mark.asyncio
-async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
+async def test_normalize_relationships_node_updates_ref(tmp_path: Path) -> None:
     """
     Unit test for [`normalize_relationships()`](core/langgraph/nodes/relationship_normalization_node.py:32).
 

@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from core.service_context import get_services
 from utils import similarity
 
 
@@ -19,7 +20,7 @@ async def test_find_semantically_closest_segment_basic(
     async def fake_embed(text: str) -> np.ndarray | None:
         return embeddings[text]
 
-    monkeypatch.setattr(similarity.llm_service, "async_get_embedding", fake_embed)
+    monkeypatch.setattr(get_services().language_model, "async_get_embedding", fake_embed)
     monkeypatch.setattr(
         similarity,
         "get_text_segments",
@@ -37,7 +38,7 @@ async def test_find_semantically_closest_segment_no_segments(
     async def fake_embed(text: str) -> np.ndarray | None:
         return np.array([1.0], dtype=np.float32)
 
-    monkeypatch.setattr(similarity.llm_service, "async_get_embedding", fake_embed)
+    monkeypatch.setattr(get_services().language_model, "async_get_embedding", fake_embed)
     monkeypatch.setattr(similarity, "get_text_segments", lambda doc, st: [])
 
     result = await similarity.find_semantically_closest_segment("doc", "query")
@@ -51,7 +52,7 @@ async def test_find_semantically_closest_segment_query_embedding_none(
     async def fake_embed(text: str) -> np.ndarray | None:
         return None
 
-    monkeypatch.setattr(similarity.llm_service, "async_get_embedding", fake_embed)
+    monkeypatch.setattr(get_services().language_model, "async_get_embedding", fake_embed)
     monkeypatch.setattr(similarity, "get_text_segments", lambda doc, st: [("x", 0, 1)])
 
     result = await similarity.find_semantically_closest_segment("doc", "query")

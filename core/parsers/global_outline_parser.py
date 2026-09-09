@@ -21,8 +21,8 @@ from typing import Any
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
+from data_access.location_queries import persist_locations
 from models.kg_models import Location, MajorPlotPoint, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
@@ -253,7 +253,7 @@ class GlobalOutlineParser:
 
         for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
             try:
-                response, _ = await llm_service.async_call_llm(
+                response, _ = await get_services().language_model.async_call_llm(
                     model_name=config.NARRATIVE_MODEL,
                     prompt=prompt,
                     temperature=0.5,
@@ -265,8 +265,8 @@ class GlobalOutlineParser:
 
                 return self._parse_world_items_extraction(response)
             except (json.JSONDecodeError, ValueError) as e:
-                if attempt == 2:
-                    logger.warning("Failed to extract world items after %d attempts: %s", attempt, str(e), exc_info=True)
+                if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
+                    logger.warning("Failed to extract world items", attempts=attempt, error_type=type(e).__name__)
                     return []
 
         return []
@@ -387,7 +387,7 @@ class GlobalOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d MajorPlotPoint event nodes", len(plot_points), extra={"chapter": self.chapter_number})
 
@@ -407,43 +407,7 @@ class GlobalOutlineParser:
             True if successful, False otherwise
         """
         try:
-            # Build Cypher query for creating location nodes
-            cypher_queries = []
-
-            for location in locations:
-                query = """
-                MERGE (l:Location {id: $id})
-                ON CREATE SET 
-                    l.name = $name,
-                    l.description = $description,
-                    l.category = $category,
-                    l.created_chapter = $created_chapter,
-                    l.is_provisional = $is_provisional,
-                    l.created_ts = timestamp(),
-                    l.updated_ts = timestamp()
-                ON MATCH SET 
-                    l.name = $name,
-                    l.description = $description,
-                    l.category = $category,
-                    l.created_chapter = $created_chapter,
-                    l.is_provisional = $is_provisional,
-                    l.updated_ts = timestamp()
-                """
-
-                params = {
-                    "id": location.id,
-                    "name": location.name,
-                    "description": location.description,
-                    "category": location.category,
-                    "created_chapter": location.created_chapter,
-                    "is_provisional": location.is_provisional,
-                }
-
-                cypher_queries.append((query, params))
-
-            # Execute all queries
-            for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+            await persist_locations(locations)
 
             logger.info("Successfully created %d Location nodes", len(locations), extra={"chapter": self.chapter_number})
 
@@ -499,7 +463,7 @@ class GlobalOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d Item nodes", len(items), extra={"chapter": self.chapter_number})
 
@@ -542,7 +506,7 @@ class GlobalOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully enriched %d Character nodes with arc properties", len(character_arcs), extra={"chapter": self.chapter_number})
 
@@ -560,7 +524,7 @@ class GlobalOutlineParser:
         """
         try:
             query = "MATCH (c:Character) RETURN c.name as name ORDER BY c.name"
-            result = await neo4j_manager.execute_read_query(query, {})
+            result = await get_services().database.execute_read_query(query, {})
             return [record["name"] for record in result if record.get("name")]
         except Exception as e:
             logger.error("Error fetching character names: %s", str(e), exc_info=True)
@@ -592,7 +556,7 @@ class GlobalOutlineParser:
 
         for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
             try:
-                response, _ = await llm_service.async_call_llm(
+                response, _ = await get_services().language_model.async_call_llm(
                     model_name=config.NARRATIVE_MODEL,
                     prompt=prompt,
                     temperature=0.3,
@@ -603,10 +567,9 @@ class GlobalOutlineParser:
                 )
 
                 data, _, _ = try_load_json_from_response(response)
-                logger.info("LLM response parsed: %s", data)
                 if not data or not isinstance(data, dict) or "possessions" not in data:
-                    logger.warning("No possessions key in LLM response. Response was: %s", response[:500])
-                    if attempt == 2:
+                    logger.warning("No possessions key in LLM response", response_length=len(response))
+                    if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
                         return {}
                     continue
 
@@ -617,12 +580,12 @@ class GlobalOutlineParser:
                     if character and item:
                         possessions[character] = item
 
-                logger.info("Parsed item possessions for %d characters: %s", len(possessions), possessions, extra={"chapter": 0})
+                logger.info("Parsed item possessions", character_count=len(possessions), extra={"chapter": 0})
                 return possessions
 
             except (json.JSONDecodeError, ValueError) as e:
-                if attempt == 2:
-                    logger.warning("Failed to extract item possessions after %d attempts: %s", attempt, str(e), exc_info=True)
+                if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
+                    logger.warning("Failed to extract item possessions", attempts=attempt, error_type=type(e).__name__)
                     return {}
 
         return {}
@@ -658,7 +621,7 @@ class GlobalOutlineParser:
                 cypher_queries.append((query, params))
 
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d POSSESSES relationships", len(possessions), extra={"chapter": self.chapter_number})
 

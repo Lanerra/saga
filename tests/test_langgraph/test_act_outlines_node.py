@@ -1,5 +1,6 @@
 # tests/test_langgraph/test_act_outlines_node.py
 import re
+from collections.abc import Awaitable, Callable, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,11 +11,12 @@ from core.langgraph.initialization.act_outlines_node import (
     generate_act_outlines,
 )
 from core.langgraph.initialization.chapter_outline_node import build_character_summary
-from core.langgraph.state import create_initial_state
+from core.langgraph.state import NarrativeState, create_initial_state
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def base_state():
+def base_state() -> NarrativeState:
     """Create a base state for testing."""
     return create_initial_state(
         project_id="test-project",
@@ -30,7 +32,7 @@ def base_state():
 
 
 @pytest.fixture
-def mock_content_manager():
+def mock_content_manager() -> Iterator[MagicMock]:
     """Create a mock ContentManager."""
     with patch("core.langgraph.initialization.act_outlines_node.ContentManager") as mock:
         instance = MagicMock()
@@ -44,12 +46,13 @@ def mock_content_manager():
 
 
 @pytest.fixture
-def mock_llm_service():
+def mock_llm_service() -> Iterator[MagicMock]:
     """Create a mock LLM service."""
-    with patch("core.langgraph.initialization.act_outlines_node.llm_service") as mock:
+    with patch_service('language_model') as mock:
 
-        async def side_effect(*args, **kwargs):
+        async def side_effect(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, int]]:
             prompt = kwargs.get("prompt", "")
+            assert isinstance(prompt, str)
             act_match = re.search(r"Act:\s*(\d+)\s*of\s*(\d+)", prompt)
             chapters_match = re.search(r"Chapters in act:\s*~(\d+)", prompt)
 
@@ -93,7 +96,7 @@ def mock_llm_service():
 
 
 @pytest.fixture
-def mock_get_functions():
+def mock_get_functions() -> Iterator[dict[str, MagicMock]]:
     """Mock the content getter functions."""
     with patch("core.langgraph.initialization.act_outlines_node.get_global_outline") as mock_global, patch("core.langgraph.initialization.act_outlines_node.get_character_sheets") as mock_chars:
         mock_global.return_value = {
@@ -119,9 +122,9 @@ def mock_get_functions():
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_success(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_success(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify successful generation of act outlines."""
-    state = {**base_state, "total_chapters": 21}
+    state: NarrativeState = {**base_state, "total_chapters": 21}
 
     result = await generate_act_outlines(state)
 
@@ -129,33 +132,35 @@ async def test_generate_act_outlines_success(base_state, mock_content_manager, m
     assert result["current_node"] == "act_outlines"
     assert result["last_error"] is None
     assert "act_outlines_ref" in result
+    assert result["act_outlines_ref"] is not None
     assert result["act_outlines_ref"]["size_bytes"] == 2048
     assert mock_llm_service.async_call_llm_json_object.call_count == 3
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_missing_global_outline(base_state, mock_content_manager, mock_get_functions):
+async def test_generate_act_outlines_missing_global_outline(base_state: NarrativeState, mock_content_manager: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify error when global outline is missing."""
     mock_get_functions["global"].return_value = None
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_act_outlines(state)
 
     assert result["initialization_step"] == "act_outlines_failed"
     assert result["current_node"] == "act_outlines"
+    assert result["last_error"] is not None
     assert "No global outline" in result["last_error"]
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_five_acts(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_five_acts(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify generation for five-act structure."""
     mock_get_functions["global"].return_value = {
         "act_count": 5,
         "raw_text": "A five-act story.",
     }
 
-    state = {**base_state, "total_chapters": 20}
+    state: NarrativeState = {**base_state, "total_chapters": 20}
 
     result = await generate_act_outlines(state)
 
@@ -164,12 +169,12 @@ async def test_generate_act_outlines_five_acts(base_state, mock_content_manager,
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_single_act_fails(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_single_act_fails(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify handling when single act generation fails."""
     call_count = [0]
-    original_side_effect = mock_llm_service.async_call_llm_json_object.side_effect
+    original_side_effect: Callable[..., Awaitable[tuple[dict[str, object], dict[str, int]]]] = mock_llm_service.async_call_llm_json_object.side_effect
 
-    async def mock_call(*args, **kwargs):
+    async def mock_call(*args: object, **kwargs: object) -> tuple[dict[str, object], dict[str, int]]:
         call_count[0] += 1
         if call_count[0] == 2:
             raise ValueError("LLM returned invalid JSON")
@@ -177,7 +182,7 @@ async def test_generate_act_outlines_single_act_fails(base_state, mock_content_m
 
     mock_llm_service.async_call_llm_json_object = AsyncMock(side_effect=mock_call)
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_act_outlines(state)
 
@@ -186,22 +191,23 @@ async def test_generate_act_outlines_single_act_fails(base_state, mock_content_m
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_all_fail(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_all_fail(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify error when all act generations fail."""
     mock_llm_service.async_call_llm_json_object = AsyncMock(side_effect=ValueError("LLM returned invalid JSON"))
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_act_outlines(state)
 
     assert result["initialization_step"] == "act_outlines_failed"
+    assert result["last_error"] is not None
     assert "Failed to generate any act outlines" in result["last_error"]
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_success(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_single_act_outline_success(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify successful generation of single act outline."""
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await _generate_single_act_outline(
         state=state,
@@ -213,6 +219,7 @@ async def test_generate_single_act_outline_success(base_state, mock_content_mana
     assert result is not None
     assert result["act_number"] == 1
     assert result["raw_text"] is not None
+    assert isinstance(result["raw_text"], str)
     assert "1. Act Summary" in result["raw_text"]
     assert "3. Key Events" in result["raw_text"]
     assert result["chapters_in_act"] == 7
@@ -223,11 +230,11 @@ async def test_generate_single_act_outline_success(base_state, mock_content_mana
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_empty_response(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_single_act_outline_empty_response(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify JSON wrapper contract violation is surfaced for direct callers."""
     mock_llm_service.async_call_llm_json_object = AsyncMock(side_effect=ValueError("LLM returned invalid JSON"))
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     with pytest.raises(ValueError, match="invalid JSON"):
         await _generate_single_act_outline(
@@ -239,11 +246,11 @@ async def test_generate_single_act_outline_empty_response(base_state, mock_conte
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_exception(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_single_act_outline_exception(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify exception handling during generation."""
     mock_llm_service.async_call_llm_json_object = AsyncMock(side_effect=Exception("LLM error"))
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await _generate_single_act_outline(
         state=state,
@@ -256,8 +263,8 @@ async def test_generate_single_act_outline_exception(base_state, mock_content_ma
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_rejects_extra_keys(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
-    state = {**base_state}
+async def test_generate_single_act_outline_rejects_extra_keys(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
+    state: NarrativeState = {**base_state}
 
     data = {
         "act_number": 1,
@@ -294,8 +301,8 @@ async def test_generate_single_act_outline_rejects_extra_keys(base_state, mock_c
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_rejects_key_events_wrong_length(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
-    state = {**base_state}
+async def test_generate_single_act_outline_rejects_key_events_wrong_length(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
+    state: NarrativeState = {**base_state}
 
     data = {
         "act_number": 1,
@@ -330,8 +337,8 @@ async def test_generate_single_act_outline_rejects_key_events_wrong_length(base_
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_rejects_cross_check_mismatch(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
-    state = {**base_state}
+async def test_generate_single_act_outline_rejects_cross_check_mismatch(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
+    state: NarrativeState = {**base_state}
 
     data = {
         "act_number": 2,
@@ -367,8 +374,8 @@ async def test_generate_single_act_outline_rejects_cross_check_mismatch(base_sta
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_rejects_missing_required_keys(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
-    state = {**base_state}
+async def test_generate_single_act_outline_rejects_missing_required_keys(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
+    state: NarrativeState = {**base_state}
 
     data = {
         "act_number": 1,
@@ -403,8 +410,8 @@ async def test_generate_single_act_outline_rejects_missing_required_keys(base_st
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_rejects_wrong_types(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
-    state = {**base_state}
+async def test_generate_single_act_outline_rejects_wrong_types(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
+    state: NarrativeState = {**base_state}
 
     data = {
         "act_number": "1",
@@ -439,14 +446,14 @@ async def test_generate_single_act_outline_rejects_wrong_types(base_state, mock_
         )
 
 
-def test_get_act_role_three_act_structure():
+def test_get_act_role_three_act_structure() -> None:
     """Verify act role determination for 3-act structure."""
     assert _get_act_role(1, 3) == "Setup/Introduction"
     assert _get_act_role(2, 3) == "Confrontation/Rising Action"
     assert _get_act_role(3, 3) == "Resolution/Climax"
 
 
-def test_get_act_role_five_act_structure():
+def test_get_act_role_five_act_structure() -> None:
     """Verify act role determination for 5-act structure."""
     assert _get_act_role(1, 5) == "Setup/Introduction"
     assert _get_act_role(2, 5) == "Rising Action"
@@ -455,7 +462,7 @@ def test_get_act_role_five_act_structure():
     assert _get_act_role(5, 5) == "Resolution/Climax"
 
 
-def test_get_act_role_four_act_structure():
+def test_get_act_role_four_act_structure() -> None:
     """Verify act role determination for non-standard act count."""
     assert _get_act_role(1, 4) == "Setup/Introduction"
     assert _get_act_role(2, 4) == "Development"
@@ -463,7 +470,7 @@ def test_get_act_role_four_act_structure():
     assert _get_act_role(4, 4) == "Resolution/Climax"
 
 
-def test_build_character_summary_with_descriptions():
+def test_build_character_summary_with_descriptions() -> None:
     """Verify character summary includes descriptions when requested."""
     character_sheets = {
         "Hero": {
@@ -485,14 +492,14 @@ def test_build_character_summary_with_descriptions():
     assert "A brave warrior" in result
 
 
-def test_build_character_summary_empty():
+def test_build_character_summary_empty() -> None:
     """Verify character summary with no characters."""
     result = build_character_summary({})
 
     assert result == "No characters defined."
 
 
-def test_build_character_summary_full_description():
+def test_build_character_summary_full_description() -> None:
     """Verify character summary includes full description text."""
     character_sheets = {
         "Hero": {
@@ -508,9 +515,9 @@ def test_build_character_summary_full_description():
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_uses_character_context(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_uses_character_context(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify act outline generation uses character context."""
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     await generate_act_outlines(state)
 
@@ -521,9 +528,9 @@ async def test_generate_act_outlines_uses_character_context(base_state, mock_con
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_uses_global_outline(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_uses_global_outline(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify act outline generation uses global outline."""
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     await generate_act_outlines(state)
 
@@ -532,9 +539,9 @@ async def test_generate_act_outlines_uses_global_outline(base_state, mock_conten
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_different_acts(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_single_act_outline_different_acts(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify generation works for different act numbers."""
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     for act_num in range(1, 6):
         result = await _generate_single_act_outline(
@@ -550,9 +557,9 @@ async def test_generate_single_act_outline_different_acts(base_state, mock_conte
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_calculates_chapters_per_act(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_calculates_chapters_per_act(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify correct calculation of chapters per act."""
-    state = {**base_state, "total_chapters": 18}
+    state: NarrativeState = {**base_state, "total_chapters": 18}
     mock_get_functions["global"].return_value = {
         "act_count": 3,
         "raw_text": "Global outline",
@@ -564,14 +571,14 @@ async def test_generate_act_outlines_calculates_chapters_per_act(base_state, moc
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_remainder_distribution(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_remainder_distribution(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """
     total_chapters not divisible by act_count should:
     - cover all chapters exactly once
     - distribute remainder to early acts (sizes differ by at most 1)
     """
     # 20 chapters, 3 acts => 7,7,6 with ranges: 1-7, 8-14, 15-20
-    state = {**base_state, "total_chapters": 20}
+    state: NarrativeState = {**base_state, "total_chapters": 20}
     mock_get_functions["global"].return_value = {
         "act_count": 3,
         "raw_text": "Global outline",
@@ -601,7 +608,7 @@ async def test_generate_act_outlines_remainder_distribution(base_state, mock_con
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_act_count_greater_than_chapters(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_act_count_greater_than_chapters(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """
     act_count > total_chapters should not crash; later acts should receive empty ranges.
 
@@ -612,7 +619,7 @@ async def test_generate_act_outlines_act_count_greater_than_chapters(base_state,
       act4: 3-2 (0) empty
       act5: 3-2 (0) empty
     """
-    state = {**base_state, "total_chapters": 2}
+    state: NarrativeState = {**base_state, "total_chapters": 2}
     mock_get_functions["global"].return_value = {
         "act_count": 5,
         "raw_text": "Global outline",
@@ -646,9 +653,9 @@ async def test_generate_act_outlines_act_count_greater_than_chapters(base_state,
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_uses_explicit_global_ranges(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_uses_explicit_global_ranges(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """If the global outline provides explicit chapters_start/chapters_end, use them."""
-    state = {**base_state, "total_chapters": 6}
+    state: NarrativeState = {**base_state, "total_chapters": 6}
     mock_get_functions["global"].return_value = {
         "act_count": 3,
         "acts": [
@@ -683,11 +690,11 @@ async def test_generate_act_outlines_uses_explicit_global_ranges(base_state, moc
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_without_character_sheets(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_without_character_sheets(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify generation works without character sheets."""
     mock_get_functions["chars"].return_value = {}
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_act_outlines(state)
 
@@ -696,7 +703,7 @@ async def test_generate_act_outlines_without_character_sheets(base_state, mock_c
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_stores_all_acts(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_act_outlines_stores_all_acts(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify all successfully generated acts are stored."""
     responses = []
     for act_number in range(1, 4):
@@ -730,7 +737,7 @@ async def test_generate_act_outlines_stores_all_acts(base_state, mock_content_ma
 
     mock_llm_service.async_call_llm_json_object = AsyncMock(side_effect=responses)
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_act_outlines(state)
 

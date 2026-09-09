@@ -27,7 +27,7 @@ Returns:
 
 from __future__ import annotations
 
-from .settings import settings as current_settings
+from . import get_settings
 
 
 def _add_issue(
@@ -63,6 +63,7 @@ def validate_all() -> dict:
         - `warning` when no errors exist but warning-level issues do,
         - `healthy` otherwise.
     """
+    current_settings = get_settings()
     issues: dict[str, list[dict[str, str]]] = {"errors": [], "warnings": [], "info": []}
 
     # 1️⃣ Pydantic field validation – already performed when the settings instance

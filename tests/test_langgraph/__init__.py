@@ -15,3 +15,21 @@ Test Modules:
 Run tests with:
     pytest tests/test_langgraph/ -v
 """
+
+from core.langgraph.state import ContentRef, ExtractedEntity, ExtractedRelationship, NarrativeState
+
+
+class InlineExtractionState(NarrativeState, total=False):
+    """Historical inline payloads used to exercise reference precedence and rejection."""
+
+    extracted_entities: dict[str, list[ExtractedEntity | dict[str, object]]]
+    extracted_relationships: list[ExtractedRelationship | dict[str, object]]
+    relationships_rejected_this_chapter: int
+    relationships_property_converted_this_chapter: int
+    relationship_rejection_rate: float
+
+
+class LegacyEmbeddingRef(ContentRef, total=False):
+    """Legacy embedding metadata supplied to patched storage readers."""
+
+    format: str

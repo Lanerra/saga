@@ -23,7 +23,7 @@ import numpy as np
 import structlog
 
 import config
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from prompts.prompt_renderer import render_prompt
 from utils.similarity import numpy_cosine_similarity
 
@@ -312,7 +312,7 @@ class RelationshipNormalizationService:
         if not uncached_types:
             return
 
-        embeddings = await llm_service.async_get_embeddings_batch(uncached_types)
+        embeddings = await get_services().language_model.async_get_embeddings_batch(uncached_types)
         for rel_type, embedding in zip(uncached_types, embeddings, strict=False):
             if embedding is not None:
                 self.canonical_embeddings[rel_type] = embedding
@@ -349,7 +349,7 @@ class RelationshipNormalizationService:
                 uncached_types.append(vocab_type)
 
         if uncached_types:
-            batch_embeddings = await llm_service.async_get_embeddings_batch(uncached_types)
+            batch_embeddings = await get_services().language_model.async_get_embeddings_batch(uncached_types)
             for text, embedding in zip(uncached_types, batch_embeddings, strict=False):
                 if embedding is not None:
                     self._cache_embedding(text, embedding)
@@ -385,7 +385,7 @@ class RelationshipNormalizationService:
             This is best-effort. Failures return None and are logged.
         """
         try:
-            embedding = await llm_service.async_get_embedding(text)
+            embedding = await get_services().language_model.async_get_embedding(text)
             return embedding
         except Exception as e:
             logger.error(
@@ -437,7 +437,7 @@ class RelationshipNormalizationService:
         )
 
         if use_json_mode:
-            data, _ = await llm_service.async_call_llm_json_object(
+            data, _ = await get_services().language_model.async_call_llm_json_object(
                 model_name=config.SMALL_MODEL,
                 prompt=prompt,
                 max_tokens=config.MAX_GENERATION_TOKENS,
@@ -468,7 +468,7 @@ class RelationshipNormalizationService:
             return decision_should_normalize
 
         try:
-            response, _ = await llm_service.async_call_llm(
+            response, _ = await get_services().language_model.async_call_llm(
                 model_name=config.SMALL_MODEL,
                 prompt=prompt,
                 max_tokens=config.MAX_GENERATION_TOKENS,

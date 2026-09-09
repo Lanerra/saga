@@ -29,7 +29,7 @@ import structlog
 
 import config
 import utils
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 
 logger = structlog.get_logger(__name__)
 
@@ -120,7 +120,7 @@ class TextDeduplicator:
             # Process embeddings in batches to control memory usage and API load
             for i in range(0, len(unique_indices), batch_size):
                 batch_indices = unique_indices[i : i + batch_size]
-                batch_tasks = [llm_service.async_get_embedding(segments[idx][0]) for idx in batch_indices]
+                batch_tasks = [get_services().language_model.async_get_embedding(segments[idx][0]) for idx in batch_indices]
                 batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
 
                 for batch_idx, result in zip(batch_indices, batch_results, strict=False):

@@ -6,6 +6,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.langgraph.nodes.commit_node import commit_to_graph
+from tests.fakes.service_context import patch_service
+
+pytestmark = pytest.mark.usefixtures("offline_commit_providers")
 
 
 class TestCommitNodeIntegration:
@@ -138,7 +141,7 @@ class TestCommitNodeIntegration:
                 "world_items": [],
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
+            with patch_service('database.execute_cypher_batch') as mock_execute:
                 mock_execute.side_effect = Exception("Database error")
 
                 result = await commit_to_graph(mock_state)  # type: ignore[arg-type]

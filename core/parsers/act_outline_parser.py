@@ -20,8 +20,7 @@ from typing import Any
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from models.kg_models import ActKeyEvent, Location, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
@@ -265,7 +264,7 @@ class ActOutlineParser:
         )
 
         try:
-            response, _ = await llm_service.async_call_llm(
+            response, _ = await get_services().language_model.async_call_llm(
                 model_name=config.NARRATIVE_MODEL,
                 prompt=prompt,
                 temperature=0.3,
@@ -353,7 +352,7 @@ class ActOutlineParser:
         )
 
         try:
-            response, _ = await llm_service.async_call_llm(
+            response, _ = await get_services().language_model.async_call_llm(
                 model_name=config.NARRATIVE_MODEL,
                 prompt=prompt,
                 temperature=0.3,
@@ -391,7 +390,7 @@ class ActOutlineParser:
         """
         try:
             query = "MATCH (c:Character) RETURN c.name as name ORDER BY c.name"
-            result = await neo4j_manager.execute_read_query(query, {})
+            result = await get_services().database.execute_read_query(query, {})
             return [record["name"] for record in result if record.get("name")]
         except Exception as e:
             logger.error("Error fetching character names: %s", str(e), exc_info=True)
@@ -405,7 +404,7 @@ class ActOutlineParser:
         """
         try:
             query = "MATCH (l:Location) RETURN l.name as name, l.description as description ORDER BY l.name"
-            result = await neo4j_manager.execute_read_query(query, {})
+            result = await get_services().database.execute_read_query(query, {})
             return [{"name": record["name"], "description": record["description"]} for record in result if record.get("name") and record.get("description")]
         except Exception as e:
             logger.error("Error fetching locations: %s", str(e), exc_info=True)
@@ -419,7 +418,7 @@ class ActOutlineParser:
         """
         try:
             query = "MATCH (i:Item) RETURN i.name as name, i.description as description ORDER BY i.name"
-            result = await neo4j_manager.execute_read_query(query, {})
+            result = await get_services().database.execute_read_query(query, {})
             return [{"name": record["name"], "description": record["description"]} for record in result if record.get("name")]
         except Exception as e:
             logger.error("Error fetching items: %s", str(e), exc_info=True)
@@ -487,7 +486,7 @@ class ActOutlineParser:
         extracted_items: list[dict[str, str]] = []
         for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
             try:
-                response, _ = await llm_service.async_call_llm(
+                response, _ = await get_services().language_model.async_call_llm(
                     model_name=config.NARRATIVE_MODEL,
                     prompt=prompt,
                     temperature=0.5,
@@ -595,7 +594,7 @@ class ActOutlineParser:
             cypher_queries.append((query, params))
 
         for query, params in cypher_queries:
-            await neo4j_manager.execute_write_query(query, params)
+            await get_services().database.execute_write_query(query, params)
 
         logger.info("Created %d new Location nodes from act outlines", len(locations))
         return True
@@ -636,7 +635,7 @@ class ActOutlineParser:
             cypher_queries.append((query, params))
 
         for query, params in cypher_queries:
-            await neo4j_manager.execute_write_query(query, params)
+            await get_services().database.execute_write_query(query, params)
 
         logger.info("Created %d new Item nodes from act outlines", len(items))
         return True
@@ -667,7 +666,7 @@ class ActOutlineParser:
 
             for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
                 try:
-                    response, _ = await llm_service.async_call_llm(
+                    response, _ = await get_services().language_model.async_call_llm(
                         model_name=config.NARRATIVE_MODEL,
                         prompt=prompt,
                         temperature=0.3,
@@ -679,7 +678,7 @@ class ActOutlineParser:
 
                     data, _, _ = try_load_json_from_response(response)
                     if not data or not isinstance(data, dict) or "featured_items" not in data:
-                        if attempt == 2:
+                        if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
                             break
                         continue
 
@@ -696,8 +695,8 @@ class ActOutlineParser:
                     break
 
                 except (json.JSONDecodeError, ValueError) as e:
-                    if attempt == 2:
-                        logger.warning("Failed to extract item involvement for event %s after %d attempts: %s", event.id, attempt, str(e), exc_info=True)
+                    if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
+                        logger.warning("Failed to extract item involvement", attempts=attempt, error_type=type(e).__name__)
 
         logger.info("Parsed item involvements for %d events", len(item_involvements), extra={"chapter": 0})
         return item_involvements
@@ -760,7 +759,7 @@ class ActOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d ActKeyEvent event nodes", len(act_events), extra={"chapter": self.chapter_number})
 
@@ -799,7 +798,7 @@ class ActOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully enriched %d Location nodes with names", len(location_names), extra={"chapter": self.chapter_number})
 
@@ -954,7 +953,7 @@ class ActOutlineParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info(
                 "Successfully created event relationships: PART_OF, HAPPENS_BEFORE, %d INVOLVES, %d OCCURS_AT, %d FEATURES_ITEM",

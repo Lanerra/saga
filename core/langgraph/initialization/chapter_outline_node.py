@@ -31,7 +31,7 @@ from core.langgraph.initialization.chapter_allocation import (
     determine_act_for_chapter as determine_act_for_chapter_from_outline,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -91,18 +91,19 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
             if enriched_outline:
                 updated_outlines = {**existing_outlines, chapter_number: enriched_outline}
                 enriched_outlines_for_storage: dict[str, Any] = {str(chapter): outline for chapter, outline in updated_outlines.items()}
+                version = content_manager.get_latest_version("chapter_outlines", "all") + 1
 
                 chapter_outlines_ref = content_manager.save_json(
                     enriched_outlines_for_storage,
                     "chapter_outlines",
                     "all",
-                    version=1,
+                    version=version,
                 )
 
                 logger.info(
                     "generate_chapter_outline: skeleton outline enriched",
                     chapter=chapter_number,
-                    version=1,
+                    version=version,
                 )
 
                 return {
@@ -167,8 +168,7 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
         act=act_number,
     )
 
-    # Always use version 1 for normal chapter generation
-    version = 1
+    version = content_manager.get_latest_version("chapter_outlines", "all") + 1
 
     # Externalize chapter_outlines to reduce state bloat
     chapter_outlines_ref = content_manager.save_json(
@@ -270,7 +270,7 @@ async def _generate_single_chapter_outline(
     )
 
     try:
-        response, usage = await llm_service.async_call_llm(
+        response, usage = await get_services().language_model.async_call_llm(
             model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,
@@ -553,7 +553,7 @@ Return the enriched outline in the same JSON format:
     prompt = prompt + "\n\n" + enrichment_context
 
     try:
-        response, usage = await llm_service.async_call_llm(
+        response, usage = await get_services().language_model.async_call_llm(
             model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,

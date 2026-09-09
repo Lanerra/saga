@@ -79,7 +79,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
+async def test_persist_initialization_files_yaml_prose_formatting(tmp_path: Path) -> None:
     state = _make_state(tmp_path)
 
     # Actually run the async function properly

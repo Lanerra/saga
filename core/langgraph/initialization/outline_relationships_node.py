@@ -14,7 +14,7 @@ from core.langgraph.content_manager import (
     get_global_outline,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from models.kg_constants import RELATIONSHIP_TYPES
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
@@ -82,12 +82,6 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
         setting=setting,
     )
 
-    if not relationships:
-        logger.info("extract_outline_relationships: no relationships extracted")
-        return {
-            "outline_relationships_ref": None,
-            "current_node": "outline_relationships",
-        }
 
     logger.info(
         "extract_outline_relationships: extracted relationships",
@@ -168,7 +162,7 @@ async def _extract_relationships_from_outline(
             model=model,
         )
 
-        response, _ = await llm_service.async_call_llm(
+        response, _ = await get_services().language_model.async_call_llm(
             model_name=model,
             prompt=prompt,
             temperature=0.5,
@@ -191,14 +185,14 @@ async def _extract_relationships_from_outline(
                 attempt=attempt,
                 error=str(e),
             )
-            if attempt == 2:
+            if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
                 logger.error(
                     "_extract_relationships_from_outline: max attempts exceeded",
                     response_preview=response[:500] if response else None,
                 )
-                return []
+                raise
 
-    return []
+    raise ValueError("Outline relationship extraction exhausted without a valid result")
 
 
 def _parse_relationships_extraction(response: str) -> list[dict[str, Any]]:
@@ -230,7 +224,9 @@ def _parse_relationships_extraction(response: str) -> list[dict[str, Any]]:
     if not isinstance(data, dict):
         raise ValueError("Expected JSON object with kg_triples key")
 
-    kg_triples_list = data.get("kg_triples", [])
+    if set(data) != {"kg_triples"}:
+        raise ValueError("Expected exactly the kg_triples field")
+    kg_triples_list = data["kg_triples"]
     if not isinstance(kg_triples_list, list):
         raise ValueError("kg_triples must be a JSON array")
 
@@ -238,7 +234,7 @@ def _parse_relationships_extraction(response: str) -> list[dict[str, Any]]:
 
     for triple in kg_triples_list:
         if not isinstance(triple, dict):
-            continue
+            raise ValueError("Relationship triple must be an object")
 
         subject = triple.get("subject", "")
         predicate = triple.get("predicate", "")
@@ -255,13 +251,7 @@ def _parse_relationships_extraction(response: str) -> list[dict[str, Any]]:
         predicate_text = str(predicate).strip() if predicate else ""
 
         if not subject_text or not target_text or not predicate_text:
-            logger.warning(
-                "_parse_relationships_extraction: skipping incomplete relationship",
-                subject=subject_text,
-                predicate=predicate_text,
-                target=target_text,
-            )
-            continue
+            raise ValueError("Relationship triple has an incomplete identity")
 
         relationships.append(
             {

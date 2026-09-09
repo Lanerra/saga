@@ -6,8 +6,9 @@ from async_lru import alru_cache  # type: ignore[import-untyped]
 from neo4j.exceptions import Neo4jError
 
 import config
-from core.db_manager import neo4j_manager
 from core.exceptions import handle_database_error
+from core.service_context import get_services
+from data_access.cache_coordinator import guard_graph_cache
 
 logger = structlog.get_logger(__name__)
 
@@ -105,7 +106,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
         all_input_pp_ids: set[str] = {f"pp_{novel_id}_{i + 1}" for i in range(len(input_plot_points_list))}
 
         try:
-            existing_pp_records = await neo4j_manager.execute_read_query(
+            existing_pp_records = await get_services().database.execute_read_query(
                 "MATCH (:NovelInfo {id: $novel_id_param})-[:HAS_PLOT_POINT]->(pp:PlotPoint) RETURN pp.id AS id",
                 {"novel_id_param": novel_id},
             )
@@ -205,7 +206,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
 
     try:
         if statements:
-            await neo4j_manager.execute_cypher_batch(statements)
+            await get_services().database.execute_cypher_batch(statements)
         logger.info(f"Successfully synchronized plot outline for novel '{novel_id}' to Neo4j.")
 
         from data_access.cache_coordinator import clear_plot_read_caches
@@ -221,6 +222,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
         raise handle_database_error("synchronize plot outline", e, novel_id=novel_id) from e
 
 
+@guard_graph_cache
 @alru_cache(maxsize=128)
 async def get_plot_outline_from_db() -> dict[str, Any]:
     """Return the plot outline for the active novel.
@@ -267,7 +269,7 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
         ) AS decoded
     RETURN apoc.map.merge(primitives, decoded) AS plot_data
     """
-    result_list = await neo4j_manager.execute_read_query(novel_info_query, {"novel_id_param": novel_id})
+    result_list = await get_services().database.execute_read_query(novel_info_query, {"novel_id_param": novel_id})
 
     if not result_list or not result_list[0] or not result_list[0].get("plot_data"):
         logger.warning(f"No NovelInfo node found with id '{novel_id}'. Returning empty plot outline.")
@@ -284,7 +286,7 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
     RETURN pp
     ORDER BY pp.sequence ASC
     """
-    pp_results = await neo4j_manager.execute_read_query(plot_points_query, {"novel_id_param": novel_id})
+    pp_results = await get_services().database.execute_read_query(plot_points_query, {"novel_id_param": novel_id})
 
     # Return plot points as structured dicts end-to-end.
     fetched_plot_points: list[dict[str, Any]] = []
@@ -352,7 +354,7 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
     RETURN pp_id AS id
     """
 
-    result = await neo4j_manager.execute_write_query(query, {"novel_id": novel_id, "desc": description, "prev_id": prev_id})
+    result = await get_services().database.execute_write_query(query, {"novel_id": novel_id, "desc": description, "prev_id": prev_id})
     if not result or not result[0] or not result[0].get("id"):
         raise handle_database_error("append plot point", Exception("No ID returned from plot point creation"), novel_id=novel_id, description=description)
 
@@ -378,7 +380,7 @@ async def plot_point_exists(description: str) -> bool:
     WHERE toLower(pp.description) = toLower($desc)
     RETURN count(pp) AS cnt
     """
-    result = await neo4j_manager.execute_read_query(query, {"novel_id": novel_id, "desc": description})
+    result = await get_services().database.execute_read_query(query, {"novel_id": novel_id, "desc": description})
     return bool(result and result[0] and result[0].get("cnt", 0) > 0)
 
 
@@ -395,5 +397,5 @@ async def get_last_plot_point_id() -> str | None:
     ORDER BY pp.sequence DESC
     LIMIT 1
     """
-    result = await neo4j_manager.execute_read_query(query, {"novel_id": novel_id})
+    result = await get_services().database.execute_read_query(query, {"novel_id": novel_id})
     return result[0].get("id") if result and result[0] and result[0].get("id") else None

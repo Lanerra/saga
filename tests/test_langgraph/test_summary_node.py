@@ -7,6 +7,7 @@ import yaml
 from core.langgraph.content_manager import ContentManager, get_previous_summaries
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.state import NarrativeState
+from core.service_context import get_services
 from data_access import chapter_queries
 
 
@@ -39,7 +40,6 @@ async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a 
 
     # We monkeypatch by temporarily importing and overriding llm_service.async_call_llm.
     # Import inside function to avoid test discovery side-effects.
-    from core.langgraph.nodes import summary_node as summary_module
 
     async def fake_async_call_llm(
         model_name: str,
@@ -49,7 +49,7 @@ async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a 
         allow_fallback: bool,
         auto_clean_response: bool,
         system_prompt: str,
-    ):
+    ) -> tuple[str, dict[str, int]]:
         import json
 
         return json.dumps({"summary": summary_text}), {
@@ -58,12 +58,12 @@ async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a 
             "total_tokens": 0,
         }
 
-    original_call = summary_module.llm_service.async_call_llm
-    original_write = summary_module.neo4j_manager.execute_write_query
+    original_call = get_services().language_model.async_call_llm
+    original_write = get_services().database.execute_write_query
 
     write_calls: list[tuple[str, dict]] = []
 
-    async def fake_write(query: str, params=None):
+    async def fake_write(query: str, params: dict[str, object] | None = None) -> list[dict[str, object]]:
         p = params or {}
         write_calls.append((query, p))
 
@@ -78,12 +78,12 @@ async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a 
         return []
 
     try:
-        summary_module.llm_service.async_call_llm = fake_async_call_llm  # type: ignore[assignment]
-        summary_module.neo4j_manager.execute_write_query = fake_write  # type: ignore[assignment]
+        get_services().language_model.async_call_llm = fake_async_call_llm  # type: ignore[assignment]
+        get_services().database.execute_write_query = fake_write  # type: ignore[assignment]
         new_state = await summarize_chapter(state)
     finally:
-        summary_module.llm_service.async_call_llm = original_call  # type: ignore[assignment]
-        summary_module.neo4j_manager.execute_write_query = original_write  # type: ignore[assignment]
+        get_services().language_model.async_call_llm = original_call  # type: ignore[assignment]
+        get_services().database.execute_write_query = original_write  # type: ignore[assignment]
 
     # Ensure node updated state as expected
     assert new_state["current_node"] == "summarize"

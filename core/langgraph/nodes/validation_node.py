@@ -20,9 +20,10 @@ from typing import Any
 
 import structlog
 
-from config.settings import settings
-from core.db_manager import neo4j_manager
+import config
+from core.langgraph.quality_policy import configured_policy, record_check
 from core.langgraph.state import Contradiction, NarrativeState
+from data_access.validation_queries import fetch_prior_accepted_facts, get_candidate_relationship_assertions
 from models.kg_constants import CONTRADICTORY_TRAIT_PAIRS
 
 logger = structlog.get_logger(__name__)
@@ -121,13 +122,14 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         revision decisions are driven by contradiction severity and plot stagnation.
     """
     # Check if validation is disabled
-    if not settings.validation.ENABLE_VALIDATION:
+    if not config.settings.validation.ENABLE_VALIDATION:
         logger.info("validate_consistency: validation disabled, skipping all checks")
         return {
             "contradictions": [],
             "needs_revision": False,
             "current_node": "validate_consistency",
-            "last_error": None,
+            "quality_policy": state.get("quality_policy") or configured_policy(),
+            "quality_checks": record_check(state, "consistency", "skipped", "disabled"),
         }
 
     # Initialize content manager to read externalized content
@@ -139,6 +141,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     )
 
     content_manager = ContentManager(require_project_dir(state))
+    candidate_assertions = get_candidate_relationship_assertions(state, content_manager)
 
     # Get extraction results (prefers externalized content)
     extracted_entities = get_extracted_entities(state, content_manager)
@@ -191,7 +194,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     # In permissive mode, this only logs info messages and never blocks.
     # Relationship validation is now informational only to support creative freedom.
     relationship_contradictions = await _validate_relationships(
-        extracted_relationships,
+        candidate_assertions,
         state.get("current_chapter", 1),
         extracted_entities,
     )
@@ -201,9 +204,11 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 
     # Check 2: Character trait consistency
     # NEW FUNCTIONALITY: Checks for contradictory character traits
+    prior_facts = await fetch_prior_accepted_facts(state)
     trait_contradictions = await _check_character_traits(
         extracted_entities.get("characters", []),
         state.get("current_chapter", 1),
+        prior_facts["characters"],
     )
     contradictions.extend(trait_contradictions)
 
@@ -244,7 +249,8 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         "contradictions": contradictions,
         "needs_revision": needs_revision,
         "current_node": "validate_consistency",
-        "last_error": None,
+        "quality_policy": state.get("quality_policy") or configured_policy(),
+        "quality_checks": record_check(state, "consistency", "completed"),
     }
 
 
@@ -384,102 +390,29 @@ async def _validate_relationships(
 async def _check_character_traits(
     extracted_chars: list[Any],
     current_chapter: int,
+    existing_characters: dict[str, list[dict[str, Any]]],
 ) -> list[Contradiction]:
-    """
-    Compare extracted character attributes with established traits.
-
-    NEW FUNCTIONALITY: Not in current SAGA, but specified in LangGraph architecture.
-
-    This function checks for contradictory trait pairs like "brave" vs "cowardly"
-    by querying Neo4j for established character traits and comparing them with
-    newly extracted attributes.
-
-    Args:
-        extracted_chars: List of ExtractedEntity instances for characters
-        current_chapter: Current chapter number
-
-    Returns:
-        List of Contradiction instances for trait inconsistencies
-    """
-    if not extracted_chars:
-        return []
-
-    contradictions = []
-
-    try:
-        for char in extracted_chars:
-            character_name = char.get("name") if isinstance(char, dict) else getattr(char, "name", None)
-            if not isinstance(character_name, str) or not character_name:
-                continue
-
-            # Get established traits from Neo4j (from traits property)
-            query = """
-                MATCH (c:Character {name: $name})
-                RETURN coalesce(c.traits, []) AS traits,
-                       c.created_chapter AS first_chapter,
-                       c.description AS description
-                LIMIT 1
-            """
-
-            result = await neo4j_manager.execute_read_query(query, {"name": character_name})
-
-            if result and len(result) > 0:
-                existing = result[0]
-                # Normalize established traits defensively (Neo4j may return mixed casing)
-                traits_list = existing.get("traits", [])
-                established_traits = set(_coerce_traits_list(traits_list))
-
-                # Extract *new* traits from the extraction contract:
-                #   ExtractedEntity.attributes["traits"] -> list[str]
-                new_trait_candidates = _get_character_trait_values_for_validation(char)
-
-                # Check for contradictions (pair values are already lowercase in our list)
-                for trait_a, trait_b in CONTRADICTORY_TRAIT_PAIRS:
-                    # Check if established trait conflicts with new trait
-                    if trait_a in established_traits and trait_b in new_trait_candidates:
-                        contradictions.append(
-                            Contradiction(
-                                type="character_trait",
-                                description=f"{character_name} was established as '{trait_a}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_b}'",
-                                conflicting_chapters=[
-                                    existing.get("first_chapter", 0),
-                                    current_chapter,
-                                ],
-                                severity="major",
-                                suggested_fix=f"Remove '{trait_b}' or explain character development",
-                            )
-                        )
-                    # Also check reverse
-                    elif trait_b in established_traits and trait_a in new_trait_candidates:
-                        contradictions.append(
-                            Contradiction(
-                                type="character_trait",
-                                description=f"{character_name} was established as '{trait_b}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_a}'",
-                                conflicting_chapters=[
-                                    existing.get("first_chapter", 0),
-                                    current_chapter,
-                                ],
-                                severity="major",
-                                suggested_fix=f"Remove '{trait_a}' or explain character development",
-                            )
-                        )
-
-        logger.debug(
-            "_check_character_traits: trait checking complete",
-            characters=len(extracted_chars),
-            contradictions=len(contradictions),
-        )
-
-        return contradictions
-
-    except Exception as e:
-        logger.error(
-            "_check_character_traits: error during trait checking",
-            error=str(e),
-            exc_info=True,
-        )
-        # Return empty list on error to avoid breaking workflow
-        return []
+    """Compare candidate traits with the latest accepted snapshot per character."""
+    findings: set[tuple[str, int, str, str]] = set()
+    for character in extracted_chars:
+        name = character.get("name") if isinstance(character, dict) else getattr(character, "name", None)
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Candidate character identity missing")
+        history = [item for item in existing_characters.get(name, []) if type(item["first_chapter"]) is int and 0 < item["first_chapter"] < current_chapter]
+        latest_chapter = max((item["first_chapter"] for item in history), default=0)
+        established = {trait for item in history if item["first_chapter"] == latest_chapter for trait in _coerce_traits_list(item["traits"])}
+        candidates = _get_character_trait_values_for_validation(character)
+        for first, second in CONTRADICTORY_TRAIT_PAIRS:
+            for previous, candidate in ((first, second), (second, first)):
+                if previous in established and candidate in candidates:
+                    findings.add((name, latest_chapter, previous, candidate))
+    return [Contradiction(
+        type="character_trait",
+        description=f"{name} was established as '{previous}' in chapter {chapter}, but is now described as '{candidate}'",
+        conflicting_chapters=[chapter, current_chapter],
+        severity="major",
+        suggested_fix=f"Remove '{candidate}' or explain character development",
+    ) for name, chapter, previous, candidate in sorted(findings)]
 
 
 def _is_plot_stagnant(
@@ -508,7 +441,7 @@ def _is_plot_stagnant(
     """
     # Check 1: Minimum word count
     word_count = state.get("draft_word_count", 0)
-    minimum = settings.PLOT_STAGNATION_MIN_WORD_COUNT
+    minimum = config.settings.PLOT_STAGNATION_MIN_WORD_COUNT
     if word_count < minimum:
         logger.debug(
             "_is_plot_stagnant: insufficient word count",
@@ -534,13 +467,13 @@ def _is_plot_stagnant(
     entity_count = len(entities.get("characters", [])) + len(entities.get("world_items", [])) + len(entities.get("events", []))
     relationship_count = len(relationships)
 
-    if entity_count < settings.PLOT_STAGNATION_MIN_ENTITIES and relationship_count < settings.PLOT_STAGNATION_MIN_RELATIONSHIPS:
+    if entity_count < config.settings.PLOT_STAGNATION_MIN_ENTITIES and relationship_count < config.settings.PLOT_STAGNATION_MIN_RELATIONSHIPS:
         logger.debug(
             "_is_plot_stagnant: insufficient entities and relationships",
             entity_count=entity_count,
             relationship_count=relationship_count,
-            minimum_entities=settings.PLOT_STAGNATION_MIN_ENTITIES,
-            minimum_relationships=settings.PLOT_STAGNATION_MIN_RELATIONSHIPS,
+            minimum_entities=config.settings.PLOT_STAGNATION_MIN_ENTITIES,
+            minimum_relationships=config.settings.PLOT_STAGNATION_MIN_RELATIONSHIPS,
         )
         return True
 

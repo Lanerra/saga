@@ -13,17 +13,22 @@ Migration Reference: docs/langgraph_migration_plan.md - Step 1.2.1
 
 Notes:
     This node performs Neo4j I/O and cache invalidation for `data_access` reads.
+
+Module layout (I4 refactor):
+    commit_node.py           — main entry: commit_to_graph (~250 lines)
+    commit_validation.py     — filtering + dedup logic
+    commit_entity_conversion.py — CharacterProfile/WorldItem conversion
+    commit_graph_ops.py      — chapter node + embedding aggregation
 """
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any, Literal, cast
 
-import numpy as np
 import structlog
 
 import config
+from core.langgraph.chapter_lifecycle import ChapterLifecycle
 from core.langgraph.content_manager import (
     ContentManager,
     ContentRef,
@@ -34,9 +39,21 @@ from core.langgraph.content_manager import (
     load_scene_embeddings,
     require_project_dir,
 )
+from core.langgraph.nodes.commit_entity_conversion import (
+    _convert_to_character_profiles,
+    _convert_to_world_items,
+)
+from core.langgraph.nodes.commit_graph_ops import (
+    _aggregate_scene_embeddings_to_chapter,
+    _build_chapter_node_statement,
+)
+from core.langgraph.nodes.commit_validation import (
+    _deduplicate_entity_list,
+    _filter_invalid_relationships,
+)
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from core.schema_validator import canonicalize_entity_type_for_persistence
-from data_access import chapter_queries
+from data_access.cypher_builders.native_builders import chapter_assertion_delete_statement, relationship_statement
 from data_access.kg_queries import (
     _get_cypher_labels as _get_cypher_labels,
 )
@@ -45,7 +62,7 @@ from data_access.kg_queries import (
     validate_relationship_type_for_cypher_interpolation,
 )
 from models.kg_models import CharacterProfile, WorldItem
-from utils.text_processing import generate_entity_id, validate_and_filter_traits
+from utils import classify_category_label
 
 logger = structlog.get_logger(__name__)
 
@@ -187,69 +204,6 @@ async def _validate_entities_before_commit(
     return (len(errors) == 0, errors)
 
 
-async def _rollback_commit(chapter: int) -> bool:
-    """Rollback the commit for the specified chapter.
-
-    This function removes all data committed for a specific chapter,
-    including entities, relationships, and chapter nodes created in that commit.
-
-    Args:
-        chapter: Chapter number to rollback
-
-    Returns:
-        True if rollback was successful, False otherwise.
-    """
-    try:
-        from core.db_manager import neo4j_manager
-
-        # Build rollback statements
-        statements = []
-
-        # 1. Delete relationships added in this chapter
-        delete_rels_query = """
-        MATCH ()-[r]->()
-        WHERE coalesce(r.chapter_added, -1) = $chapter
-        DELETE r
-        """
-        statements.append((delete_rels_query, {"chapter": chapter}))
-
-        # 2. Delete entities created in this chapter (that aren't referenced by other chapters)
-        # Only delete if created_chapter equals chapter and no other relationships exist
-        delete_entities_query = """
-        MATCH (n)
-        WHERE n.created_chapter = $chapter
-        AND NOT (n)--()
-        DELETE n
-        """
-        statements.append((delete_entities_query, {"chapter": chapter}))
-
-        # 3. Delete chapter node
-        delete_chapter_query = """
-        MATCH (c:Chapter {number: $chapter})
-        DELETE c
-        """
-        statements.append((delete_chapter_query, {"chapter": chapter}))
-
-        # Execute rollback in a transaction
-        await neo4j_manager.execute_cypher_batch(statements)
-
-        logger.info(
-            "_rollback_commit: successfully rolled back chapter",
-            chapter=chapter,
-        )
-
-        return True
-
-    except Exception as e:
-        logger.error(
-            "_rollback_commit: rollback failed",
-            error=str(e),
-            chapter=chapter,
-            exc_info=True,
-        )
-        return False
-
-
 async def _get_existing_entity_names() -> set[str]:
     """Query Neo4j for names of all existing Character, Location, Event, and Item nodes.
 
@@ -261,10 +215,81 @@ async def _get_existing_entity_names() -> set[str]:
     WHERE n:Character OR n:Location OR n:Event OR n:Item
     RETURN DISTINCT toLower(n.name) AS name
     """
-    from core.db_manager import neo4j_manager
+    from core.service_context import get_services
 
-    results = await neo4j_manager.execute_read_query(query, {})
+    results = await get_services().database.execute_read_query(query, {})
     return {row["name"] for row in results if row.get("name")}
+
+
+async def _prepare_explicit_entity_admission(
+    entities: list[ExtractedEntity],
+) -> tuple[list[tuple[str, dict[str, Any]]], frozenset[tuple[str, str]]]:
+    """Validate explicit identities before protective name filtering.
+
+    An absent ID retains legacy name-only admission. A supplied ID must be a
+    nonblank string and cannot compete with another entity's normalized name,
+    even across labels. Existing profiles never receive scene-level semantic
+    updates; an otherwise admitted alias may receive embeddings and assertions.
+    Recheck identity/existence in the write transaction before chapter deletion.
+    """
+    from core.service_context import get_services
+
+    candidates: list[dict[str, Any]] = []
+    identities: dict[tuple[str, str], ExtractedEntity] = {}
+    for entity in entities:
+        if "id" not in entity.attributes:
+            continue
+        identifier = entity.attributes["id"]
+        if not isinstance(identifier, str) or not identifier.strip():
+            raise ValueError("Invalid canonical entity ID")
+        label = canonicalize_entity_type_for_persistence(entity.type)
+        if label != "Character":
+            category = entity.attributes.get("category", entity.type.lower())
+            if classify_category_label(category) != label:
+                raise ValueError("Explicit canonical entity label conflicts with category")
+        key = (label, identifier)
+        if key in identities:
+            if entity != identities[key]:
+                raise ValueError("Conflicting explicit canonical entity inputs")
+            continue
+        identities[key] = entity
+        for other in entities:
+            if other.name.strip().lower() == entity.name.strip().lower() and (
+                canonicalize_entity_type_for_persistence(other.type), other.attributes.get("id")
+            ) != key:
+                raise ValueError("Explicit canonical entity ID/name conflict in batch")
+        candidates.append({"index": len(candidates), "label": label, "id": identifier, "name": entity.name})
+    if not candidates:
+        return [], frozenset()
+
+    query = """
+        UNWIND $admission_entities AS entity
+        OPTIONAL MATCH (candidate)
+        WHERE entity.label IN labels(candidate) AND candidate.id = entity.id
+        WITH entity, collect(candidate) AS candidates
+        CALL apoc.util.validate(size(candidates) > 1, 'Ambiguous canonical entity ID', [])
+        WITH entity, head(candidates) AS found
+        OPTIONAL MATCH (named)
+        WHERE (named:Character OR named:Location OR named:Item OR named:Event)
+          AND toLower(trim(named.name)) = toLower(trim(entity.name))
+        WITH entity, found, collect(named) AS names
+        CALL apoc.util.validate(
+            any(named IN names WHERE found IS NULL OR named <> found),
+            'Explicit canonical entity ID/name conflict', [])
+        CALL apoc.util.validate(
+            entity.existing IS NOT NULL AND entity.existing <> (found IS NOT NULL),
+            'Canonical entity changed during admission', [])
+        RETURN entity.index AS index, found IS NOT NULL AS existing
+    """
+    rows = await get_services().database.execute_read_query(query, {"admission_entities": candidates})
+    if {row["index"] for row in rows} != set(range(len(candidates))) or len(rows) != len(candidates):
+        raise ValueError("Incomplete canonical entity admission")
+    for row in rows:
+        if type(row["existing"]) is not bool:
+            raise ValueError("Invalid canonical entity admission result")
+        candidates[row["index"]]["existing"] = row["existing"]
+    protected = frozenset((entity["label"], entity["id"]) for entity in candidates if entity["existing"])
+    return [(query, {"admission_entities": candidates})], protected
 
 
 async def commit_to_graph(state: NarrativeState) -> NarrativeState:
@@ -288,12 +313,30 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
     Notes:
         - This node performs Neo4j I/O via
-          [`neo4j_manager.execute_cypher_batch()`](core/db_manager.py:310).
+          [`get_services().database.execute_cypher_batch()`](core/db_manager.py:310).
         - After successful writes it clears `data_access` read caches to prevent
           stale reads within the same process.
-        - If validation fails after commit, the node will attempt to rollback
-          the changes.
+        - The database manager owns transaction rollback. Preparation or batch
+          failures never trigger chapter-wide compensating deletes.
+        - Cache failures after a successful batch are operational warnings, not
+          failed graph commits. A batch exception is not proof of rollback.
     """
+    lifecycle = None
+    if "lifecycle_version" in state:
+        try:
+            lifecycle = ChapterLifecycle(state).stage()
+            state = {**state, **lifecycle.state_update("staged")}
+            receipt = await lifecycle.graph_receipt()
+            if lifecycle.files.exists(lifecycle.phase_path("compensation_required")):
+                raise ValueError("Rejected attempt requires revision reconciliation")
+            if receipt is not None:
+                if receipt["phase"] != "committed":
+                    raise ValueError("Attempt is not eligible for commit replay")
+                lifecycle.observe("committed")
+                return {**lifecycle.state_update("committed"), "current_node": "commit_to_graph", "has_fatal_error": False, "last_error": None}
+        except Exception as error:
+            return {"current_node": "commit_to_graph", "last_error": str(error), "has_fatal_error": True, "error_node": "commit"}
+
     # Initialize content manager to read externalized content
     content_manager = ContentManager(require_project_dir(state))
 
@@ -350,34 +393,21 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             "error_node": "commit",
         }
 
-    # KG deduplication: filter out entities that already exist in Neo4j.
-    # This prevents scene-level extraction from overwriting init-committed
-    # entities with lower-quality data. Relationships still get created.
-    existing_names = await _get_existing_entity_names()
-    if existing_names:
-        original_character_count = len(char_entities)
-        original_world_count = len(world_entities)
-
-        char_entities = [e for e in char_entities if e.name.lower() not in existing_names]
-        world_entities = [e for e in world_entities if e.name.lower() not in existing_names]
-
-        filtered_characters = original_character_count - len(char_entities)
-        filtered_world_items = original_world_count - len(world_entities)
-
-        if filtered_characters or filtered_world_items:
-            logger.info(
-                "commit_to_graph: filtered entities already in KG",
-                filtered_characters=filtered_characters,
-                filtered_world_items=filtered_world_items,
-                remaining_characters=len(char_entities),
-                remaining_world_items=len(world_entities),
-            )
+    relationship_characters = char_entities
+    relationship_world_items = world_entities
 
     # Track mappings for deduplication
     char_mappings: dict[str, str] = {}
     world_mappings: dict[str, str] = {}  # name -> deterministic id
 
     try:
+        admission_statements, protected_identities = await _prepare_explicit_entity_admission([*char_entities, *world_entities])
+        # Name-only and same-name profiles retain legacy protection, while explicit
+        # ID/name conflicts must fail before any candidate can be silently filtered.
+        existing_names = await _get_existing_entity_names()
+        char_entities = [entity for entity in char_entities if entity.name.lower() not in existing_names]
+        world_entities = [entity for entity in world_entities if entity.name.lower() not in existing_names]
+
         # Step 1: Deduplicate characters (READ operations)
         # Since entities are canonical from Stage 1, no deduplication is needed
         for char in char_entities:
@@ -400,6 +430,8 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 continue
 
             # First time seeing this name, generate deterministic ID
+            from utils.text_processing import generate_entity_id
+
             deduplicated_id = generate_entity_id(
                 item.name,
                 item.attributes.get("category", ""),
@@ -417,11 +449,13 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
         # Step 4-6: Collect ALL Cypher statements for single transaction
         # This ensures atomicity - either all succeed or all are rolled back
-        all_statements: list[tuple[str, dict]] = []
+        all_statements: list[tuple[str, dict]] = [*admission_statements, chapter_assertion_delete_statement(chapter)]
 
         # Step 4a: Collect entity persistence statements
         if character_models or world_item_models:
-            entity_statements = await _build_entity_persistence_statements(character_models, world_item_models, state.get("current_chapter", 1))
+            entity_statements = await _build_entity_persistence_statements(
+                character_models, world_item_models, state.get("current_chapter", 1), protected_identities=protected_identities,
+            )
             all_statements.extend(entity_statements)
 
         # Step 4b: Collect relationship statements
@@ -434,15 +468,15 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
         relationship_statements = await _build_relationship_statements(
             relationships,
-            char_entities,
-            world_entities,
+            relationship_characters,
+            relationship_world_items,
             char_mappings,
             world_mappings,
             state.get("current_chapter", 1),
             is_from_flawed_draft=False,
         )
         if relationship_statements:
-            all_statements.extend(relationship_statements)
+            all_statements.extend(relationship_statements[1:])
 
         # Step 4c: Collect chapter node statement
         content_manager = ContentManager(require_project_dir(state))
@@ -450,7 +484,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         from core.exceptions import MissingDraftReferenceError
 
         try:
-            draft_text = get_draft_text(state, content_manager)
+            get_draft_text(state, content_manager)
         except MissingDraftReferenceError as error:
             return {
                 "current_node": "commit_to_graph",
@@ -485,12 +519,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             except Exception as e:
                 logger.warning("commit_to_graph: failed to load chapter embedding", error=str(e))
         elif state.get("generated_embedding"):
-            # Fallback for backward compatibility or if not externalized yet
-            generated_embedding = state.get("generated_embedding")
-            if isinstance(generated_embedding, list):
-                embedding = cast(list[float], generated_embedding)
-            else:
-                embedding = None
+            raise ValueError("Legacy generated_embedding has no producer identity; regenerate an identified embedding artifact")
 
         chapter_statement = _build_chapter_node_statement(
             chapter_number=state.get("current_chapter", 1),
@@ -502,28 +531,12 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         # Step 5: Execute ALL statements in a SINGLE transaction
         # If any statement fails, all are rolled back
         if all_statements:
-            from core.db_manager import neo4j_manager
+            from core.service_context import get_services
 
-            await neo4j_manager.execute_cypher_batch(all_statements)
-
-            # Cache invalidation after Neo4j writes
-            #
-            # Rationale:
-            # - `data_access.*_queries` read functions are cached via async_lru.
-            # - This node is the primary persistence boundary for Phase 2, so failing to clear
-            #   caches here can cause stale reads (e.g., recently created characters/world items
-            #   not visible; KG triple reads not reflecting new relationships).
-            #
-            # Local import avoids eager import side effects / circular deps.
-            from data_access.cache_coordinator import (
-                clear_character_read_caches,
-                clear_kg_read_caches,
-                clear_world_read_caches,
-            )
-
-            cleared_character = clear_character_read_caches()
-            cleared_world = clear_world_read_caches()
-            cleared_kg = clear_kg_read_caches()
+            if lifecycle is None:
+                await get_services().database.execute_cypher_batch(all_statements)
+            else:
+                await lifecycle.commit(all_statements)
 
             logger.info(
                 "commit_to_graph: successfully committed to knowledge graph in single transaction",
@@ -532,18 +545,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 world_items=len(world_item_models),
                 relationships=len(relationships),
                 total_statements=len(all_statements),
-                cache_cleared={
-                    "character": cleared_character,
-                    "world": cleared_world,
-                    "kg": cleared_kg,
-                },
             )
-
-        return {
-            "current_node": "commit_to_graph",
-            "last_error": None,
-            "has_fatal_error": False,
-        }
 
     except Exception as e:
         logger.error(
@@ -553,21 +555,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
 
-        # Attempt rollback on commit failure
-        chapter = state.get("current_chapter", 1)
-        rollback_success = await _rollback_commit(chapter)
-
-        if rollback_success:
-            logger.info(
-                "commit_to_graph: rollback successful after commit failure",
-                chapter=chapter,
-            )
-        else:
-            logger.warning(
-                "commit_to_graph: rollback failed after commit failure",
-                chapter=chapter,
-            )
-
         return {
             "current_node": "commit_to_graph",
             "last_error": f"Commit to graph failed: {e}",
@@ -575,250 +562,41 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             "error_node": "commit",
         }
 
+    try:
+        from data_access.cache_coordinator import (
+            clear_character_read_caches,
+            clear_kg_read_caches,
+            clear_world_read_caches,
+        )
 
-def _filter_invalid_relationships(
-    relationships: list[ExtractedRelationship],
-) -> list[ExtractedRelationship]:
-    """Filter out relationships with abstract/invalid entities.
-
-    Rejects relationships where the target is:
-    - Generic concepts (truth, knowledge, secrets, understanding)
-    - Descriptive phrases (unknown dangers, the bloom)
-    - Relationship pairs (Elias and Caleb)
-    - Goals/actions (to understand the bloom)
-
-    Args:
-        relationships: Extracted relationships to validate.
-
-    Returns:
-        Filtered list containing only relationships with valid, concrete entities.
-    """
-    import re
-
-    invalid_patterns = [
-        r"^(the|a|an)\s",  # Articles: "the bloom", "a secret"
-        r"\s+and\s+",  # Pairs: "Elias and Caleb"
-        r"^to\s",  # Goals: "to understand"
-        r"(truth|knowledge|secrets?|understanding|consequences)",  # Abstract concepts
-        r"(unknown|mysterious)\s",  # Descriptive adjectives
-        r"('s|')\s",  # Possessives: "Elias's decision"
-    ]
-
-    combined_pattern = "|".join(f"({p})" for p in invalid_patterns)
-    pattern = re.compile(combined_pattern, re.IGNORECASE)
-
-    valid = []
-    filtered_count = 0
-
-    for rel in relationships:
-        target = rel.target_name.strip()
-        source = rel.source_name.strip()
-
-        # Reject if target matches invalid pattern
-        if pattern.search(target):
-            logger.debug(
-                "_filter_invalid_relationships: rejected abstract target",
-                source=source,
-                predicate=rel.relationship_type,
-                target=target,
-            )
-            filtered_count += 1
-            continue
-
-        # Reject if source matches invalid pattern
-        if pattern.search(source):
-            logger.debug(
-                "_filter_invalid_relationships: rejected abstract source",
-                source=source,
-                predicate=rel.relationship_type,
-                target=target,
-            )
-            filtered_count += 1
-            continue
-
-        # Reject single-word lowercase concepts (except proper names)
-        if " " not in target and target.islower() and target not in config.settings.RELATIONSHIP_LOWERCASE_TARGET_ALLOWLIST:
-            logger.debug(
-                "_filter_invalid_relationships: rejected lowercase concept",
-                target=target,
-            )
-            filtered_count += 1
-            continue
-
-        valid.append(rel)
-
-    if filtered_count > 0:
+        cleared_character = clear_character_read_caches()
+        cleared_world = clear_world_read_caches()
+        cleared_kg = clear_kg_read_caches()
         logger.info(
-            "_filter_invalid_relationships: filtered abstract concepts",
-            original_count=len(relationships),
-            valid_count=len(valid),
-            filtered_count=filtered_count,
+            "commit_to_graph: postcommit caches invalidated",
+            chapter=chapter,
+            cache_cleared={"character": cleared_character, "world": cleared_world, "kg": cleared_kg},
+        )
+    except Exception as error:
+        logger.warning(
+            "commit_to_graph: postcommit cache invalidation failed",
+            chapter=chapter,
+            error=str(error),
         )
 
-    return valid
-
-
-def _deduplicate_entity_list(entities: list[ExtractedEntity]) -> list[ExtractedEntity]:
-    """Remove within-batch duplicate entities by name.
-
-    Args:
-        entities: Extracted entities for a single commit batch.
-
-    Returns:
-        A list with duplicate names removed (keeping the first occurrence).
-    """
-    seen_names: set[str] = set()
-    unique_entities: list[ExtractedEntity] = []
-
-    for entity in entities:
-        if entity.name not in seen_names:
-            unique_entities.append(entity)
-            seen_names.add(entity.name)
-        else:
-            logger.debug(
-                "_deduplicate_entity_list: skipping duplicate",
-                name=entity.name,
-                type=entity.type,
-            )
-
-    if len(unique_entities) < len(entities):
-        logger.info(
-            "_deduplicate_entity_list: removed duplicates",
-            original_count=len(entities),
-            unique_count=len(unique_entities),
-            duplicates_removed=len(entities) - len(unique_entities),
-        )
-
-    return unique_entities
-
-
-def _convert_to_character_profiles(
-    entities: list[ExtractedEntity],
-    name_mappings: dict[str, str],
-    chapter: int,
-) -> list[CharacterProfile]:
-    """
-    Convert ExtractedEntity instances to CharacterProfile models.
-
-    This function bridges the LangGraph state model (ExtractedEntity) with
-    the existing SAGA model (CharacterProfile) for persistence.
-
-    Args:
-        entities: List of character ExtractedEntity instances
-        name_mappings: Dict mapping extracted names to deduplicated names
-        chapter: Current chapter number
-
-    Returns:
-        List of CharacterProfile models ready for persistence
-    """
-    profiles = []
-
-    for entity in entities:
-        # Use deduplicated name
-        final_name = name_mappings.get(entity.name, entity.name)
-
-        # Extract and validate traits from attributes
-        raw_traits = entity.attributes.get("traits", [])
-        traits = validate_and_filter_traits(raw_traits)
-
-        if len(traits) != len(raw_traits):
-            logger.warning(
-                "_extract_character_profiles_from_entities: filtered invalid traits",
-                character=final_name,
-                original_count=len(raw_traits),
-                filtered_count=len(traits),
-            )
-
-        # Extract status
-        status = entity.attributes.get("status", "Unknown")
-
-        # Extract relationships
-        relationships = entity.attributes.get("relationships", {})
-
-        profiles.append(
-            CharacterProfile(
-                name=final_name,
-                personality_description=entity.description,
-                traits=traits,
-                status=status if isinstance(status, str) else "Unknown",
-                relationships=relationships,
-                created_chapter=entity.first_appearance_chapter,
-                is_provisional=False,  # Entities from finalized draft are not provisional
-                updates={},  # Empty updates for new extraction
-            )
-        )
-
-    return profiles
-
-
-def _convert_to_world_items(
-    entities: list[ExtractedEntity],
-    id_mappings: dict[str, str],
-    chapter: int,
-) -> list[WorldItem]:
-    """
-    Convert ExtractedEntity instances to WorldItem models.
-
-    This function bridges the LangGraph state model (ExtractedEntity) with
-    the existing SAGA model (WorldItem) for persistence.
-
-    Args:
-        entities: List of world item ExtractedEntity instances
-        id_mappings: Dict mapping extracted names to deduplicated IDs
-        chapter: Current chapter number
-
-    Returns:
-        List of WorldItem models ready for persistence
-    """
-    items = []
-
-    for entity in entities:
-        # Use deduplicated ID
-        final_id = id_mappings.get(entity.name, entity.name)
-
-        # Use the category from attributes (preserves specific type like "artifact", "document")
-        # The ExtractedEntity validator automatically stores the original type here before normalization
-        category = entity.attributes.get("category", entity.type.lower() if entity.type else "")
-
-        # Extract structured fields
-        goals = entity.attributes.get("goals", [])
-        rules = entity.attributes.get("rules", [])
-        key_elements = entity.attributes.get("key_elements", [])
-
-        # Ensure these are lists
-        if not isinstance(goals, list):
-            goals = [str(goals)] if goals else []
-        if not isinstance(rules, list):
-            rules = [str(rules)] if rules else []
-        if not isinstance(key_elements, list):
-            key_elements = [str(key_elements)] if key_elements else []
-
-        # Collect additional properties
-        additional_properties = {k: v for k, v in entity.attributes.items() if k not in {"category", "id", "goals", "rules", "key_elements"}}
-
-        items.append(
-            WorldItem(
-                id=final_id,
-                category=category,
-                name=entity.name,
-                description=entity.description,
-                goals=goals,
-                rules=rules,
-                key_elements=key_elements,
-                traits=[],  # Traits typically not used for world items
-                created_chapter=entity.first_appearance_chapter,
-                is_provisional=False,
-                additional_properties=additional_properties,
-            )
-        )
-
-    return items
+    return {
+        **(lifecycle.state_update("committed") if lifecycle is not None else {}),
+        "current_node": "commit_to_graph",
+        "last_error": None,
+        "has_fatal_error": False,
+    }
 
 
 async def _build_entity_persistence_statements(
     characters: list[CharacterProfile],
     world_items: list[WorldItem],
     chapter_number: int,
+    *, protected_identities: frozenset[tuple[str, str]] = frozenset(),
 ) -> list[tuple[str, dict]]:
     """Build Cypher statements to persist entities.
 
@@ -832,19 +610,22 @@ async def _build_entity_persistence_statements(
     """
     statements: list[tuple[str, dict]] = []
 
-    # Use the cypher builder from knowledge_graph_service
     from data_access.cypher_builders.native_builders import NativeCypherBuilder
 
     cypher_builder = NativeCypherBuilder()
 
     # Generate Cypher for characters
     for char in characters:
-        cypher, params = cypher_builder.character_upsert_cypher(char, chapter_number)
+        if ("Character", char.id) in protected_identities:
+            continue
+        cypher, params = cypher_builder.character_upsert_cypher(char.model_copy(update={"relationships": {}}), chapter_number, assertion_origin="chapter_profile")
         statements.append((cypher, params))
 
     # Generate Cypher for world items
     for item in world_items:
-        cypher, params = cypher_builder.world_item_upsert_cypher(item, chapter_number)
+        if (classify_category_label(item.category), item.id) in protected_identities:
+            continue
+        cypher, params = cypher_builder.world_item_upsert_cypher(item.model_copy(update={"relationships": {}}), chapter_number, assertion_origin="chapter_profile")
         statements.append((cypher, params))
 
     embedding_statements_count = 0
@@ -895,21 +676,7 @@ async def _build_relationship_statements(
     """
     statements: list[tuple[str, dict]] = []
 
-    # Idempotency: Delete any existing relationships for this chapter before writing the new set.
-    # This ensures that revisions or re-runs do not accumulate stale edges.
-    delete_query = """
-    MATCH ()-[r]->()
-    WHERE coalesce(r.chapter_added, -1) = $chapter
-    DELETE r
-    """
-    statements.append((delete_query, {"chapter": chapter}))
-
-    if not relationships:
-        logger.info(
-            "_build_relationship_statements: no extracted relationships; clearing chapter relationship set",
-            chapter=chapter,
-        )
-        return statements
+    statements.append(chapter_assertion_delete_statement(chapter))
 
     # Build entity lookup maps for type resolution
     entity_type_map = {}
@@ -929,57 +696,10 @@ async def _build_relationship_statements(
         entity_types=list(entity_type_map.items())[:10],  # Log first 10 for debugging
     )
 
-    # Pre-fetch existing entity IDs from database to avoid constraint violations
-    # This prevents creating duplicate nodes when deduplication fails or entities appear only in relationships
-    entity_id_cache: dict[str, str] = {}
-
-    # Collect ALL unique entity names from relationships (not just those missing from entity_type_map)
-    # This catches cases where deduplication failed or didn't find an exact name match
-    entity_names_to_check: set[tuple[str, str]] = set()  # (name, type) tuples
-    for rel in relationships:
-        source_name = char_mappings.get(rel.source_name, rel.source_name)
-        target_name = char_mappings.get(rel.target_name, rel.target_name)
-
-        source_type = getattr(rel, "source_type", None) or entity_type_map.get(rel.source_name)
-        target_type = getattr(rel, "target_type", None) or entity_type_map.get(rel.target_name)
-
-        # Check all non-Character entities (Characters merge by name, not ID)
-        if source_type != "Character":
-            entity_names_to_check.add((source_name, source_type or "Item"))
-        if target_type != "Character":
-            entity_names_to_check.add((target_name, target_type or "Item"))
-
-    # Batch query for all entity IDs
-    if entity_names_to_check:
-        from core.db_manager import neo4j_manager
-
-        for name, entity_type_raw in entity_names_to_check:
-            neo4j_type = canonicalize_entity_type_for_persistence(entity_type_raw or "Item")
-            label = _get_cypher_labels(neo4j_type).lstrip(":")
-
-            query = f"""
-            MATCH (n:{label} {{name: $name}})
-            RETURN n.id as id
-            LIMIT 1
-            """
-            try:
-                results = await neo4j_manager.execute_read_query(query, {"name": name})
-                if results and results[0].get("id"):
-                    cache_key = f"{name}:{neo4j_type}"
-                    entity_id_cache[cache_key] = str(results[0]["id"])
-                    logger.debug(
-                        "_build_relationship_statements: found existing entity in database",
-                        name=name,
-                        type=neo4j_type,
-                        id=entity_id_cache[cache_key],
-                    )
-            except Exception as e:
-                logger.warning(
-                    "_build_relationship_statements: failed to lookup existing entity",
-                    name=name,
-                    type=neo4j_type,
-                    error=str(e),
-                )
+    entity_identity_map = {
+        (canonicalize_entity_type_for_persistence(entity.type), entity.name): entity.attributes.get("id")
+        for entity in [*char_entities, *world_entities]
+    }
 
     # Helper to create subject/object dict with type + optional stable id.
     def _make_entity_dict(
@@ -1044,24 +764,9 @@ async def _build_relationship_statements(
         else:
             neo4j_type = canonicalize_entity_type_for_persistence(entity_type)
 
-        resolved_stable_id = stable_id
+        resolved_stable_id = stable_id if stable_id is not None else entity_identity_map.get((neo4j_type, original_name))
         if resolved_stable_id is None and neo4j_type != "Character":
-            mapped_id = world_mappings.get(original_name)
-            if isinstance(mapped_id, str) and mapped_id:
-                resolved_stable_id = mapped_id
-            else:
-                cache_key = f"{name}:{neo4j_type}"
-                cached_id = entity_id_cache.get(cache_key)
-                if cached_id:
-                    resolved_stable_id = cached_id
-                else:
-                    logger.debug(
-                        "_make_entity_dict: no existing entity found, will merge on name",
-                        name=name,
-                        type=neo4j_type,
-                        cache_key=cache_key,
-                    )
-                    resolved_stable_id = None
+            resolved_stable_id = world_mappings.get(original_name)
 
         return {
             "name": name,
@@ -1073,6 +778,18 @@ async def _build_relationship_statements(
     # Convert to triple format
     structured_triples: list[dict[str, Any]] = []
 
+    for entity in [*char_entities, *world_entities]:
+        source = _make_entity_dict(name=entity.name, original_name=entity.name, explicit_type=entity.type)
+        for target_name, information in entity.attributes.get("relationships", {}).items():
+            if not isinstance(information, dict):
+                raise ValueError("Profile relationship must be a dictionary")
+            target_type = information.get("target_label", "Character" if source["type"] == "Character" else "Item")
+            target = _make_entity_dict(name=target_name, original_name=target_name, explicit_type=target_type, stable_id=information.get("target_id"))
+            structured_triples.append({
+                "subject": source, "predicate": information["type"], "object_entity": target,
+                "description": information.get("description", ""), "confidence": 1.0, "assertion_origin": "chapter_profile",
+            })
+
     for rel in relationships:
         # `char_mappings` canonicalizes character names for consistent relationship endpoints.
         source_name = char_mappings.get(rel.source_name, rel.source_name)
@@ -1083,7 +800,7 @@ async def _build_relationship_statements(
         source_type = getattr(rel, "source_type", None)
         target_type = getattr(rel, "target_type", None)
 
-        triple = {
+        triple: dict[str, Any] = {
             "subject": _make_entity_dict(
                 name=source_name,
                 original_name=rel.source_name,
@@ -1165,83 +882,13 @@ async def _build_relationship_statements(
             subject_label = _get_cypher_labels(subject_type).lstrip(":")
             object_label = _get_cypher_labels(object_type).lstrip(":")
 
-            # Generate stable relationship ID WITHOUT chapter number to prevent duplicates
-            # This ensures "Elias TRUSTS Caleb" creates ONE edge, not one per chapter
-            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{object_name.strip().lower()}"
-            rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
-
-            query = """
-            CALL apoc.merge.node(
-                [$subject_label],
-                {name: $subject_name},
-                {
-                    created_ts: timestamp(),
-                    updated_ts: timestamp(),
-                    created_chapter: $chapter,
-                    name: $subject_name,
-                    is_provisional: true,
-                    description: 'Entity created from relationship extraction. Details to be developed.'
-                },
-                {updated_ts: timestamp()}
-            ) YIELD node AS s
-
-            SET s.id = coalesce(s.id, $subject_id, randomUUID())
-            WITH s
-
-            CALL apoc.merge.node(
-                [$object_label],
-                {name: $object_name},
-                {
-                    created_ts: timestamp(),
-                    updated_ts: timestamp(),
-                    created_chapter: $chapter,
-                    name: $object_name,
-                    is_provisional: true,
-                    description: 'Entity created from relationship extraction. Details to be developed.'
-                },
-                {updated_ts: timestamp()}
-            ) YIELD node AS o
-
-            SET o.id = coalesce(o.id, $object_id, randomUUID())
-            WITH s, o
-
-            CALL apoc.merge.relationship(
-                s,
-                $predicate_clean,
-                {id: $rel_id},
-                {
-                    chapter_added: $chapter,
-                    is_provisional: $is_provisional,
-                    confidence: $confidence,
-                    description: $description,
-                    created_ts: timestamp(),
-                    updated_ts: timestamp()
-                },
-                o,
-                {
-                    is_provisional: $is_provisional,
-                    confidence: $confidence,
-                    description: $description,
-                    updated_ts: timestamp()
-                }
-            ) YIELD rel
-            RETURN rel
-            """
-
-            params = {
-                "subject_label": subject_label,
-                "subject_name": subject_name,
-                "subject_id": subject_id,
-                "object_label": object_label,
-                "object_name": object_name,
-                "object_id": object_id,
-                "predicate_clean": predicate_clean,
-                "rel_id": rel_id,
-                "chapter": chapter,
-                "is_provisional": is_from_flawed_draft,
-                "confidence": triple.get("confidence", 1.0),
-                "description": triple.get("description", ""),
-            }
+            query, params = relationship_statement(
+                {"name": subject_name, "type": subject_label, "id": subject_id},
+                predicate_clean,
+                {"name": object_name, "type": object_label, "id": object_id},
+                chapter, origin=triple.get("assertion_origin", "chapter_extraction"), provisional=is_from_flawed_draft,
+                confidence=triple.get("confidence", 1.0), description=triple.get("description", ""),
+            )
 
             logger.debug(
                 "_build_relationship_statements: relationship query preview",
@@ -1275,78 +922,6 @@ async def _build_relationship_statements(
     )
 
     return statements
-
-
-def _build_chapter_node_statement(
-    chapter_number: int,
-    summary: str | None,
-    embedding: list[float] | None = None,
-) -> tuple[str, dict]:
-    """
-    Build Cypher statement for chapter node creation.
-
-    NOTE:
-    This MUST use the canonical Chapter persistence semantics so Chapter nodes always
-    have schema-required identity (`Chapter.id`) and we never create "number-only"
-    Chapter nodes.
-
-    Args:
-        chapter_number: Chapter number
-        summary: Optional chapter summary
-        embedding: Optional embedding vector
-
-    Returns:
-        Tuple of (cypher_query, parameters)
-    """
-    # Delegate to the authoritative Chapter persistence helper.
-    query, parameters = chapter_queries.build_chapter_upsert_statement(
-        chapter_number=chapter_number,
-        summary=summary,
-        embedding_vector=embedding,
-        is_provisional=False,  # Chapter draft is validated before commit in the workflow
-    )
-
-    logger.debug(
-        "_build_chapter_node_statement: built statement (canonical chapter upsert)",
-        chapter=chapter_number,
-        chapter_id=parameters.get("chapter_id_param"),
-    )
-
-    return (query, parameters)
-
-
-def _aggregate_scene_embeddings_to_chapter(scene_embeddings: list[list[float]] | dict[str, list[float]]) -> list[float]:
-    """
-    Aggregate scene-level embeddings into a single chapter embedding.
-
-    Strategy: Average all scene embeddings to create a representative chapter embedding.
-    This provides semantic coverage of the entire chapter while being computationally efficient.
-
-    Args:
-        scene_embeddings: List or dict of scene embedding vectors
-
-    Returns:
-        Single chapter embedding vector (averaged from all scenes)
-    """
-    if not scene_embeddings:
-        return []
-
-    # Handle both list and dict formats
-    if isinstance(scene_embeddings, dict):
-        embeddings_list = list(scene_embeddings.values())
-    else:
-        embeddings_list = scene_embeddings
-
-    if not embeddings_list:
-        return []
-
-    # Convert to numpy array for efficient computation
-    embeddings_array = np.array(embeddings_list)
-
-    # Average across scenes (axis=0)
-    chapter_embedding = np.mean(embeddings_array, axis=0).tolist()
-
-    return chapter_embedding
 
 
 __all__ = ["commit_to_graph"]

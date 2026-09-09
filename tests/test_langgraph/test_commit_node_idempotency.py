@@ -5,13 +5,16 @@ import pytest
 
 from core.langgraph.nodes.commit_node import _build_relationship_statements, commit_to_graph
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship
+from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.fakes.service_context import patch_service
+from tests.test_langgraph import InlineExtractionState
 
 
 @pytest.mark.asyncio
 class TestCommitNodeIdempotency:
     """Tests to ensure chapter-idempotent KG writes."""
 
-    async def test_build_relationship_statements_includes_delete(self):
+    async def test_build_relationship_statements_includes_delete(self) -> None:
         """Verify that _build_relationship_statements always prepends a DELETE statement."""
         relationships = [ExtractedRelationship(source_name="Alice", target_name="Bob", relationship_type="FRIEND_OF", description="Friends", chapter=1, confidence=1.0)]
         char_entities = [
@@ -37,7 +40,7 @@ class TestCommitNodeIdempotency:
         merge_query, merge_params = statements[1]
         assert "apoc.merge.relationship" in merge_query
 
-    async def test_build_relationship_statements_empty_list_still_deletes(self):
+    async def test_build_relationship_statements_empty_list_still_deletes(self) -> None:
         """Verify that even with no relationships, a DELETE statement is produced for the chapter."""
         statements = await _build_relationship_statements(relationships=[], char_entities=[], world_entities=[], char_mappings={}, world_mappings={}, chapter=5, is_from_flawed_draft=False)
 
@@ -46,9 +49,9 @@ class TestCommitNodeIdempotency:
         assert "DELETE r" in delete_query
         assert params["chapter"] == 5
 
-    async def test_commit_to_graph_idempotency_call_sequence(self):
+    async def test_commit_to_graph_idempotency_call_sequence(self, fake_neo4j: FakeNeo4jManager) -> None:
         """Verify that commit_to_graph calls relationship builder and sends batch with DELETE."""
-        state = {
+        state: InlineExtractionState = {
             "project_dir": "test_project",
             "current_chapter": 2,
             "extracted_entities": {"characters": [], "world_items": []},
@@ -61,11 +64,11 @@ class TestCommitNodeIdempotency:
             patch("core.langgraph.nodes.commit_node.get_extracted_entities", return_value={"characters": [], "world_items": []}),
             patch("core.langgraph.nodes.commit_node.get_extracted_relationships") as mock_get_rels,
             patch("core.langgraph.nodes.commit_node.get_draft_text", return_value="Draft"),
-            patch("core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement", return_value=("QUERY", {})),
+            patch("core.langgraph.nodes.commit_graph_ops.chapter_queries.build_chapter_upsert_statement", return_value=("QUERY", {})),
             patch("data_access.cache_coordinator.clear_kg_read_caches"),
             patch("data_access.cache_coordinator.clear_character_read_caches"),
             patch("data_access.cache_coordinator.clear_world_read_caches"),
-            patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_batch,
+            patch_service('database.execute_cypher_batch') as mock_batch,
         ):
             mock_get_rels.return_value = state["extracted_relationships"]
             mock_batch.return_value = None

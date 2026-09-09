@@ -21,15 +21,13 @@ from __future__ import annotations
 
 import logging as stdlib_logging
 import os
-from collections.abc import MutableMapping
-from typing import Any
+from collections.abc import Mapping, MutableMapping
+from types import MappingProxyType
+from typing import Any, Literal
 
 import structlog
-from dotenv import load_dotenv
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-load_dotenv()
 
 logger = structlog.get_logger()
 
@@ -98,7 +96,7 @@ class RelationshipNormalizationSettings(BaseSettings):
     )
 
     # Category-specific similarity thresholds
-    SIMILARITY_THRESHOLDS: dict[str, float] = Field(
+    SIMILARITY_THRESHOLDS: Mapping[str, float] = Field(
         default={
             "CHARACTER_CHARACTER": 0.75,
             "CHARACTER_WORLD": 0.70,
@@ -178,9 +176,10 @@ class SagaSettings(BaseSettings):
 
     # API and Model Configuration
     EMBEDDING_API_BASE: str = "http://127.0.0.1:11434"
-    EMBEDDING_API_KEY: str = ""
+    EMBEDDING_API_KEY: SecretStr = Field(default=SecretStr(""), repr=False)
     OPENAI_API_BASE: str = "http://127.0.0.1:8080/v1"
-    OPENAI_API_KEY: str = "nope"
+    OPENAI_API_KEY: SecretStr = Field(default=SecretStr("nope"), repr=False)
+    COMPLETION_CONTENT_FORMAT: Literal["text", "text_parts"] = "text"
 
     EMBEDDING_MODEL: str = "nomic-embed-text:latest"
     EMBEDDING_MAX_INPUT_TOKENS: int = 8192
@@ -190,7 +189,7 @@ class SagaSettings(BaseSettings):
     # Neo4j Connection Settings
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = "saga_password"
+    NEO4J_PASSWORD: str = Field(default="saga_password", repr=False, exclude=True)
     NEO4J_DATABASE: str | None = "neo4j"
 
     # Neo4j Vector Index Configuration (Chapters)
@@ -244,15 +243,16 @@ class SagaSettings(BaseSettings):
     FILL_IN: str = ""
 
     # LLM Call Settings & Fallbacks
-    LLM_RETRY_ATTEMPTS: int = 3
-    LLM_RETRY_DELAY_SECONDS: float = 3.0
-    JSON_PARSE_RETRY_ATTEMPTS: int = 2
-    HTTPX_TIMEOUT: float = 120.0
+    LLM_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
+    LLM_RETRY_DELAY_SECONDS: float = Field(default=3.0, gt=0, allow_inf_nan=False)
+    JSON_PARSE_RETRY_ATTEMPTS: int = Field(default=2, ge=1)
+    SCENE_PLAN_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10, description="Maximum scene-plan responses per invocation, including the initial response")
+    HTTPX_TIMEOUT: float = Field(default=600.0, gt=0, allow_inf_nan=False)
     TIKTOKEN_DEFAULT_ENCODING: str = "cl100k_base"
     FALLBACK_CHARS_PER_TOKEN: float = 4.0
 
     # Concurrency and Rate Limiting
-    MAX_CONCURRENT_LLM_CALLS: int = 1
+    MAX_CONCURRENT_LLM_CALLS: int = Field(default=1, ge=1)
     LLM_TOP_P: float = 0.95
 
     # LLM Frequency and Presence Penalties
@@ -272,8 +272,10 @@ class SagaSettings(BaseSettings):
 
     # Generation Parameters
     # Token budgets (defaults are generous)
-    MAX_CONTEXT_TOKENS: int = 32768
-    MAX_GENERATION_TOKENS: int = 16384
+    MAX_CONTEXT_TOKENS: int = Field(default=32768, gt=0)
+    MAX_GENERATION_TOKENS: int = Field(default=16384, gt=0)
+    REQUEST_MESSAGE_OVERHEAD_TOKENS: int = Field(default=8, ge=0)
+    REQUEST_REPLY_OVERHEAD_TOKENS: int = Field(default=3, ge=0)
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 3
     TOTAL_CHAPTERS: int = 15
@@ -292,6 +294,8 @@ class SagaSettings(BaseSettings):
     # Revision and Validation
     REVISION_EVALUATION_THRESHOLD: float = 0.85
     MIN_QUALITY_THRESHOLD: float = 0.7
+    QUALITY_ACCEPTANCE_POLICY: Literal["author", "strict"] = "author"
+    QA_ACCEPTANCE_POLICY: Literal["advisory", "mandatory"] = "advisory"
     PLOT_STAGNATION_MIN_WORD_COUNT: int = 1500
     PLOT_STAGNATION_MIN_ENTITIES: int = 1
     PLOT_STAGNATION_MIN_RELATIONSHIPS: int = 1
@@ -311,7 +315,7 @@ class SagaSettings(BaseSettings):
     # Knowledge Graph Entity Filtering (Proper Noun Preference)
     ENTITY_MENTION_THRESHOLD_PROPER_NOUN: int = 1
     ENTITY_MENTION_THRESHOLD_COMMON_NOUN: int = 3
-    RELATIONSHIP_LOWERCASE_TARGET_ALLOWLIST: list[str] = []
+    RELATIONSHIP_LOWERCASE_TARGET_ALLOWLIST: tuple[str, ...] = ()
 
     # Narrative Agent Configuration
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
@@ -383,7 +387,7 @@ class SagaSettings(BaseSettings):
     # Validation Settings
     validation: ValidationSettings = Field(default_factory=lambda: ValidationSettings())
 
-    model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore", populate_by_name=True, hide_input_in_errors=True)
 
     def model_post_init(self, _context: Any) -> None:
         if self.EXPECTED_EMBEDDING_DIM != self.NEO4J_VECTOR_DIMENSIONS:
@@ -394,19 +398,47 @@ class SagaSettings(BaseSettings):
             )
 
 
+class FrozenRelationshipNormalizationSettings(RelationshipNormalizationSettings):
+    model_config = SettingsConfigDict(frozen=True)
+
+    @field_validator("SIMILARITY_THRESHOLDS")
+    @classmethod
+    def freeze_thresholds(cls, value: Mapping[str, float]) -> Mapping[str, float]:
+        return MappingProxyType(dict(value))
+
+
+class FrozenSchemaEnforcementSettings(SchemaEnforcementSettings):
+    model_config = SettingsConfigDict(frozen=True)
+
+
+class FrozenValidationSettings(ValidationSettings):
+    model_config = SettingsConfigDict(frozen=True)
+
+
+class EffectiveSettings(SagaSettings):
+    """Validated run snapshot; nested configuration is immutable too."""
+
+    relationship_normalization: FrozenRelationshipNormalizationSettings = Field(default_factory=FrozenRelationshipNormalizationSettings)
+    schema_enforcement: FrozenSchemaEnforcementSettings = Field(default_factory=FrozenSchemaEnforcementSettings)
+    validation: FrozenValidationSettings = Field(default_factory=FrozenValidationSettings)
+    model_config = SettingsConfigDict(frozen=True, env_file=None)
+
+
 settings = SagaSettings()
 
 
-class Temperatures:
-    INITIAL_SETUP: float = settings.TEMPERATURE_INITIAL_SETUP
-    DRAFTING: float = settings.TEMPERATURE_DRAFTING
-    REVISION: float = settings.TEMPERATURE_REVISION
-    PLANNING: float = settings.TEMPERATURE_PLANNING
-    EVALUATION: float = settings.TEMPERATURE_EVALUATION
-    KG_EXTRACTION: float = settings.TEMPERATURE_KG_EXTRACTION
-    SUMMARY: float = settings.TEMPERATURE_SUMMARY
+class _Temperatures:
     DEFAULT: float = 0.7
-    OVERRIDE: float | None = settings.TEMPERATURE_OVERRIDE
+
+    def __getattr__(self, name: str) -> Any:
+        from config import get_settings
+
+        if name not in {"INITIAL_SETUP", "DRAFTING", "REVISION", "PLANNING", "EVALUATION", "KG_EXTRACTION", "SUMMARY", "OVERRIDE"}:
+            raise AttributeError(name)
+        return getattr(get_settings(), f"TEMPERATURE_{name}")
+
+
+Temperatures = _Temperatures()
 
 
 # Update module level variables for backward compatibility

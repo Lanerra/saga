@@ -11,12 +11,17 @@ from models.agent_models import (
 )
 
 
+class LegacySceneDetail(SceneDetail, total=False):
+    character_arc_focus: str | None
+    relationship_development: str | None
+
+
 class TestSceneDetail:
     """Tests for SceneDetail TypedDict construction and serialization."""
 
     def test_full_construction(self) -> None:
         """All fields populated."""
-        scene: SceneDetail = {
+        scene: LegacySceneDetail = {
             "title": "The Crossing",
             "pov_character": "Aria",
             "setting": "River bridge at dawn",
@@ -80,7 +85,7 @@ class TestSceneDetail:
 
     def test_json_roundtrip(self) -> None:
         """json.dumps followed by json.loads preserves structure."""
-        scene: SceneDetail = {
+        scene: LegacySceneDetail = {
             "title": "The Escape",
             "characters": ["Mira", "Dex"],
             "beats": ["chase begins", "narrow miss", "freedom"],

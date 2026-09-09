@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -132,30 +131,15 @@ class TestVisualizeAscii:
 
 
 class TestVisualizePng:
-    """Verify PNG export writes binary data to file."""
+    """PNG must not silently use the library's remote renderer."""
 
-    def test_writes_png_bytes_to_file(self, tmp_path: Path) -> None:
-        """PNG export writes the bytes returned by draw_mermaid_png."""
+    def test_refuses_unconfigured_renderer(self, tmp_path: Path) -> None:
         graph = _build_fake_graph()
         output = tmp_path / "diagram.png"
 
-        with patch(
-            "core.langgraph.visualization.CurveStyle",
-            create=True,
-        ):
-            from unittest.mock import MagicMock
-
-            fake_curve_style = MagicMock()
-            fake_curve_style.LINEAR = "linear"
-            with patch.dict(
-                "sys.modules",
-                {"langchain_core.runnables.graph": MagicMock(CurveStyle=fake_curve_style)},
-            ):
-                result = visualize_workflow(graph, output, format="png")
-
-        assert result == output
-        assert output.exists()
-        assert output.read_bytes() == b"fake-png-data"
+        with pytest.raises(ValueError, match="^PNG export is disabled:"):
+            visualize_workflow(graph, output, format="png")
+        assert list(tmp_path.iterdir()) == []
 
 
 class TestVisualizeErrors:

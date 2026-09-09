@@ -60,7 +60,7 @@ Examples:
         "--format",
         "-f",
         choices=["mermaid", "png", "ascii"],
-        help="Output format (auto-detected from file extension if not specified)",
+        help="Output format (auto-detected from extension); PNG is disabled without a local renderer",
     )
 
     parser.add_argument(

@@ -1,4 +1,5 @@
 # data_access/chapter_queries.py
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -6,13 +7,63 @@ import structlog
 from neo4j.exceptions import Neo4jError
 
 import config
-from core.db_manager import neo4j_manager
+from core.embedding_contract import embedding_identity, validate_embedding
 from core.exceptions import handle_database_error
+from core.service_context import get_services
 
 if TYPE_CHECKING:
     from models.kg_models import Chapter
 
 logger = structlog.get_logger(__name__)
+
+
+CHAPTER_GENERATION_STATUSES = frozenset({"planned", "staged", "committed", "validated", "provisional", "rejected", "finalized"})
+
+
+@dataclass(frozen=True)
+class ChapterProgress:
+    """Explicit finalized identities and their contiguous prefix starting at one."""
+
+    last_finalized_chapter: int
+    finalized_chapters: tuple[int, ...]
+
+
+async def load_chapter_progress_from_db() -> ChapterProgress:
+    """Load progress without treating plans or ambiguous legacy data as finalization.
+
+    Invalid/duplicate chapter numbers and missing/unknown status require explicit
+    reconciliation. Read all rows so filtering cannot hide ambiguous identities.
+    """
+    query = """
+    MATCH (c:Chapter)
+    RETURN c.number AS chapter_number,
+           c.generation_status AS generation_status,
+           c.is_provisional AS is_provisional
+    """
+    try:
+        rows = await get_services().database.execute_read_query(query)
+    except Neo4jError as error:
+        raise handle_database_error("load chapter progress", error) from error
+
+    seen: set[int] = set()
+    finalized: set[int] = set()
+    for row in rows:
+        number = row.get("chapter_number")
+        if type(number) is not int or number <= 0:
+            raise ValueError(f"Chapter progress requires positive integer chapter numbers: {number!r}")
+        if number in seen:
+            raise ValueError(f"Chapter progress has duplicate chapter number: {number}")
+        seen.add(number)
+        status = row.get("generation_status")
+        if not isinstance(status, str) or status not in CHAPTER_GENERATION_STATUSES:
+            raise ValueError(f"Chapter {number} has missing or unknown generation_status; explicit reconciliation required")
+        if status == "finalized" and row.get("is_provisional") is False:
+            finalized.add(number)
+
+    last_finalized_chapter = 0
+    while last_finalized_chapter + 1 in finalized:
+        last_finalized_chapter += 1
+    return ChapterProgress(last_finalized_chapter, tuple(sorted(finalized)))
 
 
 def compute_chapter_id(chapter_number: int, *, novel_id: str | None = None) -> str:
@@ -44,8 +95,10 @@ def build_chapter_upsert_statement(
     act_number: int | None = None,
     summary: str | None = None,
     embedding_vector: list[float] | None = None,
+    embedding_model: str = "",
     is_provisional: bool | None = None,
     novel_id: str | None = None,
+    generation_status: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Build the canonical Chapter upsert Cypher statement and parameter map.
 
@@ -59,6 +112,8 @@ def build_chapter_upsert_statement(
         is_provisional: Provisional flag to set. When None, the provisional field is not
             modified.
         novel_id: Optional novel identity namespace used for deterministic chapter id.
+        generation_status: Explicit lifecycle status. None preserves existing status;
+            new generic writes are staged, never implicitly finalized.
 
     Returns:
         A `(cypher_query, parameters)` tuple.
@@ -69,12 +124,20 @@ def build_chapter_upsert_statement(
         - always ensure `c.id` is populated (coalesce for existing nodes),
         - avoid clobbering fields when the caller does not provide a value.
     """
+    if generation_status is not None:
+        if generation_status not in CHAPTER_GENERATION_STATUSES:
+            raise ValueError(f"Unknown chapter generation_status: {generation_status!r}")
+        if generation_status == "finalized" and is_provisional is not False:
+            raise ValueError("Finalized chapters require is_provisional=False")
     chapter_id = compute_chapter_id(chapter_number, novel_id=novel_id)
+    if embedding_vector is not None:
+        embedding_vector = validate_embedding(embedding_vector, model=embedding_model).tolist()
 
     query = """
     MERGE (c:Chapter {number: $chapter_number_param})
     ON CREATE SET
-        c.created_ts = timestamp()
+        c.created_ts = timestamp(),
+        c.generation_status = 'staged'
     SET
         c.id = coalesce(c.id, $chapter_id_param),
         c.title = coalesce(c.title, $title_param),
@@ -90,8 +153,14 @@ def build_chapter_upsert_statement(
         SET c.is_provisional = $is_provisional_param
     )
 
+    FOREACH (_ IN CASE WHEN $generation_status_param IS NULL THEN [] ELSE [1] END |
+        SET c.generation_status = $generation_status_param
+    )
+
     FOREACH (_ IN CASE WHEN $embedding_vector_param IS NULL THEN [] ELSE [1] END |
-        SET c.embedding_vector = $embedding_vector_param
+        SET c.embedding_vector = $embedding_vector_param,
+            c.embedding_model = $embedding_model_param,
+            c.embedding_identity = $embedding_identity_param
     )
     """
 
@@ -103,13 +172,16 @@ def build_chapter_upsert_statement(
         "summary_param": summary,
         "is_provisional_param": is_provisional,
         "embedding_vector_param": embedding_vector,
+        "embedding_model_param": embedding_model if embedding_vector is not None else None,
+        "embedding_identity_param": embedding_identity() if embedding_vector is not None else None,
+        "generation_status_param": generation_status,
     }
 
     return query, parameters
 
 
 async def load_chapter_count_from_db() -> int:
-    """Return the number of `:Chapter` nodes in Neo4j.
+    """Return the number of `:Chapter` nodes for inventory, not generation progress.
 
     Returns:
         The chapter count.
@@ -119,7 +191,7 @@ async def load_chapter_count_from_db() -> int:
     """
     query = "MATCH (c:Chapter) RETURN count(c) AS chapter_count"
     try:
-        result = await neo4j_manager.execute_read_query(query)
+        result = await get_services().database.execute_read_query(query)
         count = result[0]["chapter_count"] if result and result[0] else 0
         logger.info(f"Neo4j loaded chapter count: {count}")
         return count
@@ -135,6 +207,37 @@ async def save_chapter_data_to_db(
     summary: str | None = None,
     embedding_array: np.ndarray | None = None,
     is_provisional: bool = False,
+    *, embedding_model: str = "",
+) -> None:
+    """Persist chapter metadata without certifying finalization."""
+    await _save_chapter_data_to_db(chapter_number, title, act_number, summary, embedding_array, is_provisional, generation_status=None, embedding_model=embedding_model)
+
+
+async def save_finalized_chapter_to_db(
+    chapter_number: int,
+    title: str | None = None,
+    act_number: int | None = None,
+    summary: str | None = None,
+    embedding_array: np.ndarray | None = None,
+    is_provisional: bool = False,
+    *, embedding_model: str = "",
+) -> None:
+    """Persist explicit finalization after the caller successfully saves chapter files."""
+    if type(chapter_number) is not int or chapter_number <= 0:
+        raise ValueError("Finalized chapter_number must be a positive integer")
+    await _save_chapter_data_to_db(chapter_number, title, act_number, summary, embedding_array, is_provisional, generation_status="finalized", embedding_model=embedding_model)
+
+
+async def _save_chapter_data_to_db(
+    chapter_number: int,
+    title: str | None,
+    act_number: int | None,
+    summary: str | None,
+    embedding_array: np.ndarray | None,
+    is_provisional: bool,
+    *,
+    generation_status: str | None,
+    embedding_model: str,
 ) -> None:
     """Persist Chapter metadata using canonical Chapter persistence semantics.
 
@@ -161,7 +264,7 @@ async def save_chapter_data_to_db(
         logger.error(f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}.")
         return
 
-    embedding_list = neo4j_manager.embedding_to_list(embedding_array)
+    embedding_list = validate_embedding(embedding_array, model=embedding_model).tolist() if embedding_array is not None else None
 
     query, parameters = build_chapter_upsert_statement(
         chapter_number=chapter_number,
@@ -169,11 +272,13 @@ async def save_chapter_data_to_db(
         act_number=act_number,
         summary=summary,
         embedding_vector=embedding_list,
+        embedding_model=embedding_model,
         is_provisional=is_provisional,
+        generation_status=generation_status,
     )
 
     try:
-        await neo4j_manager.execute_write_query(query, parameters)
+        await get_services().database.execute_write_query(query, parameters)
         logger.info(f"Neo4j: Successfully saved chapter data for chapter {chapter_number}.")
 
         from data_access.cache_coordinator import clear_chapter_read_caches
@@ -212,16 +317,24 @@ async def get_chapter_data_from_db(chapter_number: int) -> "Chapter | None":
            c.summary AS summary,
            c.act_number AS act_number,
            c.embedding_vector AS embedding,
+           c.embedding_model AS embedding_model,
+           c.embedding_identity AS embedding_identity,
            c.created_chapter AS created_chapter,
            c.is_provisional AS is_provisional,
            c.created_ts AS created_ts,
            c.updated_ts AS updated_ts
     """
     try:
-        result = await neo4j_manager.execute_read_query(query, {"chapter_number_param": chapter_number})
+        result = await get_services().database.execute_read_query(query, {"chapter_number_param": chapter_number})
         if result and result[0]:
             logger.debug(f"Neo4j: Data found for chapter {chapter_number}.")
             from models.kg_models import Chapter
+
+            embedding = result[0].get("embedding")
+            if embedding is not None:
+                if result[0].get("embedding_identity") != embedding_identity():
+                    raise ValueError("Stored chapter embedding identity mismatch")
+                embedding = validate_embedding(embedding, model=result[0].get("embedding_model", "")).tolist()
 
             return Chapter(
                 id=result[0].get("id", compute_chapter_id(chapter_number)),
@@ -229,7 +342,7 @@ async def get_chapter_data_from_db(chapter_number: int) -> "Chapter | None":
                 title=result[0].get("title", f"Chapter {chapter_number}"),
                 summary=result[0].get("summary", ""),
                 act_number=result[0].get("act_number", 1),
-                embedding=result[0].get("embedding"),
+                embedding=embedding,
                 created_chapter=result[0].get("created_chapter", 0),
                 is_provisional=result[0].get("is_provisional", False),
                 created_ts=result[0].get("created_ts"),
@@ -268,13 +381,16 @@ async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
     query = """
     MATCH (c:Chapter {number: $chapter_number_param})
     WHERE c.embedding_vector IS NOT NULL
-    RETURN c.embedding_vector AS embedding_vector
+    RETURN c.embedding_vector AS embedding_vector, c.embedding_model AS embedding_model,
+           c.embedding_identity AS embedding_identity
     """
     try:
-        result = await neo4j_manager.execute_read_query(query, {"chapter_number_param": chapter_number})
-        if result and result[0] and result[0].get("embedding_vector"):
+        result = await get_services().database.execute_read_query(query, {"chapter_number_param": chapter_number})
+        if result and result[0] and result[0].get("embedding_vector") is not None:
             embedding_list = result[0]["embedding_vector"]
-            return neo4j_manager.list_to_embedding(embedding_list)
+            if result[0].get("embedding_identity") != embedding_identity():
+                raise ValueError("Stored chapter embedding identity mismatch")
+            return validate_embedding(embedding_list, model=result[0].get("embedding_model", ""))
         logger.debug(f"Neo4j: No embedding vector found on chapter node {chapter_number}.")
         return None
     except (Neo4jError, KeyError, ValueError) as e:
@@ -291,6 +407,7 @@ async def find_semantic_context_native(
     limit: int | None = None,
     *,
     include_provisional: bool = False,
+    embedding_model: str = "",
 ) -> list[dict[str, Any]]:
     """Return semantic context chapters using a single optimized vector query.
 
@@ -327,7 +444,7 @@ async def find_semantic_context_native(
         logger.warning("Native context search called with empty query embedding")
         return []
 
-    query_embedding_list = neo4j_manager.embedding_to_list(query_embedding)
+    query_embedding_list = validate_embedding(query_embedding, model=embedding_model).tolist()
     if not query_embedding_list:
         logger.error("Failed to convert query embedding for native context search")
         return []
@@ -345,9 +462,13 @@ async def find_semantic_context_native(
     // Vector similarity search for semantic context
     CALL db.index.vector.queryNodes($index_name, $search_limit, $query_vector)
     YIELD node AS similar_c, score
+    WITH similar_c, score
+    WHERE similar_c.embedding_model = $embedding_model
+      AND similar_c.embedding_identity = $embedding_identity
+    WITH similar_c, score
     WHERE similar_c.number < $current_chapter
       AND (
-            $include_provisional = false
+            $include_provisional = true
             OR COALESCE(similar_c.is_provisional, false) = false
           )
 
@@ -367,7 +488,7 @@ async def find_semantic_context_native(
     OPTIONAL MATCH (prev_c:Chapter {number: $prev_chapter_num})
     WHERE prev_c.number < $current_chapter
       AND (
-            $include_provisional = false
+            $include_provisional = true
             OR COALESCE(prev_c.is_provisional, false) = false
           )
       AND NOT ANY(sr IN similar_results WHERE sr.chapter_number = $prev_chapter_num)
@@ -396,7 +517,7 @@ async def find_semantic_context_native(
     """
 
     try:
-        results = await neo4j_manager.execute_read_query(
+        results = await get_services().database.execute_read_query(
             cypher_query,
             {
                 "index_name": config.NEO4J_VECTOR_INDEX_NAME,
@@ -404,6 +525,8 @@ async def find_semantic_context_native(
                 "search_limit": search_limit + 5,
                 "final_limit": search_limit,
                 "query_vector": query_embedding_list,
+                "embedding_model": embedding_model,
+                "embedding_identity": embedding_identity(),
                 "current_chapter": current_chapter_number,
                 "prev_chapter_num": prev_chapter_num,
                 "include_provisional": include_provisional,
@@ -467,7 +590,7 @@ async def get_chapter_content_batch_native(
     """
 
     try:
-        results = await neo4j_manager.execute_read_query(cypher_query, {"chapter_numbers": chapter_numbers})
+        results = await get_services().database.execute_read_query(cypher_query, {"chapter_numbers": chapter_numbers})
 
         chapter_data = {}
         for record in results:

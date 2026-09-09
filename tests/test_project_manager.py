@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import json
-import time
 from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
+from core.langgraph.manuscript import ManuscriptStore
 from core.project_config import NarrativeProjectConfig
 from core.project_manager import ProjectManager
 
@@ -175,7 +175,7 @@ class TestPromoteCandidate:
 
 
 class TestFindCandidateProject:
-    def test_returns_most_recent_candidate(self) -> None:
+    def test_rejects_ambiguous_candidates(self) -> None:
         projects_root = ProjectManager.ensure_projects_root()
 
         older_project = projects_root / "older_project"
@@ -183,15 +183,14 @@ class TestFindCandidateProject:
         older_candidate = older_project / "config.candidate.json"
         older_candidate.write_text("{}", encoding="utf-8")
 
-        time.sleep(0.05)
-
         newer_project = projects_root / "newer_project"
         newer_project.mkdir()
         newer_candidate = newer_project / "config.candidate.json"
         newer_candidate.write_text("{}", encoding="utf-8")
 
-        result = ProjectManager.find_candidate_project()
-        assert result == newer_project
+        with pytest.raises(ValueError, match="Multiple candidate projects"):
+            ProjectManager.find_candidate_project()
+        assert older_candidate.read_bytes() == newer_candidate.read_bytes() == b"{}"
 
     def test_returns_none_when_no_candidates(self) -> None:
         ProjectManager.ensure_projects_root()
@@ -225,7 +224,8 @@ class TestFindResumeProject:
         chapters_directory = project_directory / "chapters"
         chapters_directory.mkdir()
         for index in range(1, example_config.total_chapters + 1):
-            (chapters_directory / f"chapter_{index}.md").write_text(f"Chapter {index}", encoding="utf-8")
+            store = ManuscriptStore(project_directory)
+            store.accept(store.prepare(index, f"Chapter {index}"))
 
         result = ProjectManager.find_resume_project()
         assert result is None
@@ -243,14 +243,14 @@ class TestFindResumeProject:
 
 
 class TestCountCompletedChapters:
-    def test_counts_chapter_markdown_files(self, tmp_path: Path) -> None:
+    def test_counts_accepted_manuscripts(self, tmp_path: Path) -> None:
         project_directory = tmp_path / "counting_project"
         chapters_directory = project_directory / "chapters"
         chapters_directory.mkdir(parents=True)
 
-        (chapters_directory / "chapter_1.md").write_text("One", encoding="utf-8")
-        (chapters_directory / "chapter_2.md").write_text("Two", encoding="utf-8")
-        (chapters_directory / "chapter_3.md").write_text("Three", encoding="utf-8")
+        store = ManuscriptStore(project_directory)
+        for number, body in enumerate(["One", "Two", "Three"], 1):
+            store.accept(store.prepare(number, body))
 
         result = ProjectManager.count_completed_chapters(project_directory)
         assert result == 3
@@ -268,6 +268,8 @@ class TestCountCompletedChapters:
         chapters_directory.mkdir(parents=True)
 
         (chapters_directory / "chapter_1.md").write_text("One", encoding="utf-8")
+        store = ManuscriptStore(project_directory)
+        store.accept(store.prepare(1, "One"))
         (chapters_directory / "notes.md").write_text("Notes", encoding="utf-8")
         (chapters_directory / "outline.txt").write_text("Outline", encoding="utf-8")
 

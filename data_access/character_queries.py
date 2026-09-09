@@ -7,11 +7,12 @@ from async_lru import alru_cache  # type: ignore[import-untyped]
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
 import utils
-from core.db_manager import neo4j_manager
 from core.exceptions import handle_database_error
 from core.schema_validator import validate_kg_object
+from core.service_context import get_services
 from models import CharacterProfile
 
+from .cache_coordinator import guard_graph_cache
 from .cypher_builders.native_builders import NativeCypherBuilder
 
 # Mapping from normalized character names to canonical display names
@@ -77,6 +78,7 @@ def resolve_character_name(name: str) -> str:
 logger = structlog.get_logger(__name__)
 
 
+@guard_graph_cache
 @alru_cache(maxsize=128)
 async def get_character_profile_by_name(name: str, *, include_provisional: bool = False) -> CharacterProfile | None:
     """Return a character profile by name.
@@ -147,7 +149,7 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
             [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
     """
 
-    results = await neo4j_manager.execute_read_query(query, {"name": canonical_name, "include_provisional": include_provisional})
+    results = await get_services().database.execute_read_query(query, {"name": canonical_name, "include_provisional": include_provisional})
     if not results or not results[0].get("c"):
         logger.info(f"No character profile found for '{canonical_name}'.")
         return None
@@ -233,6 +235,7 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
     return CharacterProfile.from_dict(name, profile)
 
 
+@guard_graph_cache
 @alru_cache(maxsize=128)
 async def get_character_profile_by_id(character_id: str, *, include_provisional: bool = False) -> CharacterProfile | None:
     """Return a character profile by id.
@@ -300,7 +303,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
             [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
     """
 
-    results = await neo4j_manager.execute_read_query(
+    results = await get_services().database.execute_read_query(
         query,
         {"character_id": character_id, "include_provisional": include_provisional},
     )
@@ -376,7 +379,7 @@ async def get_all_character_names() -> list[str]:
         This function does not currently filter provisional characters.
     """
     query = "MATCH (c:Character) RETURN c.name AS name ORDER BY c.name"
-    results = await neo4j_manager.execute_read_query(query)
+    results = await get_services().database.execute_read_query(query)
     return [record["name"] for record in results if record.get("name")]
 
 
@@ -477,16 +480,16 @@ async def get_character_info_for_snippet_from_db(
     params = {"char_name_param": canonical_name, "chapter_limit_param": chapter_limit}
 
     try:
-        result = await neo4j_manager.execute_read_query(query, params)
+        result = await get_services().database.execute_read_query(query, params)
     except ServiceUnavailable as e:
         logger.warning(
             "Neo4j service unavailable when fetching snippet for '%s': %s. Attempting single reconnect.",
             char_name,
             e,
         )
-        await neo4j_manager.connect()
+        await get_services().database.connect()
         try:
-            result = await neo4j_manager.execute_read_query(query, params)
+            result = await get_services().database.execute_read_query(query, params)
         except (ServiceUnavailable, Neo4jError, KeyError, ValueError, TypeError) as retry_error:
             raise handle_database_error(
                 "get_character_info_for_snippet_from_db (retry)",
@@ -534,7 +537,7 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
     RETURN c.name AS name
     LIMIT 20 // Limit to avoid overwhelming the LLM in one cycle
     """
-    results = await neo4j_manager.execute_read_query(query)
+    results = await get_services().database.execute_read_query(query)
     return results if results else []
 
 
@@ -542,12 +545,16 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
 async def sync_characters(
     characters: list[CharacterProfile],
     chapter_number: int,
+    *,
+    physical_description_only: bool = False,
 ) -> None:
     """Persist character profiles to Neo4j using the native Cypher builder.
 
     Args:
         characters: Character profiles to upsert.
         chapter_number: Chapter number used for provenance and update tracking.
+        physical_description_only: Update existing stable IDs only, without replaying
+            other profile properties or relationship assertions. Missing IDs fail.
 
     Raises:
         Neo4jError: If the database write fails.
@@ -572,10 +579,13 @@ async def sync_characters(
             logger.warning(f"Invalid CharacterProfile for '{char.name}': {errors}")
 
     cypher_builder = NativeCypherBuilder()
-    statements = cypher_builder.batch_character_upsert_cypher(characters, chapter_number)
+    if physical_description_only:
+        statements = [cypher_builder.character_physical_description_cypher(character, chapter_number) for character in characters]
+    else:
+        statements = cypher_builder.batch_character_upsert_cypher(characters, chapter_number)
 
     if statements:
-        await neo4j_manager.execute_cypher_batch(statements)
+        await get_services().database.execute_cypher_batch(statements)
 
     logger.info(
         "Persisted %d character updates for chapter %d using native models.",
@@ -604,7 +614,7 @@ async def get_character_profiles() -> list[CharacterProfile]:
     cypher_builder = NativeCypherBuilder()
     query, params = cypher_builder.character_fetch_cypher()
 
-    results = await neo4j_manager.execute_read_query(query, params)
+    results = await get_services().database.execute_read_query(query, params)
     characters = []
 
     for record in results:
@@ -648,7 +658,7 @@ async def get_characters_for_chapter_context_native(chapter_number: int, limit: 
            }) as relationships
     """
 
-    results = await neo4j_manager.execute_read_query(query, {"chapter_number": chapter_number, "limit": limit})
+    results = await get_services().database.execute_read_query(query, {"chapter_number": chapter_number, "limit": limit})
 
     characters = []
     for record in results:

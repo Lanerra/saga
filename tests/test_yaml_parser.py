@@ -1,5 +1,7 @@
 # tests/test_yaml_parser.py
 
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -10,7 +12,7 @@ from utils.common import (
 
 
 @pytest.fixture
-def yaml_test_dir(tmp_path):
+def yaml_test_dir(tmp_path: Path) -> dict[str, str]:
     """Create temporary YAML test files."""
     valid_content = {
         "Novel Concept": {"Title": "Test Novel", "Genre": "Sci-Fi"},
@@ -41,13 +43,13 @@ def yaml_test_dir(tmp_path):
 
 
 class TestYamlParsing:
-    def test_load_valid_yaml_normalized_keys(self, yaml_test_dir) -> None:
+    def test_load_valid_yaml_normalized_keys(self, yaml_test_dir: dict[str, str]) -> None:
         data = load_yaml_file(yaml_test_dir["valid"], normalize_keys=True)
         assert "novel_concept" in data
         assert data["novel_concept"]["title"] == "Test Novel"
         assert data["protagonist_traits"] == ["Brave", "Smart"]
 
-    def test_load_valid_yaml_raw_keys(self, yaml_test_dir) -> None:
+    def test_load_valid_yaml_raw_keys(self, yaml_test_dir: dict[str, str]) -> None:
         data = load_yaml_file(yaml_test_dir["valid"], normalize_keys=False)
         assert "Novel Concept" in data
         assert data["Novel Concept"]["Title"] == "Test Novel"
@@ -56,15 +58,15 @@ class TestYamlParsing:
         with pytest.raises(FileNotFoundError):
             load_yaml_file("non_existent.yaml")
 
-    def test_load_malformed_yaml_raises(self, yaml_test_dir) -> None:
+    def test_load_malformed_yaml_raises(self, yaml_test_dir: dict[str, str]) -> None:
         with pytest.raises(yaml.YAMLError):
             load_yaml_file(yaml_test_dir["malformed"])
 
-    def test_load_empty_yaml(self, yaml_test_dir) -> None:
+    def test_load_empty_yaml(self, yaml_test_dir: dict[str, str]) -> None:
         data = load_yaml_file(yaml_test_dir["empty"])
         assert data == {}
 
-    def test_load_non_dict_root_yaml_raises(self, yaml_test_dir) -> None:
+    def test_load_non_dict_root_yaml_raises(self, yaml_test_dir: dict[str, str]) -> None:
         with pytest.raises(ValueError, match="must have a dictionary as its root element"):
             load_yaml_file(yaml_test_dir["non_dict_root"])
 

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from core.graph_healing_service import GraphHealingService
+from tests.fakes.service_context import patch_service
 
 
 @pytest.mark.asyncio
@@ -51,7 +52,7 @@ async def test_heal_graph_recomputes_confidence_from_updated_node_after_enrichme
         "confidence": 0.9,
     }
 
-    async def _exec_read_query(query: str, params=None):
+    async def _exec_read_query(query: str, params: dict[str, object] | None = None) -> list[dict[str, object]]:
         # calculate_node_confidence() reads:
         # 1) relationship count (connectivity score)
         # 2) character status
@@ -69,8 +70,8 @@ async def test_heal_graph_recomputes_confidence_from_updated_node_after_enrichme
 
     with (
         # Patch read queries narrowly for confidence calculation.
-        patch(
-            "core.graph_healing_service.neo4j_manager.execute_read_query",
+        patch_service(
+            'database.execute_read_query',
             new=AsyncMock(side_effect=_exec_read_query),
         ),
         patch.object(

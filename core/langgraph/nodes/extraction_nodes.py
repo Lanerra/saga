@@ -118,7 +118,7 @@ async def consolidate_extraction(state: NarrativeState) -> NarrativeState:
             content_manager,
             extracted_relationships,
             chapter_number,
-            current_version,
+            content_manager.get_latest_version("extracted_relationships", f"chapter_{chapter_number}") + 1,
         )
 
         logger.info(

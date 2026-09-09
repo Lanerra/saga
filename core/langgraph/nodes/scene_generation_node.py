@@ -17,7 +17,8 @@ from core.langgraph.content_manager import (
     require_project_dir,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.project_config import allocate_word_target
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -37,12 +38,16 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         - current_scene_index: Incremented for the next drafting iteration.
         - current_node: `"draft_scene"`.
 
-        If the scene index is invalid, returns only `current_node`.
-        On drafting errors, returns an update with `last_error` populated.
+        Invalid indices, empty drafts and exhausted provider or storage failures
+        return a fatal error update. Transport retries belong to the HTTP client;
+        this node does not retry failures through the graph.
 
     Notes:
         This node performs LLM I/O and filesystem I/O (externalizing scene drafts).
     """
+    if state.get("has_fatal_error", False) or state.get("revision_rollback_failure") is not None:
+        return {}
+
     logger.info("draft_scene: generating text")
 
     # Initialize content manager
@@ -54,7 +59,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     # Get chapter plan from externalized content
     chapter_plan = get_chapter_plan(state, content_manager)
 
-    if not chapter_plan or scene_index >= len(chapter_plan):
+    if not chapter_plan or scene_index < 0 or scene_index >= len(chapter_plan):
         error_message = f"Invalid scene index {scene_index} for chapter plan with {len(chapter_plan) if chapter_plan else 0} scenes"
         logger.error("draft_scene: invalid scene index", index=scene_index, error=error_message)
         return {
@@ -68,13 +73,6 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     # Inject scene_number for template access (scenes are 1-indexed)
     current_scene["scene_number"] = scene_index + 1
-
-    # Calculate target word count for this scene
-    total_target = 3000  # Default chapter length
-    if state.get("target_word_count") and state.get("total_chapters"):
-        total_target = state.get("target_word_count", 0) // state.get("total_chapters", 0)
-
-    scene_target = total_target // len(chapter_plan)
 
     # Get hybrid context from content manager
     hybrid_context = get_hybrid_context(state, content_manager) or ""
@@ -96,25 +94,30 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
                 }
             )
 
-    prompt = render_prompt(
-        "narrative_agent/draft_scene.j2",
-        {
-            "chapter_number": chapter_number,
-            "novel_title": state.get("title", ""),
-            "novel_genre": state.get("genre", ""),
-            "novel_theme": state.get("theme", ""),
-            "narrative_style": config.DEFAULT_NARRATIVE_STYLE,
-            "total_scenes": len(chapter_plan),  # Total scenes in this chapter
-            "previous_scenes": previous_scenes,
-            "scene": current_scene,
-            "hybrid_context": hybrid_context,
-            "revision_guidance": revision_guidance_text,
-            "target_word_count": scene_target,
-        },
-    )
-
     try:
-        draft_text, _ = await llm_service.async_call_llm(
+        chapter_target = allocate_word_target(
+            state.get("target_word_count", config.TARGET_WORD_COUNT),
+            state.get("total_chapters", config.TOTAL_CHAPTERS),
+            chapter_number,
+        )
+        scene_target = allocate_word_target(chapter_target, len(chapter_plan), scene_index + 1)
+        prompt = render_prompt(
+            "narrative_agent/draft_scene.j2",
+            {
+                "chapter_number": chapter_number,
+                "novel_title": state.get("title", ""),
+                "novel_genre": state.get("genre", ""),
+                "novel_theme": state.get("theme", ""),
+                "narrative_style": state.get("narrative_style", config.DEFAULT_NARRATIVE_STYLE),
+                "total_scenes": len(chapter_plan),
+                "previous_scenes": previous_scenes,
+                "scene": current_scene,
+                "hybrid_context": hybrid_context,
+                "revision_guidance": revision_guidance_text,
+                "target_word_count": scene_target,
+            },
+        )
+        draft_text, _ = await get_services().language_model.async_call_llm(
             model_name=state.get("narrative_model", config.NARRATIVE_MODEL),
             prompt=prompt,
             temperature=0.7,
@@ -122,6 +125,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             system_prompt=get_system_prompt("narrative_agent"),
             spacy_cleanup=True,
         )
+
+        if not draft_text.strip():
+            raise ValueError("Scene draft must not be empty")
 
         draft_word_count = len(draft_text.split())
         if draft_word_count > scene_target * 2:
@@ -156,5 +162,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         logger.error("draft_scene: error generating scene", error=str(e))
         return {
             "last_error": f"Error generating scene: {str(e)}",
+            "has_fatal_error": True,
+            "error_node": "draft_scene",
             "current_node": "draft_scene",
         }

@@ -54,7 +54,9 @@ def test_loaders_still_accept_valid_content_refs_and_paths(tmp_path: Path) -> No
     binary_ref = manager.save_binary(b"abc", content_type="unit_test_bin", identifier="sample", version=1)
     assert manager.load_binary(binary_ref) == b"abc"
 
-    # Also accept Path objects (consistency with ContentRef | str | Path loader contract)
-    assert manager.load_text(Path(text_ref["path"])) == "hello"
-    assert manager.load_json(Path(json_ref["path"])) == {"a": 1}
-    assert manager.load_binary(Path(binary_ref["path"])) == b"abc"
+    for operation, reference in [(manager.load_text, text_ref), (manager.load_json, json_ref), (manager.load_binary, binary_ref)]:
+        with pytest.raises(ValueError, match="explicit"):
+            operation(Path(reference["path"]))
+    assert manager.load_text(manager.admit_legacy_reference(**text_ref)) == "hello"
+    assert manager.load_json(manager.admit_legacy_reference(**json_ref)) == {"a": 1}
+    assert manager.load_binary(manager.admit_legacy_reference(**binary_ref)) == b"abc"

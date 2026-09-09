@@ -1,0 +1,4325 @@
+{
+  "project_id": [
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 431,
+      "text": "\"project_id\","
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 333,
+      "text": "\"project_id\": project_id,"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 429,
+      "text": "project_id = state.get(\"project_id\")"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 431,
+      "text": "raise ValueError(\"Workflow state must include a non-empty str 'project_id'\")"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 714,
+      "text": "value = data.get(\"project_id\")"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 775,
+      "text": "checkpoint_project_id = checkpoint_state.get(\"project_id\")"
+    }
+  ],
+  "title": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 157,
+      "text": "title=state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 320,
+      "text": "\"title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 66,
+      "text": "title=state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 65,
+      "text": "title=state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 256,
+      "text": "\"title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 537,
+      "text": "\"title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 217,
+      "text": "title=state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 222,
+      "text": "if not state.get(\"title\") or not state.get(\"genre\"):"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 323,
+      "text": "\"title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 337,
+      "text": "title=state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 481,
+      "text": "\"title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 82,
+      "text": "title=state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 103,
+      "text": "\"title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 72,
+      "text": "novel_title = state.get(\"title\", \"Unknown\")"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 312,
+      "text": "\"title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 425,
+      "text": "\"title\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 231,
+      "text": "f\"{current_scene.get('title', '')} \""
+    },
+    {
+      "path": "core/langgraph/nodes/context_scene_retrieval.py",
+      "line": 116,
+      "text": "scene_title = chapter_plan[i].get(\"title\", f\"Scene {i + 1}\")"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 169,
+      "text": "title = scene.get(\"title\", \"\")"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 199,
+      "text": "\"title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 650,
+      "text": "novel_title = state.get(\"title\", \"\")"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 103,
+      "text": "\"novel_title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 35,
+      "text": "\"title\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 251,
+      "text": "\"novel_title\": state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 334,
+      "text": "\"title\": title,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 354,
+      "text": "title=state.get(\"title\", \"\"),"
+    },
+    {
+      "path": "core/parsers/chapter_outline_parser.py",
+      "line": 117,
+      "text": "title=chapter_outline_data.get(\"title\", f\"Chapter {chapter_number}\"),"
+    },
+    {
+      "path": "core/parsers/chapter_outline_parser.py",
+      "line": 422,
+      "text": "\"title\": chapter.title,"
+    },
+    {
+      "path": "core/parsers/chapter_outline_parser.py",
+      "line": 492,
+      "text": "\"title\": scene.title,"
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 135,
+      "text": "\"title\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 191,
+      "text": "\"title\": project_config.title,"
+    },
+    {
+      "path": "data_access/chapter_queries.py",
+      "line": 229,
+      "text": "title=result[0].get(\"title\", f\"Chapter {chapter_number}\"),"
+    },
+    {
+      "path": "models/kg_constants.py",
+      "line": 432,
+      "text": "\"title\","
+    },
+    {
+      "path": "models/kg_models.py",
+      "line": 561,
+      "text": "title=data.get(\"title\", \"\"),"
+    },
+    {
+      "path": "models/kg_models.py",
+      "line": 584,
+      "text": "\"title\": self.title,"
+    },
+    {
+      "path": "models/kg_models.py",
+      "line": 887,
+      "text": "title=data.get(\"title\", \"\"),"
+    },
+    {
+      "path": "models/kg_models.py",
+      "line": 906,
+      "text": "\"title\": self.title,"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 564,
+      "text": "if isinstance(state_update, dict) and state_update.get(\"title\"):"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 565,
+      "text": "novel_title = state_update.get(\"title\", \"Novel Generation\")"
+    }
+  ],
+  "genre": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 321,
+      "text": "\"genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 257,
+      "text": "\"genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 538,
+      "text": "\"genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 218,
+      "text": "genre=state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 222,
+      "text": "if not state.get(\"title\") or not state.get(\"genre\"):"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 324,
+      "text": "\"genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 338,
+      "text": "genre=state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 482,
+      "text": "\"genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 104,
+      "text": "\"genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 73,
+      "text": "novel_genre = state.get(\"genre\", \"Unknown\")"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 313,
+      "text": "\"genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 426,
+      "text": "\"genre\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 200,
+      "text": "\"genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 651,
+      "text": "novel_genre = state.get(\"genre\", \"\")"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 104,
+      "text": "\"novel_genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 252,
+      "text": "\"novel_genre\": state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 335,
+      "text": "\"genre\": genre,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 115,
+      "text": "genre=state.get(\"genre\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 244,
+      "text": "\"genre\": genre,"
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 21,
+      "text": "\"genre\": \"Epic Fantasy\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 26,
+      "text": "\"genre\": \"Hard Science Fiction\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 31,
+      "text": "\"genre\": \"Cozy Mystery\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 36,
+      "text": "\"genre\": \"Literary Fiction\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 41,
+      "text": "\"genre\": \"Gothic Horror\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 46,
+      "text": "\"genre\": \"Historical Romance - Regency England\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 51,
+      "text": "\"genre\": \"Cyberpunk\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 56,
+      "text": "\"genre\": \"Grimdark Fantasy\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 136,
+      "text": "\"genre\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 165,
+      "text": "enriched_prompt = f\"{user_prompt.strip()}\\n\\n\" f\"Genre guidance: {template['genre']}\\n\" f\"Thematic direction: {template['theme']}\\n\" f\"Setting inspiration: {template['setting']}\""
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 192,
+      "text": "\"genre\": project_config.genre,"
+    },
+    {
+      "path": "models/kg_constants.py",
+      "line": 433,
+      "text": "\"genre\","
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 61,
+      "text": "plot_genre = plot_outline.get(\"genre\")"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 66,
+      "text": "\"genre\","
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 255,
+      "text": "if error.field == \"genre\":"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 256,
+      "text": "corrections[\"plot_outline\"][\"genre\"] = config.CONFIGURED_GENRE"
+    }
+  ],
+  "theme": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 322,
+      "text": "\"theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 258,
+      "text": "\"theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 539,
+      "text": "\"theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 325,
+      "text": "\"theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 483,
+      "text": "\"theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 105,
+      "text": "\"theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 314,
+      "text": "\"theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 427,
+      "text": "\"theme\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 105,
+      "text": "\"novel_theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 253,
+      "text": "\"novel_theme\": state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 336,
+      "text": "\"theme\": theme,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 116,
+      "text": "theme=state.get(\"theme\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 245,
+      "text": "\"theme\": theme,"
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 22,
+      "text": "\"theme\": \"The struggle between duty and personal desire in a world where ancient powers are reawakening\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 27,
+      "text": "\"theme\": \"The ethical boundaries of technological progress when survival demands compromise\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 32,
+      "text": "\"theme\": \"How well do we truly know the people in our communities, and what secrets hide behind familiar faces\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 37,
+      "text": "\"theme\": \"The way memory reshapes identity, and whether we can ever truly escape the stories our families tell about us\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 42,
+      "text": "\"theme\": \"The inherited sins of the past and the impossibility of escaping the darkness encoded in place and bloodline\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 47,
+      "text": "\"theme\": \"Whether love can flourish when constrained by rigid social expectations and the weight of reputation\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 52,
+      "text": "\"theme\": \"The erosion of human autonomy in a world where identity itself has become a commodity\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 57,
+      "text": "\"theme\": \"The cost of power and whether moral compromise is inevitable in a world that punishes idealism\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 137,
+      "text": "\"theme\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 165,
+      "text": "enriched_prompt = f\"{user_prompt.strip()}\\n\\n\" f\"Genre guidance: {template['genre']}\\n\" f\"Thematic direction: {template['theme']}\\n\" f\"Setting inspiration: {template['setting']}\""
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 193,
+      "text": "\"theme\": project_config.theme,"
+    },
+    {
+      "path": "models/kg_constants.py",
+      "line": 436,
+      "text": "\"theme\","
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 73,
+      "text": "plot_theme = plot_outline.get(\"theme\")"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 78,
+      "text": "\"theme\","
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 258,
+      "text": "elif error.field == \"theme\":"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 259,
+      "text": "corrections[\"plot_outline\"][\"theme\"] = config.CONFIGURED_THEME"
+    },
+    {
+      "path": "prompts/prompt_data_getters.py",
+      "line": 853,
+      "text": "kg_queries.get_novel_info_property_from_db(\"theme\"),"
+    },
+    {
+      "path": "prompts/prompt_data_getters.py",
+      "line": 866,
+      "text": "logger.warning(f\"KG Query for novel context 'theme' failed: {novel_info_results[0]}\")"
+    }
+  ],
+  "setting": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 323,
+      "text": "\"setting\": state.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 259,
+      "text": "\"setting\": state.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 540,
+      "text": "\"setting\": state.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 326,
+      "text": "\"setting\": state.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 484,
+      "text": "\"setting\": state.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 109,
+      "text": "state.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 444,
+      "text": "\"setting\": setting,"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 106,
+      "text": "\"setting\": state.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 75,
+      "text": "setting = state.get(\"setting\", \"\")"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 156,
+      "text": "\"setting\": setting,"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 138,
+      "text": "_write_world_items_file(project_dir, [], state.get(\"setting\", \"\"))"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 315,
+      "text": "\"setting\": state.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 390,
+      "text": "\"setting\": setting,"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 428,
+      "text": "\"setting\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 234,
+      "text": "f\"{current_scene.get('setting', '')}\""
+    },
+    {
+      "path": "core/langgraph/nodes/context_scene_retrieval.py",
+      "line": 284,
+      "text": "location_name = current_scene.get(\"location\") or current_scene.get(\"setting\")"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 171,
+      "text": "setting = scene.get(\"setting\", \"\")"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 37,
+      "text": "\"setting\","
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 337,
+      "text": "\"setting\": setting,"
+    },
+    {
+      "path": "core/parsers/act_outline_parser.py",
+      "line": 482,
+      "text": "\"setting\": \"\","
+    },
+    {
+      "path": "core/parsers/chapter_outline_parser.py",
+      "line": 494,
+      "text": "\"setting\": scene.setting,"
+    },
+    {
+      "path": "core/parsers/global_outline_parser.py",
+      "line": 249,
+      "text": "\"setting\": global_outline_data.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 23,
+      "text": "\"setting\": \"A sprawling continent of rival kingdoms, ancient forests, and forgotten ruins. Magic is rare but potent, tied to bloodlines and sacred oaths. Political alliances shift as an old darkness stirs beneath the mountains.\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 28,
+      "text": "\"setting\": \"A network of space stations and asteroid mining colonies in the Belt, 2340 CE. Humanity has expanded beyond Earth but remains fragmented by corporate territories and resource scarcity. Communication delays make each outpost effectively autonomous.\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 33,
+      "text": "\"setting\": \"A picturesque coastal village in Devon, England. Cobblestone streets, a centuries-old pub, and a weekly farmers market where gossip flows freely. Beneath the charm, old family rivalries and hidden debts create fertile ground for mischief.\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 38,
+      "text": "\"setting\": \"A university town in the American Midwest, spanning three decades from the 1990s to the present. Academic corridors, aging farmhouses, and the slow erosion of a once-thriving downtown mirror the protagonist's inner landscape.\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 43,
+      "text": "\"setting\": \"A decaying manor house on the Scottish moors, isolated by miles of peat bog and perpetual mist. The estate has been in the family for centuries, each generation adding wings and sealing off rooms. The locals avoid the grounds after dark.\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 48,
+      "text": "\"setting\": \"London during the 1815 Season, in the wake of Waterloo. Glittering ballrooms, Hyde Park promenades, and drawing-room politics. Society rewards propriety and punishes scandal, yet beneath the surface, desire and ambition collide.\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 53,
+      "text": "\"setting\": \"Neo-Shenzhen, 2089. A megalopolis of neon-drenched towers and flooded lower districts. Megacorporations control infrastructure, memory augmentation is commonplace, and the line between digital and physical existence blurs for anyone who can afford the implants.\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 58,
+      "text": "\"setting\": \"A war-ravaged continent where a generation-long conflict between three empires has left nations bankrupt and fields salted. Mercenary companies hold more power than kings. Magic exacts a physical toll on its users, and the gods, if they exist, are silent.\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 138,
+      "text": "\"setting\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 165,
+      "text": "enriched_prompt = f\"{user_prompt.strip()}\\n\\n\" f\"Genre guidance: {template['genre']}\\n\" f\"Thematic direction: {template['theme']}\\n\" f\"Setting inspiration: {template['setting']}\""
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 194,
+      "text": "\"setting\": project_config.setting,"
+    },
+    {
+      "path": "models/kg_constants.py",
+      "line": 434,
+      "text": "\"setting\","
+    },
+    {
+      "path": "models/kg_models.py",
+      "line": 563,
+      "text": "setting=data.get(\"setting\", \"\"),"
+    },
+    {
+      "path": "models/kg_models.py",
+      "line": 586,
+      "text": "\"setting\": self.setting,"
+    },
+    {
+      "path": "models/user_input_models.py",
+      "line": 131,
+      "text": "plot_outline[\"setting\"] = model.novel_concept.setting"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 85,
+      "text": "plot_setting = plot_outline.get(\"setting\")"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 90,
+      "text": "\"setting\","
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 261,
+      "text": "elif error.field == \"setting\":"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 262,
+      "text": "corrections[\"plot_outline\"][\"setting\"] = config.CONFIGURED_SETTING_DESCRIPTION"
+    }
+  ],
+  "target_word_count": [
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 107,
+      "text": "\"target_word_count\": state.get(\"target_word_count\", config.TARGET_WORD_COUNT),"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 317,
+      "text": "\"target_word_count\": state.get(\"target_word_count\", config.TARGET_WORD_COUNT),"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 430,
+      "text": "\"target_word_count\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 74,
+      "text": "if state.get(\"target_word_count\") and state.get(\"total_chapters\"):"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 75,
+      "text": "total_target = state.get(\"target_word_count\", 0) // state.get(\"total_chapters\", 0)"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 112,
+      "text": "\"target_word_count\": scene_target,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 338,
+      "text": "\"target_word_count\": target_word_count,"
+    }
+  ],
+  "narrative_style": [
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 106,
+      "text": "\"narrative_style\": config.DEFAULT_NARRATIVE_STYLE,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 339,
+      "text": "\"narrative_style\": narrative_style,"
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 140,
+      "text": "\"narrative_style\","
+    },
+    {
+      "path": "models/user_input_models.py",
+      "line": 199,
+      "text": "if \"narrative_style\" in model.style_and_tone:"
+    },
+    {
+      "path": "models/user_input_models.py",
+      "line": 200,
+      "text": "plot_outline[\"narrative_style\"] = model.style_and_tone[\"narrative_style\"]"
+    }
+  ],
+  "current_chapter": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 1204,
+      "text": "chapter = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 60,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/assemble_chapter_node.py",
+      "line": 58,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 333,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 341,
+      "text": "chapter = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 434,
+      "text": "character_models = _convert_to_character_profiles(unique_char_entities, char_mappings, state.get(\"current_chapter\", 1))"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 435,
+      "text": "world_item_models = _convert_to_world_items(unique_world_entities, world_mappings, state.get(\"current_chapter\", 1))"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 443,
+      "text": "entity_statements = await _build_entity_persistence_statements(character_models, world_item_models, state.get(\"current_chapter\", 1))"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 460,
+      "text": "state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 515,
+      "text": "chapter_number=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 549,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 571,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 576,
+      "text": "chapter = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 76,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/embedding_node.py",
+      "line": 39,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 42,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 64,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 97,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 45,
+      "text": "current_chapter = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+      "line": 443,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 54,
+      "text": "current_chapter = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 69,
+      "text": "current_chapter = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 122,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 595,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 620,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 649,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 51,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 227,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 230,
+      "text": "chapter_number = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 73,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 86,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 103,
+      "text": "\"chapter_number\": state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 111,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 144,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 155,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 161,
+      "text": "chapter_number=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 168,
+      "text": "chapter_number=state.get(\"current_chapter\"),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 175,
+      "text": "chapter=state.get(\"current_chapter\"),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 199,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 216,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 177,
+      "text": "chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 195,
+      "text": "state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 206,
+      "text": "state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 217,
+      "text": "conflicting_chapters=[state.get(\"current_chapter\", 1)],"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 341,
+      "text": "\"current_chapter\": 1,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 87,
+      "text": "chapter=state.get(\"current_chapter\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 114,
+      "text": "chapter_number=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 118,
+      "text": "chapter_outline=get_chapter_outlines(state, content_manager).get(state.get(\"current_chapter\", 1), {}),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 139,
+      "text": "chapter=state.get(\"current_chapter\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 164,
+      "text": "conflicting_chapters=[state.get(\"current_chapter\", 1)],"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 340,
+      "text": "results = await neo4j_manager.execute_read_query(query, {\"current_chapter\": current_chapter})"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 412,
+      "text": "conflicting_chapters=[state.get(\"current_chapter\", 1)],"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 479,
+      "text": "chapter=state.get(\"current_chapter\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 483,
+      "text": "current_chapter = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 123,
+      "text": "chapter=state.get(\"current_chapter\"),"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 216,
+      "text": "next_chapter = state.get(\"current_chapter\", 1) + 1"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 220,
+      "text": "previous_chapter=state.get(\"current_chapter\"),"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 225,
+      "text": "\"current_chapter\": next_chapter,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 257,
+      "text": "current = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "data_access/chapter_queries.py",
+      "line": 407,
+      "text": "\"current_chapter\": current_chapter_number,"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 392,
+      "text": "state[\"current_chapter\"] = current_chapter"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 439,
+      "text": "starting_chapter=state.get(\"current_chapter\", 1),"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 469,
+      "text": "current_chapter = state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 489,
+      "text": "final_chapter=state.get(\"current_chapter\"),"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 765,
+      "text": "checkpoint_state[\"run_start_chapter\"] = checkpoint_state.get(\"current_chapter\", 1)"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 779,
+      "text": "current_chapter = checkpoint_state.get(\"current_chapter\")"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 783,
+      "text": "details={\"current_chapter\": current_chapter},"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 797,
+      "text": "current_chapter = cast(int, checkpoint_state.get(\"current_chapter\"))"
+    }
+  ],
+  "total_chapters": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 180,
+      "text": "total_chapters = state.get(\"total_chapters\")"
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 61,
+      "text": "total_chapters = state.get(\"total_chapters\", 20)"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 241,
+      "text": "total_chapters = state.get(\"total_chapters\", 20)"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 263,
+      "text": "\"total_chapters\": total_chapters,"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 322,
+      "text": "total_chapters = state.get(\"total_chapters\", 20)"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 501,
+      "text": "total_chapters = state.get(\"total_chapters\", 20)"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 544,
+      "text": "\"total_chapters\": total_chapters,"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 83,
+      "text": "total_chapters=state.get(\"total_chapters\", 0),"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 108,
+      "text": "\"total_chapters\": state.get(\"total_chapters\", 20),"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 258,
+      "text": "total_chapters = state.get(\"total_chapters\", 20)"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 295,
+      "text": "\"total_chapters\": total_chapters,"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 316,
+      "text": "\"total_chapters\": state.get(\"total_chapters\", 20),"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 429,
+      "text": "\"total_chapters\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 74,
+      "text": "if state.get(\"target_word_count\") and state.get(\"total_chapters\"):"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 75,
+      "text": "total_target = state.get(\"target_word_count\", 0) // state.get(\"total_chapters\", 0)"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 342,
+      "text": "\"total_chapters\": total_chapters,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 258,
+      "text": "total = state.get(\"total_chapters\", 1)"
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 120,
+      "text": "\"total_chapters\": config.TOTAL_CHAPTERS,"
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 141,
+      "text": "\"total_chapters\","
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 440,
+      "text": "total_chapters=state.get(\"total_chapters\"),"
+    }
+  ],
+  "run_start_chapter": [
+    {
+      "path": "core/langgraph/state.py",
+      "line": 343,
+      "text": "\"run_start_chapter\": 1,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 259,
+      "text": "run_start = state.get(\"run_start_chapter\", 1)"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 394,
+      "text": "state[\"run_start_chapter\"] = current_chapter"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 765,
+      "text": "checkpoint_state[\"run_start_chapter\"] = checkpoint_state.get(\"current_chapter\", 1)"
+    }
+  ],
+  "summaries_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 914,
+      "text": "summaries_ref = state.get(\"summaries_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 206,
+      "text": "\"summaries_ref\": summaries_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 352,
+      "text": "\"summaries_ref\": None,"
+    }
+  ],
+  "draft_word_count": [
+    {
+      "path": "core/langgraph/nodes/assemble_chapter_node.py",
+      "line": 48,
+      "text": "\"draft_word_count\": 0,"
+    },
+    {
+      "path": "core/langgraph/nodes/assemble_chapter_node.py",
+      "line": 90,
+      "text": "\"draft_word_count\": word_count,"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 191,
+      "text": "word_count=state.get(\"draft_word_count\", 0),"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 510,
+      "text": "word_count = state.get(\"draft_word_count\", 0)"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 346,
+      "text": "\"draft_word_count\": 0,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 88,
+      "text": "word_count=state.get(\"draft_word_count\", 0),"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 229,
+      "text": "\"draft_word_count\": 0,"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 482,
+      "text": "word_count=state.get(\"draft_word_count\", 0),"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 616,
+      "text": "word_count = state_update.get(\"draft_word_count\", 0)"
+    }
+  ],
+  "draft_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 870,
+      "text": "draft_ref = state.get(\"draft_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/assemble_chapter_node.py",
+      "line": 47,
+      "text": "\"draft_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/nodes/assemble_chapter_node.py",
+      "line": 88,
+      "text": "\"draft_ref\": draft_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+      "line": 447,
+      "text": "if not state.get(\"draft_ref\"):"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 348,
+      "text": "\"draft_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 16,
+      "text": "\"draft_ref\": None,"
+    }
+  ],
+  "embedding_ref": [
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 500,
+      "text": "elif state.get(\"embedding_ref\"):"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 502,
+      "text": "embedding_ref = cast(ContentRef, state.get(\"embedding_ref\"))"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 125,
+      "text": "embedding_ref = state.get(\"embedding_ref\")"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 349,
+      "text": "\"embedding_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 17,
+      "text": "\"embedding_ref\": None,"
+    }
+  ],
+  "generated_embedding": [
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 506,
+      "text": "elif state.get(\"generated_embedding\"):"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 508,
+      "text": "generated_embedding = state.get(\"generated_embedding\")"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 350,
+      "text": "\"generated_embedding\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 19,
+      "text": "\"generated_embedding\": None,"
+    }
+  ],
+  "scene_embeddings_ref": [
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 485,
+      "text": "scene_embeddings_ref_obj = state.get(\"scene_embeddings_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/embedding_node.py",
+      "line": 93,
+      "text": "\"scene_embeddings_ref\": scene_embeddings_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 351,
+      "text": "\"scene_embeddings_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 18,
+      "text": "\"scene_embeddings_ref\": None,"
+    }
+  ],
+  "extracted_entities_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 1138,
+      "text": "entities_ref = state.get(\"extracted_entities_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/__init__.py",
+      "line": 16,
+      "text": "\"extracted_entities_ref\": entities_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 45,
+      "text": "entities_ref = state.get(\"extracted_entities_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 85,
+      "text": "\"extracted_entities_ref\": entities_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 133,
+      "text": "\"extracted_entities_ref\": entities_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 644,
+      "text": "\"extracted_entities_ref\": extracted_entities_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 725,
+      "text": "\"extracted_entities_ref\": extracted_entities_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 360,
+      "text": "\"extracted_entities_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 59,
+      "text": "\"extracted_entities_ref\": None,"
+    }
+  ],
+  "extracted_relationships_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 1166,
+      "text": "relationships_ref = state.get(\"extracted_relationships_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 46,
+      "text": "relationships_ref = state.get(\"extracted_relationships_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 86,
+      "text": "\"extracted_relationships_ref\": relationships_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 134,
+      "text": "\"extracted_relationships_ref\": relationships_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 208,
+      "text": "\"extracted_relationships_ref\": normalized_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 645,
+      "text": "\"extracted_relationships_ref\": extracted_relationships_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 726,
+      "text": "\"extracted_relationships_ref\": extracted_relationships_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 361,
+      "text": "\"extracted_relationships_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 60,
+      "text": "\"extracted_relationships_ref\": None,"
+    }
+  ],
+  "contradictions": [
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 197,
+      "text": "\"contradictions\": [],"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 128,
+      "text": "contradictions=len(state.get(\"contradictions\", [])),"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 194,
+      "text": "revision_reason = _format_contradictions_for_prompt(state.get(\"contradictions\", []))"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 294,
+      "text": "\"contradictions\": [],"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 127,
+      "text": "\"contradictions\": [],"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 244,
+      "text": "\"contradictions\": contradictions,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 369,
+      "text": "\"contradictions\": [],"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 33,
+      "text": "\"contradictions\": [],"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 157,
+      "text": "current_contradictions = state.get(\"contradictions\", [])"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 177,
+      "text": "\"contradictions\": current_contradictions,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 482,
+      "text": "contradictions = list(state.get(\"contradictions\", []))"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 510,
+      "text": "new_contradictions=len(contradictions) - len(state.get(\"contradictions\", [])),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 531,
+      "text": "\"contradictions\": contradictions,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 538,
+      "text": "\"contradictions\": contradictions,"
+    },
+    {
+      "path": "core/parsers/narrative_enrichment_parser.py",
+      "line": 370,
+      "text": "extra={\"character\": character_name, \"contradictions\": contradictions},"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 588,
+      "text": "contradictions = state_update.get(\"contradictions\", [])"
+    }
+  ],
+  "needs_revision": [
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 199,
+      "text": "\"needs_revision\": False,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 142,
+      "text": "\"needs_revision\": False,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 295,
+      "text": "\"needs_revision\": False,"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 128,
+      "text": "\"needs_revision\": False,"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 245,
+      "text": "\"needs_revision\": needs_revision,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 370,
+      "text": "\"needs_revision\": False,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 34,
+      "text": "\"needs_revision\": False,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 530,
+      "text": "\"needs_revision\": False,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 539,
+      "text": "\"needs_revision\": needs_revision,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 85,
+      "text": "needs_revision = state.get(\"needs_revision\", False)"
+    }
+  ],
+  "revision_guidance_ref": [
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 292,
+      "text": "\"revision_guidance_ref\": revision_guidance_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 83,
+      "text": "revision_guidance_ref = state.get(\"revision_guidance_ref\")"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 363,
+      "text": "\"revision_guidance_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 35,
+      "text": "\"revision_guidance_ref\": None,"
+    }
+  ],
+  "current_summary": [
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 155,
+      "text": "current_summary = state.get(\"current_summary\")"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 207,
+      "text": "\"current_summary\": summary,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 371,
+      "text": "\"current_summary\": None,"
+    }
+  ],
+  "last_qa_chapter": [
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 62,
+      "text": "last_qa_chapter = cast(int, state.get(\"last_qa_chapter\", 0))"
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 177,
+      "text": "\"last_qa_chapter\": current_chapter,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 372,
+      "text": "\"last_qa_chapter\": 0,"
+    }
+  ],
+  "qa_results": [
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 178,
+      "text": "\"qa_results\": qa_results,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 373,
+      "text": "\"qa_results\": {},"
+    }
+  ],
+  "qa_history": [
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 152,
+      "text": "qa_history = list(cast(list[dict[str, Any]], state.get(\"qa_history\", [])))"
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 179,
+      "text": "\"qa_history\": qa_history,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 374,
+      "text": "\"qa_history\": [],"
+    }
+  ],
+  "total_qa_issues": [
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 171,
+      "text": "total_qa_issues = cast(int, state.get(\"total_qa_issues\", 0))"
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 180,
+      "text": "\"total_qa_issues\": total_qa_issues + total_issues,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 375,
+      "text": "\"total_qa_issues\": 0,"
+    }
+  ],
+  "total_qa_fixes": [
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 172,
+      "text": "total_qa_fixes = cast(int, state.get(\"total_qa_fixes\", 0))"
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 181,
+      "text": "\"total_qa_fixes\": total_qa_fixes + total_fixes,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 376,
+      "text": "\"total_qa_fixes\": 0,"
+    }
+  ],
+  "coherence_score": [
+    {
+      "path": "core/langgraph/state.py",
+      "line": 378,
+      "text": "\"coherence_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 103,
+      "text": "\"coherence_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 140,
+      "text": "coherence=scores.get(\"coherence_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 149,
+      "text": "scores.get(\"coherence_score\", 0.0),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 171,
+      "text": "\"coherence_score\": scores.get(\"coherence_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 188,
+      "text": "\"coherence_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 270,
+      "text": "\"coherence_score\","
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 287,
+      "text": "\"coherence_score\": 0.7,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 297,
+      "text": "\"coherence_score\": r\"coherence[^:]*:\\s*(\\d+\\.?\\d*)\","
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 230,
+      "text": "\"coherence_score\": None,"
+    }
+  ],
+  "prose_quality_score": [
+    {
+      "path": "core/langgraph/state.py",
+      "line": 379,
+      "text": "\"prose_quality_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 104,
+      "text": "\"prose_quality_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 141,
+      "text": "prose_quality=scores.get(\"prose_quality_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 150,
+      "text": "scores.get(\"prose_quality_score\", 0.0),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 172,
+      "text": "\"prose_quality_score\": scores.get(\"prose_quality_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 189,
+      "text": "\"prose_quality_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 271,
+      "text": "\"prose_quality_score\","
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 288,
+      "text": "\"prose_quality_score\": 0.7,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 298,
+      "text": "\"prose_quality_score\": r\"prose[^:]*:\\s*(\\d+\\.?\\d*)\","
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 231,
+      "text": "\"prose_quality_score\": None,"
+    }
+  ],
+  "plot_advancement_score": [
+    {
+      "path": "core/langgraph/state.py",
+      "line": 380,
+      "text": "\"plot_advancement_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 105,
+      "text": "\"plot_advancement_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 142,
+      "text": "plot_advancement=scores.get(\"plot_advancement_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 151,
+      "text": "scores.get(\"plot_advancement_score\", 0.0),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 173,
+      "text": "\"plot_advancement_score\": scores.get(\"plot_advancement_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 190,
+      "text": "\"plot_advancement_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 272,
+      "text": "\"plot_advancement_score\","
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 289,
+      "text": "\"plot_advancement_score\": 0.7,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 299,
+      "text": "\"plot_advancement_score\": r\"plot[^:]*:\\s*(\\d+\\.?\\d*)\","
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 232,
+      "text": "\"plot_advancement_score\": None,"
+    }
+  ],
+  "pacing_score": [
+    {
+      "path": "core/langgraph/state.py",
+      "line": 381,
+      "text": "\"pacing_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 106,
+      "text": "\"pacing_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 143,
+      "text": "pacing=scores.get(\"pacing_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 174,
+      "text": "\"pacing_score\": scores.get(\"pacing_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 191,
+      "text": "\"pacing_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 273,
+      "text": "\"pacing_score\","
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 290,
+      "text": "\"pacing_score\": 0.7,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 300,
+      "text": "\"pacing_score\": r\"pacing[^:]*:\\s*(\\d+\\.?\\d*)\","
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 233,
+      "text": "\"pacing_score\": None,"
+    }
+  ],
+  "tone_consistency_score": [
+    {
+      "path": "core/langgraph/state.py",
+      "line": 382,
+      "text": "\"tone_consistency_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 107,
+      "text": "\"tone_consistency_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 144,
+      "text": "tone=scores.get(\"tone_consistency_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 175,
+      "text": "\"tone_consistency_score\": scores.get(\"tone_consistency_score\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 192,
+      "text": "\"tone_consistency_score\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 274,
+      "text": "\"tone_consistency_score\","
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 291,
+      "text": "\"tone_consistency_score\": 0.7,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 301,
+      "text": "\"tone_consistency_score\": r\"tone[^:]*:\\s*(\\d+\\.?\\d*)\","
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 234,
+      "text": "\"tone_consistency_score\": None,"
+    }
+  ],
+  "quality_feedback": [
+    {
+      "path": "core/langgraph/state.py",
+      "line": 383,
+      "text": "\"quality_feedback\": None,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 108,
+      "text": "\"quality_feedback\": \"No draft text available for evaluation\","
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 176,
+      "text": "\"quality_feedback\": scores.get(\"feedback\"),"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 193,
+      "text": "\"quality_feedback\": f\"Evaluation failed: {str(e)}\","
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 235,
+      "text": "\"quality_feedback\": None,"
+    }
+  ],
+  "extraction_model": [
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 46,
+      "text": "model = state.get(\"extraction_model\", \"qwen3-a3b\")"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 653,
+      "text": "model_name = state.get(\"extraction_model\", config.MEDIUM_MODEL)"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 112,
+      "text": "model=state.get(\"extraction_model\", config.SMALL_MODEL),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 385,
+      "text": "\"extraction_model\": extraction_model,"
+    }
+  ],
+  "revision_model": [
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 224,
+      "text": "model_name = state.get(\"revision_model\", config.MEDIUM_MODEL)"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 386,
+      "text": "\"revision_model\": revision_model,"
+    }
+  ],
+  "large_model": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 336,
+      "text": "model_name=state.get(\"large_model\", config.LARGE_MODEL),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 274,
+      "text": "model_name=state.get(\"large_model\", config.LARGE_MODEL),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 557,
+      "text": "model_name=state.get(\"large_model\", config.LARGE_MODEL),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 347,
+      "text": "model_name=state.get(\"large_model\", config.LARGE_MODEL),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 499,
+      "text": "model_name=state.get(\"large_model\", config.LARGE_MODEL),"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 117,
+      "text": "model_name=state.get(\"large_model\", config.LARGE_MODEL),"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 276,
+      "text": "model_name=state.get(\"large_model\", config.LARGE_MODEL),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 387,
+      "text": "\"large_model\": large_model,"
+    }
+  ],
+  "medium_model": [
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 101,
+      "text": "model_name=state.get(\"medium_model\", config.MEDIUM_MODEL),"
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 110,
+      "text": "model_name=state.get(\"medium_model\", config.MEDIUM_MODEL),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 388,
+      "text": "\"medium_model\": medium_model,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 123,
+      "text": "model_name = state.get(\"medium_model\", config.MEDIUM_MODEL)"
+    }
+  ],
+  "small_model": [
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 213,
+      "text": "extraction_model=state.get(\"small_model\", model_name),"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 124,
+      "text": "model_name=state.get(\"small_model\", config.SMALL_MODEL),  # Use fast model"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 389,
+      "text": "\"small_model\": small_model,"
+    }
+  ],
+  "narrative_model": [
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 86,
+      "text": "model_name = state.get(\"narrative_model\", config.NARRATIVE_MODEL)"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 118,
+      "text": "model_name=state.get(\"narrative_model\", config.NARRATIVE_MODEL),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 390,
+      "text": "\"narrative_model\": narrative_model,"
+    }
+  ],
+  "current_node": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 172,
+      "text": "\"current_node\": \"act_outlines\","
+    },
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 237,
+      "text": "\"current_node\": \"act_outlines\","
+    },
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 279,
+      "text": "\"current_node\": \"act_outlines\","
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 57,
+      "text": "\"current_node\": \"all_chapter_outlines\","
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 105,
+      "text": "\"current_node\": \"all_chapter_outlines\","
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 128,
+      "text": "\"current_node\": \"all_chapter_outlines\","
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 110,
+      "text": "\"current_node\": \"chapter_outline\","
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 121,
+      "text": "\"current_node\": \"chapter_outline\","
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 154,
+      "text": "\"current_node\": \"chapter_outline\","
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 190,
+      "text": "\"current_node\": \"chapter_outline\","
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 227,
+      "text": "\"current_node\": \"character_sheets\","
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 244,
+      "text": "\"current_node\": \"character_sheets\","
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 276,
+      "text": "\"current_node\": \"character_sheets\","
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 304,
+      "text": "\"current_node\": \"character_sheets\","
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 151,
+      "text": "\"current_node\": \"commit_initialization\","
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 166,
+      "text": "\"current_node\": \"commit_initialization\","
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 131,
+      "text": "\"current_node\": \"global_outline\","
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 159,
+      "text": "\"current_node\": \"global_outline\","
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 173,
+      "text": "\"current_node\": \"global_outline\","
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 49,
+      "text": "\"current_node\": \"outline_relationships\","
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 89,
+      "text": "\"current_node\": \"outline_relationships\","
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 112,
+      "text": "\"current_node\": \"outline_relationships\","
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 172,
+      "text": "\"current_node\": \"persist_files\","
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 182,
+      "text": "\"current_node\": \"persist_files\","
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 195,
+      "text": "\"current_node\": \"persist_files\","
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 62,
+      "text": "\"current_node\": \"run_parsers\","
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 75,
+      "text": "\"current_node\": \"run_parsers\","
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 88,
+      "text": "\"current_node\": \"run_parsers\","
+    },
+    {
+      "path": "core/langgraph/nodes/__init__.py",
+      "line": 17,
+      "text": "\"current_node\": \"extract\","
+    },
+    {
+      "path": "core/langgraph/nodes/assemble_chapter_node.py",
+      "line": 49,
+      "text": "\"current_node\": \"assemble_chapter\","
+    },
+    {
+      "path": "core/langgraph/nodes/assemble_chapter_node.py",
+      "line": 91,
+      "text": "\"current_node\": \"assemble_chapter\","
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 364,
+      "text": "\"current_node\": \"commit_to_graph\","
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 475,
+      "text": "\"current_node\": \"commit_to_graph\","
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 562,
+      "text": "\"current_node\": \"commit_to_graph\","
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 591,
+      "text": "\"current_node\": \"commit_to_graph\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 83,
+      "text": "return {\"current_node\": \"retrieve_context\"}"
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 113,
+      "text": "\"current_node\": \"retrieve_context\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 139,
+      "text": "\"current_node\": \"retrieve_context\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 269,
+      "text": "\"current_node\": \"retrieve_context\","
+    },
+    {
+      "path": "core/langgraph/nodes/embedding_node.py",
+      "line": 47,
+      "text": "\"current_node\": \"generate_scene_embeddings\","
+    },
+    {
+      "path": "core/langgraph/nodes/embedding_node.py",
+      "line": 55,
+      "text": "\"current_node\": \"generate_scene_embeddings\","
+    },
+    {
+      "path": "core/langgraph/nodes/embedding_node.py",
+      "line": 94,
+      "text": "\"current_node\": \"generate_scene_embeddings\","
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 63,
+      "text": "\"current_node\": \"consolidate_extraction\","
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 73,
+      "text": "\"current_node\": \"consolidate_extraction\","
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 87,
+      "text": "\"current_node\": \"consolidate_extraction\","
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 135,
+      "text": "\"current_node\": \"consolidate_extraction\","
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 83,
+      "text": "\"current_node\": \"finalize\","
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 94,
+      "text": "\"current_node\": \"finalize\","
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 184,
+      "text": "\"current_node\": \"finalize\","
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 200,
+      "text": "\"current_node\": \"finalize\","
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 96,
+      "text": "\"current_node\": \"heal_graph\","
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 122,
+      "text": "\"current_node\": \"heal_graph\","
+    },
+    {
+      "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+      "line": 449,
+      "text": "\"current_node\": \"narrative_enrichment\","
+    },
+    {
+      "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+      "line": 463,
+      "text": "\"current_node\": \"narrative_enrichment\","
+    },
+    {
+      "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+      "line": 468,
+      "text": "\"current_node\": \"narrative_enrichment\","
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 59,
+      "text": "return {\"current_node\": \"check_quality\"}"
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 71,
+      "text": "return {\"current_node\": \"check_quality\"}"
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 175,
+      "text": "\"current_node\": \"check_quality\","
+    },
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 59,
+      "text": "\"current_node\": \"normalize_relationships\","
+    },
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 81,
+      "text": "\"current_node\": \"normalize_relationships\","
+    },
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 218,
+      "text": "\"current_node\": \"normalize_relationships\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 143,
+      "text": "\"current_node\": \"revise_failed\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 221,
+      "text": "\"current_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 241,
+      "text": "\"current_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 266,
+      "text": "\"current_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 274,
+      "text": "\"current_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 296,
+      "text": "\"current_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 600,
+      "text": "return {\"current_node\": \"extract_from_scenes\"}"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 613,
+      "text": "\"current_node\": \"extract_from_scenes\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 646,
+      "text": "\"current_node\": \"extract_from_scenes\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 727,
+      "text": "\"current_node\": \"extract_from_scenes\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 64,
+      "text": "\"current_node\": \"draft_scene\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 152,
+      "text": "\"current_node\": \"draft_scene\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 159,
+      "text": "\"current_node\": \"draft_scene\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 241,
+      "text": "\"current_node\": \"plan_scenes\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 330,
+      "text": "\"current_node\": \"plan_scenes\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 337,
+      "text": "\"current_node\": \"plan_scenes\","
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 89,
+      "text": "\"current_node\": \"summarize\","
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 96,
+      "text": "\"current_node\": \"summarize\","
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 208,
+      "text": "\"current_node\": \"summarize\","
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 223,
+      "text": "\"current_node\": \"summarize\","
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 129,
+      "text": "\"current_node\": \"validate_consistency\","
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 246,
+      "text": "\"current_node\": \"validate_consistency\","
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 392,
+      "text": "\"current_node\": \"init\","
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 532,
+      "text": "\"current_node\": \"detect_contradictions\","
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 540,
+      "text": "\"current_node\": \"detect_contradictions\","
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 126,
+      "text": "return {\"current_node\": \"error_handler\"}"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 318,
+      "text": "return {\"current_node\": \"route\"}"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 479,
+      "text": "if state.get(\"current_node\") == node_name:"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 539,
+      "text": "# Example: {\"generate\": {\"current_node\": \"generate\", \"draft_text\": \"...\", ...}}"
+    }
+  ],
+  "iteration_count": [
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 198,
+      "text": "\"iteration_count\": 0,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 127,
+      "text": "iteration=state.get(\"iteration_count\", 0),"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 131,
+      "text": "if state.get(\"iteration_count\", 0) >= state.get(\"max_iterations\", 3):"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 135,
+      "text": "iterations=state.get(\"iteration_count\", 0),"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 293,
+      "text": "\"iteration_count\": state.get(\"iteration_count\", 0) + 1,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 393,
+      "text": "\"iteration_count\": 0,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 518,
+      "text": "iteration_count = state.get(\"iteration_count\", 0)"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 86,
+      "text": "iteration_count = state.get(\"iteration_count\", 0)"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 226,
+      "text": "\"iteration_count\": 0,"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 607,
+      "text": "iteration = state_update.get(\"iteration_count\", 0)"
+    }
+  ],
+  "max_iterations": [
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 131,
+      "text": "if state.get(\"iteration_count\", 0) >= state.get(\"max_iterations\", 3):"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 132,
+      "text": "error_msg = f\"Max revision attempts ({state.get('max_iterations', 3)}) reached\""
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 136,
+      "text": "max_iterations=state.get(\"max_iterations\", 3),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 394,
+      "text": "\"max_iterations\": max_iterations,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 519,
+      "text": "max_iterations = state.get(\"max_iterations\", 3)"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 87,
+      "text": "max_iterations = state.get(\"max_iterations\", 3)"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 608,
+      "text": "max_iter = state_update.get(\"max_iterations\", 3)"
+    }
+  ],
+  "force_continue": [
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 232,
+      "text": "needs_revision = (len(critical_issues) > 0 or len(major_issues) > 0) and not state.get(\"force_continue\", False)"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 395,
+      "text": "\"force_continue\": False,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "line": 516,
+      "text": "force_continue = state.get(\"force_continue\", False)"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 88,
+      "text": "force_continue = state.get(\"force_continue\", False)"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 227,
+      "text": "\"force_continue\": False,"
+    }
+  ],
+  "last_error": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 171,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 236,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 280,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 104,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 129,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 111,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 153,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 191,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 226,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 243,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 275,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 305,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 152,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 167,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 130,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 160,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 172,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 173,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 183,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 196,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 63,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 76,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 89,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 365,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 476,
+      "text": "\"last_error\": str(error),"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 563,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 592,
+      "text": "\"last_error\": f\"Commit to graph failed: {e}\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 111,
+      "text": "\"last_error\": f\"Failed to retrieve character profiles: {str(e)}\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 137,
+      "text": "\"last_error\": f\"Failed to retrieve KG facts: {str(e)}\","
+    },
+    {
+      "path": "core/langgraph/nodes/embedding_node.py",
+      "line": 48,
+      "text": "\"last_error\": \"Scene embedding generation skipped: scene_drafts_ref is missing\","
+    },
+    {
+      "path": "core/langgraph/nodes/embedding_node.py",
+      "line": 56,
+      "text": "\"last_error\": \"Scene embedding generation skipped: no scene drafts found\","
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 60,
+      "text": "\"last_error\": error_message,"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 70,
+      "text": "\"last_error\": error_message,"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 80,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 91,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 181,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 201,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 97,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 123,
+      "text": "\"last_error\": f\"Graph healing warning: {str(e)}\","
+    },
+    {
+      "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+      "line": 450,
+      "text": "\"last_error\": \"Narrative enrichment skipped: draft_ref is missing\","
+    },
+    {
+      "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+      "line": 464,
+      "text": "\"last_error\": str(error),"
+    },
+    {
+      "path": "core/langgraph/nodes/narrative_enrichment_node.py",
+      "line": 469,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/nodes/quality_assurance_node.py",
+      "line": 176,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 139,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 218,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 238,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 263,
+      "text": "\"last_error\": \"Revision guidance generation failed\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 271,
+      "text": "\"last_error\": \"Revision guidance generation failed\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 610,
+      "text": "\"last_error\": error_msg,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 61,
+      "text": "\"last_error\": error_message,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 158,
+      "text": "\"last_error\": f\"Error generating scene: {str(e)}\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 240,
+      "text": "\"last_error\": f\"No outline found for chapter {chapter_number}\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 336,
+      "text": "\"last_error\": (\"Error planning scenes: \" + str(e) + \" | Expected: JSON array of scene objects with exactly these keys: \" + \", \".join(_SCENE_REQUIRED_KEYS)),"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 130,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/nodes/validation_node.py",
+      "line": 247,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 397,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 46,
+      "text": "\"last_error\": None,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 53,
+      "text": "error=state.get(\"last_error\"),"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 79,
+      "text": "error=state.get(\"last_error\"),"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 121,
+      "text": "error=state.get(\"last_error\"),"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 164,
+      "text": "last_error = state.get(\"last_error\")"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 325,
+      "text": "error = state.get(\"last_error\", \"Unknown initialization error\")"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 334,
+      "text": "\"last_error\": f\"Initialization failed at step {step}: {error}\","
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 495,
+      "text": "error=state.get(\"last_error\"),"
+    }
+  ],
+  "has_fatal_error": [
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 168,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 174,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 64,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 90,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 366,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 477,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 564,
+      "text": "\"has_fatal_error\": False,"
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 593,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 110,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 136,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 61,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 71,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 81,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 92,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 182,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 140,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 219,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 239,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 264,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 272,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 598,
+      "text": "if state.get(\"has_fatal_error\"):"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 611,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 62,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 398,
+      "text": "\"has_fatal_error\": False,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 47,
+      "text": "\"has_fatal_error\": False,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/_shared.py",
+      "line": 11,
+      "text": "if state.get(\"has_fatal_error\", False):"
+    },
+    {
+      "path": "core/langgraph/subgraphs/generation.py",
+      "line": 39,
+      "text": "if state.get(\"has_fatal_error\", False):"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 50,
+      "text": "if state.get(\"has_fatal_error\", False):"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 76,
+      "text": "if state.get(\"has_fatal_error\", False):"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 254,
+      "text": "if state.get(\"has_fatal_error\", False):"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 333,
+      "text": "\"has_fatal_error\": True,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 498,
+      "text": "if state.get(\"has_fatal_error\", False):"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 492,
+      "text": "elif state.get(\"has_fatal_error\"):"
+    }
+  ],
+  "error_node": [
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 169,
+      "text": "\"error_node\": \"commit_initialization\","
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 175,
+      "text": "\"error_node\": \"persist_files\","
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 65,
+      "text": "\"error_node\": \"run_parsers\","
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 91,
+      "text": "\"error_node\": \"run_parsers\","
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 367,
+      "text": "\"error_node\": \"commit\","
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 478,
+      "text": "\"error_node\": \"commit\","
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "line": 594,
+      "text": "\"error_node\": \"commit\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 112,
+      "text": "\"error_node\": \"retrieve_context\","
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 138,
+      "text": "\"error_node\": \"retrieve_context\","
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 62,
+      "text": "\"error_node\": \"consolidate_extraction\","
+    },
+    {
+      "path": "core/langgraph/nodes/extraction_nodes.py",
+      "line": 72,
+      "text": "\"error_node\": \"consolidate_extraction\","
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 82,
+      "text": "\"error_node\": \"finalize\","
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 93,
+      "text": "\"error_node\": \"finalize\","
+    },
+    {
+      "path": "core/langgraph/nodes/finalize_node.py",
+      "line": 183,
+      "text": "\"error_node\": \"finalize\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 141,
+      "text": "\"error_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 220,
+      "text": "\"error_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 240,
+      "text": "\"error_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 265,
+      "text": "\"error_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 273,
+      "text": "\"error_node\": \"revise\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 612,
+      "text": "\"error_node\": \"extract_from_scenes\","
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 63,
+      "text": "\"error_node\": \"draft_scene\","
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 399,
+      "text": "\"error_node\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 48,
+      "text": "\"error_node\": None,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 54,
+      "text": "node=state.get(\"error_node\"),"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 80,
+      "text": "node=state.get(\"error_node\"),"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 122,
+      "text": "failed_node=state.get(\"error_node\"),"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 496,
+      "text": "node=state.get(\"error_node\"),"
+    }
+  ],
+  "project_dir": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 1272,
+      "text": "project_dir = state.get(\"project_dir\")"
+    },
+    {
+      "path": "core/langgraph/nodes/summary_node.py",
+      "line": 170,
+      "text": "project_dir=state.get(\"project_dir\"),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 401,
+      "text": "\"project_dir\": project_dir,"
+    }
+  ],
+  "hybrid_context_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 934,
+      "text": "hybrid_context_ref = state.get(\"hybrid_context_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 268,
+      "text": "\"hybrid_context_ref\": hybrid_context_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 354,
+      "text": "\"hybrid_context_ref\": None,"
+    }
+  ],
+  "current_scene_index": [
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "line": 77,
+      "text": "scene_index = state.get(\"current_scene_index\", 0)"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 52,
+      "text": "scene_index = state.get(\"current_scene_index\", 0)"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 151,
+      "text": "\"current_scene_index\": scene_index + 1,  # Increment for next loop"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 328,
+      "text": "\"current_scene_index\": 0,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 406,
+      "text": "\"current_scene_index\": 0,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 21,
+      "text": "\"current_scene_index\": 0,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/generation.py",
+      "line": 49,
+      "text": "current_index = state.get(\"current_scene_index\", 0)"
+    }
+  ],
+  "chapter_plan_scene_count": [
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 327,
+      "text": "\"chapter_plan_scene_count\": len(scenes),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 407,
+      "text": "\"chapter_plan_scene_count\": 0,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 22,
+      "text": "\"chapter_plan_scene_count\": 0,"
+    },
+    {
+      "path": "core/langgraph/subgraphs/generation.py",
+      "line": 42,
+      "text": "scene_count = state.get(\"chapter_plan_scene_count\", 0)"
+    }
+  ],
+  "scene_drafts_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 893,
+      "text": "scene_drafts_ref = state.get(\"scene_drafts_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/assemble_chapter_node.py",
+      "line": 89,
+      "text": "\"scene_drafts_ref\": scene_drafts_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/embedding_node.py",
+      "line": 45,
+      "text": "if not state.get(\"scene_drafts_ref\"):"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_generation_node.py",
+      "line": 150,
+      "text": "\"scene_drafts_ref\": scene_drafts_ref,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 329,
+      "text": "\"scene_drafts_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 353,
+      "text": "\"scene_drafts_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/state_helpers.py",
+      "line": 20,
+      "text": "\"scene_drafts_ref\": None,"
+    }
+  ],
+  "chapter_plan_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 1260,
+      "text": "plan_ref = state.get(\"chapter_plan_ref\")"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_planning_node.py",
+      "line": 326,
+      "text": "\"chapter_plan_ref\": chapter_plan_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 362,
+      "text": "\"chapter_plan_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 228,
+      "text": "\"chapter_plan_ref\": None,"
+    }
+  ],
+  "protagonist_name": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 330,
+      "text": "\"protagonist_name\": state.get(\"protagonist_name\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 268,
+      "text": "\"protagonist_name\": state.get(\"protagonist_name\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 549,
+      "text": "\"protagonist_name\": state.get(\"protagonist_name\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 327,
+      "text": "\"protagonist_name\": state.get(\"protagonist_name\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 336,
+      "text": "has_protagonist=bool(state.get(\"protagonist_name\", \"\")),"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 373,
+      "text": "protagonist_name = state.get(\"protagonist_name\", \"\")"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 468,
+      "text": "is_protagonist = character_name == state.get(\"protagonist_name\", \"\")"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 109,
+      "text": "\"protagonist_name\": state.get(\"protagonist_name\", \"\"),"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 74,
+      "text": "protagonist = state.get(\"protagonist_name\", \"Unknown\")"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 162,
+      "text": "protagonist_name = state.get(\"protagonist_name\", config.DEFAULT_PROTAGONIST_NAME)"
+    },
+    {
+      "path": "core/langgraph/nodes/revision_node.py",
+      "line": 201,
+      "text": "\"protagonist_name\": protagonist_name,"
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "line": 652,
+      "text": "protagonist_name = state.get(\"protagonist_name\", \"\")"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 410,
+      "text": "\"protagonist_name\": protagonist_name,"
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 139,
+      "text": "\"protagonist_name\","
+    },
+    {
+      "path": "core/project_bootstrapper.py",
+      "line": 195,
+      "text": "\"protagonist_name\": project_config.protagonist_name,"
+    },
+    {
+      "path": "models/user_input_models.py",
+      "line": 137,
+      "text": "plot_outline[\"protagonist_name\"] = main_char_model.name"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 97,
+      "text": "plot_protagonist = plot_outline.get(\"protagonist_name\")"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 102,
+      "text": "\"protagonist_name\","
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 133,
+      "text": "\"protagonist_name\","
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 145,
+      "text": "\"protagonist_name\","
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 264,
+      "text": "elif error.field == \"protagonist_name\":"
+    },
+    {
+      "path": "models/validation_utils.py",
+      "line": 265,
+      "text": "corrections[\"plot_outline\"][\"protagonist_name\"] = config.DEFAULT_PROTAGONIST_NAME"
+    }
+  ],
+  "character_sheets_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 955,
+      "text": "character_sheets_ref = state.get(\"character_sheets_ref\")"
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 303,
+      "text": "\"character_sheets_ref\": character_sheets_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 355,
+      "text": "\"character_sheets_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 355,
+      "text": "has_character_sheets_ref=bool(state.get(\"character_sheets_ref\")),"
+    }
+  ],
+  "global_outline_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 1012,
+      "text": "global_outline_ref = state.get(\"global_outline_ref\")"
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 158,
+      "text": "\"global_outline_ref\": global_outline_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 356,
+      "text": "\"global_outline_ref\": None,"
+    }
+  ],
+  "act_outlines_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 1089,
+      "text": "act_outlines_ref = state.get(\"act_outlines_ref\")"
+    },
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 278,
+      "text": "\"act_outlines_ref\": act_outlines_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 357,
+      "text": "\"act_outlines_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 356,
+      "text": "has_act_outlines_ref=bool(state.get(\"act_outlines_ref\")),"
+    }
+  ],
+  "outline_relationships_ref": [
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 61,
+      "text": "outline_relationships_ref = state.get(\"outline_relationships_ref\")"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 48,
+      "text": "\"outline_relationships_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 88,
+      "text": "\"outline_relationships_ref\": None,"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 111,
+      "text": "\"outline_relationships_ref\": outline_relationships_ref,"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 118,
+      "text": "has_ref=(\"outline_relationships_ref\" in result),"
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 119,
+      "text": "ref_value=result.get(\"outline_relationships_ref\"),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 358,
+      "text": "\"outline_relationships_ref\": None,"
+    }
+  ],
+  "chapter_outlines_ref": [
+    {
+      "path": "core/langgraph/content_manager.py",
+      "line": 982,
+      "text": "chapter_outlines_ref = state.get(\"chapter_outlines_ref\")"
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 127,
+      "text": "\"chapter_outlines_ref\": chapter_outlines_ref,"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 109,
+      "text": "\"chapter_outlines_ref\": chapter_outlines_ref,"
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 189,
+      "text": "\"chapter_outlines_ref\": chapter_outlines_ref,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 359,
+      "text": "\"chapter_outlines_ref\": None,"
+    }
+  ],
+  "initialization_complete": [
+    {
+      "path": "core/langgraph/state.py",
+      "line": 412,
+      "text": "\"initialization_complete\": False,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 192,
+      "text": "initialization_complete = state.get(\"initialization_complete\", False)"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 359,
+      "text": "\"initialization_complete\": True,"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 393,
+      "text": "state[\"initialization_complete\"] = initialization_complete"
+    }
+  ],
+  "initialization_step": [
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 173,
+      "text": "\"initialization_step\": \"act_outlines_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 238,
+      "text": "\"initialization_step\": \"act_outlines_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/act_outlines_node.py",
+      "line": 281,
+      "text": "\"initialization_step\": \"act_outlines_complete\","
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 58,
+      "text": "\"initialization_step\": \"all_chapter_outlines_skipped\","
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 106,
+      "text": "\"initialization_step\": \"all_chapter_outlines_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/all_chapter_outlines_node.py",
+      "line": 130,
+      "text": "\"initialization_step\": \"all_chapter_outlines_complete\","
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 112,
+      "text": "\"initialization_step\": f\"chapter_outline_{chapter_number}_enriched\","
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 122,
+      "text": "\"initialization_step\": f\"chapter_outline_{chapter_number}_exists\","
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 155,
+      "text": "\"initialization_step\": f\"chapter_outline_{chapter_number}_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/chapter_outline_node.py",
+      "line": 192,
+      "text": "\"initialization_step\": f\"chapter_outline_{chapter_number}_complete\","
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 228,
+      "text": "\"initialization_step\": \"character_sheets_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 245,
+      "text": "\"initialization_step\": \"character_sheets_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 277,
+      "text": "\"initialization_step\": \"character_sheets_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/character_sheets_node.py",
+      "line": 306,
+      "text": "\"initialization_step\": \"character_sheets_complete\","
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 153,
+      "text": "\"initialization_step\": \"committed_to_graph\","
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "line": 170,
+      "text": "\"initialization_step\": \"commit_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 132,
+      "text": "\"initialization_step\": \"global_outline_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 161,
+      "text": "\"initialization_step\": \"global_outline_complete\","
+    },
+    {
+      "path": "core/langgraph/initialization/global_outline_node.py",
+      "line": 174,
+      "text": "\"initialization_step\": \"global_outline_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/outline_relationships_node.py",
+      "line": 113,
+      "text": "\"initialization_step\": \"outline_relationships_extracted\","
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 176,
+      "text": "\"initialization_step\": \"validation_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 184,
+      "text": "\"initialization_step\": \"files_persisted\","
+    },
+    {
+      "path": "core/langgraph/initialization/persist_files_node.py",
+      "line": 197,
+      "text": "\"initialization_step\": \"file_persistence_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 66,
+      "text": "\"initialization_step\": \"parsers_failed\","
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 77,
+      "text": "\"initialization_step\": \"parsers_complete\","
+    },
+    {
+      "path": "core/langgraph/initialization/run_parsers_node.py",
+      "line": 92,
+      "text": "\"initialization_step\": \"parsers_failed\","
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 413,
+      "text": "\"initialization_step\": None,"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 165,
+      "text": "init_step = state.get(\"initialization_step\", \"\")"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 326,
+      "text": "step = state.get(\"initialization_step\", \"unknown\")"
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "line": 360,
+      "text": "\"initialization_step\": \"complete\","
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 557,
+      "text": "initialization_step = state_update.get(\"initialization_step\", \"\") if isinstance(state_update, dict) else \"\""
+    }
+  ],
+  "relationship_vocabulary": [
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 68,
+      "text": "vocabulary = state.get(\"relationship_vocabulary\", {})"
+    },
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 210,
+      "text": "\"relationship_vocabulary\": vocabulary,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 415,
+      "text": "\"relationship_vocabulary\": {},"
+    }
+  ],
+  "relationship_vocabulary_size": [
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 211,
+      "text": "\"relationship_vocabulary_size\": len(vocabulary),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 416,
+      "text": "\"relationship_vocabulary_size\": 0,"
+    }
+  ],
+  "relationships_normalized_this_chapter": [
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 212,
+      "text": "\"relationships_normalized_this_chapter\": normalized_count,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 417,
+      "text": "\"relationships_normalized_this_chapter\": 0,"
+    }
+  ],
+  "relationships_novel_this_chapter": [
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 213,
+      "text": "\"relationships_novel_this_chapter\": novel_count,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 418,
+      "text": "\"relationships_novel_this_chapter\": 0,"
+    }
+  ],
+  "last_pruned_chapter": [
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 168,
+      "text": "last_pruned_chapter = state.get(\"last_pruned_chapter\", 0)"
+    },
+    {
+      "path": "core/langgraph/nodes/relationship_normalization_node.py",
+      "line": 217,
+      "text": "\"last_pruned_chapter\": last_pruned_chapter,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 419,
+      "text": "\"last_pruned_chapter\": 0,"
+    }
+  ],
+  "provisional_count": [
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 858,
+      "text": "results[\"provisional_count\"] = len(provisional_nodes)"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 75,
+      "text": "provisional_raw = results.get(\"provisional_count\", 0)"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 99,
+      "text": "\"provisional_count\": provisional_remaining,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 421,
+      "text": "\"provisional_count\": 0,"
+    }
+  ],
+  "last_healing_chapter": [
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 98,
+      "text": "\"last_healing_chapter\": current_chapter,"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 124,
+      "text": "\"last_healing_chapter\": current_chapter,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 422,
+      "text": "\"last_healing_chapter\": 0,"
+    }
+  ],
+  "healing_history": [
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 81,
+      "text": "*state.get(\"healing_history\", []),"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 104,
+      "text": "\"healing_history\": healing_history,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 423,
+      "text": "\"healing_history\": [],"
+    }
+  ],
+  "nodes_graduated": [
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 848,
+      "text": "\"nodes_graduated\": 0,"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 874,
+      "text": "results[\"nodes_graduated\"] += 1"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 980,
+      "text": "results[\"nodes_graduated\"] += 1"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 1030,
+      "text": "graduated=results[\"nodes_graduated\"],"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 68,
+      "text": "total_graduated = state.get(\"nodes_graduated\", 0) + results[\"nodes_graduated\"]"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 76,
+      "text": "graduated_this_run = results.get(\"nodes_graduated\", 0)"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 88,
+      "text": "graduated=results[\"nodes_graduated\"],"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 100,
+      "text": "\"nodes_graduated\": total_graduated,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 424,
+      "text": "\"nodes_graduated\": 0,"
+    }
+  ],
+  "nodes_merged": [
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 849,
+      "text": "\"nodes_merged\": 0,"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 1003,
+      "text": "results[\"nodes_merged\"] += 1"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 1032,
+      "text": "merged=results[\"nodes_merged\"],"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 69,
+      "text": "total_merged = state.get(\"nodes_merged\", 0) + results[\"nodes_merged\"]"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 90,
+      "text": "merged=results[\"nodes_merged\"],"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 101,
+      "text": "\"nodes_merged\": total_merged,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 425,
+      "text": "\"nodes_merged\": 0,"
+    }
+  ],
+  "nodes_enriched": [
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 847,
+      "text": "\"nodes_enriched\": 0,"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 958,
+      "text": "results[\"nodes_enriched\"] += 1"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 1031,
+      "text": "enriched=results[\"nodes_enriched\"],"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 70,
+      "text": "total_enriched = state.get(\"nodes_enriched\", 0) + results[\"nodes_enriched\"]"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 89,
+      "text": "enriched=results[\"nodes_enriched\"],"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 102,
+      "text": "\"nodes_enriched\": total_enriched,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 426,
+      "text": "\"nodes_enriched\": 0,"
+    }
+  ],
+  "nodes_removed": [
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 771,
+      "text": "\"nodes_removed\": 0,"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 807,
+      "text": "results[\"nodes_removed\"] = deleted_count"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 850,
+      "text": "\"nodes_removed\": 0,"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 1016,
+      "text": "results[\"nodes_removed\"] = cleanup_results[\"nodes_removed\"]"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 1018,
+      "text": "if cleanup_results[\"nodes_removed\"] > 0:"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 1022,
+      "text": "\"nodes_removed\": cleanup_results[\"nodes_removed\"],"
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "line": 1033,
+      "text": "removed=results[\"nodes_removed\"],"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 71,
+      "text": "total_removed = state.get(\"nodes_removed\", 0) + results.get(\"nodes_removed\", 0)"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 91,
+      "text": "removed=results.get(\"nodes_removed\", 0),"
+    },
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 103,
+      "text": "\"nodes_removed\": total_removed,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 427,
+      "text": "\"nodes_removed\": 0,"
+    }
+  ],
+  "last_healing_warnings": [
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 106,
+      "text": "\"last_healing_warnings\": healing_warnings,"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 428,
+      "text": "\"last_healing_warnings\": [],"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 624,
+      "text": "warnings = state_update.get(\"last_healing_warnings\", [])"
+    }
+  ],
+  "last_apoc_available": [
+    {
+      "path": "core/langgraph/nodes/graph_healing_node.py",
+      "line": 107,
+      "text": "\"last_apoc_available\": (None if results.get(\"apoc_available\") is None else bool(results.get(\"apoc_available\"))),"
+    },
+    {
+      "path": "core/langgraph/state.py",
+      "line": 429,
+      "text": "\"last_apoc_available\": None,"
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "line": 625,
+      "text": "apoc_available = state_update.get(\"last_apoc_available\")"
+    }
+  ]
+}

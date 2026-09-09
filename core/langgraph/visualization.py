@@ -3,11 +3,10 @@
 
 This module can export a compiled workflow graph to:
 - Mermaid diagrams (`.md` / `.mmd`).
-- PNG images (requires Graphviz integration).
 - Plain-text ASCII summaries.
 
 Notes:
-    PNG export depends on optional Graphviz tooling via LangChain/LangGraph.
+    PNG is disabled: the library default uses an external Mermaid renderer.
 """
 
 from __future__ import annotations
@@ -38,9 +37,13 @@ def visualize_workflow(
         Path to the written file.
 
     Raises:
-        ImportError: When `format="png"` and PNG export dependencies are unavailable.
-        ValueError: When `format` is not supported.
+        ValueError: When `format` is unsupported or requires an external renderer.
     """
+    if format == "png":
+        raise ValueError("PNG export is disabled: no local renderer is configured. Export Mermaid or ASCII instead.")
+    if format not in {"mermaid", "ascii"}:
+        raise ValueError(f"Unsupported format: {format}")
+
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -52,12 +55,8 @@ def visualize_workflow(
 
     if format == "mermaid":
         _export_mermaid(graph, output_path, title)
-    elif format == "png":
-        _export_png(graph, output_path, title)
     elif format == "ascii":
         _export_ascii(graph, output_path, title)
-    else:
-        raise ValueError(f"Unsupported format: {format}")
 
     logger.info(
         "visualize_workflow: visualization created",
@@ -91,43 +90,6 @@ def _export_mermaid(graph: Any, output_path: Path, title: str | None) -> None:
     except Exception as e:
         logger.error(
             "_export_mermaid: failed to create Mermaid diagram",
-            error=str(e),
-            exc_info=True,
-        )
-        raise
-
-
-def _export_png(graph: Any, output_path: Path, title: str | None) -> None:
-    """Export the workflow as a PNG image.
-
-    Raises:
-        ImportError: When Graphviz integration is unavailable.
-    """
-    try:
-        # Try to use LangGraph's built-in PNG export via graphviz
-        from langchain_core.runnables.graph import CurveStyle
-
-        png_data = graph.get_graph().draw_mermaid_png(
-            curve_style=CurveStyle.LINEAR,
-        )
-
-        # Write PNG data to file
-        output_path.write_bytes(png_data)
-
-        logger.debug(
-            "_export_png: PNG diagram created",
-            path=str(output_path),
-        )
-
-    except ImportError as e:
-        logger.error(
-            "_export_png: graphviz not available",
-            error=str(e),
-        )
-        raise ImportError("PNG export requires graphviz. Install with: pip install pygraphviz") from e
-    except Exception as e:
-        logger.error(
-            "_export_png: failed to create PNG diagram",
             error=str(e),
             exc_info=True,
         )

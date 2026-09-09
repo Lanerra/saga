@@ -1,6 +1,7 @@
 # tests/test_langgraph/test_graph_healing_node.py
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,7 +11,7 @@ from core.langgraph.state import create_initial_state
 
 
 @pytest.mark.asyncio
-async def test_heal_graph_clamps_provisional_count_non_negative(tmp_path) -> None:
+async def test_heal_graph_clamps_provisional_count_non_negative(tmp_path: Path) -> None:
     """
     Regression test for LANGGRAPH-029 / remediation 9.1 #5.
 
@@ -60,7 +61,7 @@ async def test_heal_graph_clamps_provisional_count_non_negative(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_heal_graph_accumulates_running_totals(tmp_path) -> None:
+async def test_heal_graph_accumulates_running_totals(tmp_path: Path) -> None:
     """Running totals for graduated/merged/enriched/removed should accumulate."""
     state = create_initial_state(
         project_id="test_project",
@@ -107,7 +108,7 @@ async def test_heal_graph_accumulates_running_totals(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_heal_graph_surfaces_healing_warnings_in_state_and_logs_once(tmp_path) -> None:
+async def test_heal_graph_surfaces_healing_warnings_in_state_and_logs_once(tmp_path: Path) -> None:
     """
     Regression test for LANGGRAPH-025 / remediation plan item 11.
 

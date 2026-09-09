@@ -5,10 +5,11 @@ from pathlib import Path
 
 import pytest
 
+import config
 from core.langgraph.content_manager import ContentManager, load_embedding, save_embedding
 
 
-def test_embedding_round_trip_uses_safe_json_format(tmp_path: Path) -> None:
+def test_embedding_round_trip_uses_safe_json_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Embeddings must round-trip without pickle.
 
@@ -19,8 +20,10 @@ def test_embedding_round_trip_uses_safe_json_format(tmp_path: Path) -> None:
     """
     manager = ContentManager(str(tmp_path))
 
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float64")
     embedding = [0.1, 0.2, 3.0]
-    ref = save_embedding(manager, embedding, chapter=1, version=1)
+    ref = save_embedding(manager, embedding, chapter=1, version=1, embedding_model=config.EMBEDDING_MODEL)
 
     # Stored under `.saga/content/embedding/...` and must be a safe extension
     assert ref["path"].endswith(".json")

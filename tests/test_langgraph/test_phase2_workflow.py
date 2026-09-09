@@ -268,7 +268,7 @@ class TestPhase2Workflow:
         call_sequence: list[str] = []
         validate_call_count = 0
 
-        def mock_validate(s):
+        def mock_validate(s: NarrativeState) -> NarrativeState:
             nonlocal validate_call_count
             call_sequence.append("validate")
             validate_call_count += 1
@@ -293,7 +293,7 @@ class TestPhase2Workflow:
                 "current_node": "validate",
             }
 
-        def mock_commit(s):
+        def mock_commit(s: NarrativeState) -> NarrativeState:
             call_sequence.append("commit")
             return {
                 **s,
@@ -432,7 +432,7 @@ class TestPhase2Workflow:
         # Configure validate to request revision twice then stop
         call_count = 0
 
-        def mock_validate(s):
+        def mock_validate(s: NarrativeState) -> NarrativeState:
             nonlocal call_count
             call_count += 1
             if call_count <= 2:

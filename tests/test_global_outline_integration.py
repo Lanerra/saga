@@ -13,15 +13,17 @@ These tests verify the complete Stage 2 Global Outline pipeline including:
 import json
 import os
 import tempfile
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
 
 from core.parsers.global_outline_parser import GlobalOutlineParser
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def complete_global_outline():
+def complete_global_outline() -> dict[str, object]:
     """Complete global outline with all expected data."""
     return {
         "act_count": 3,
@@ -96,7 +98,7 @@ def complete_global_outline():
 
 
 @pytest.fixture
-def mock_global_outline_file(complete_global_outline):
+def mock_global_outline_file(complete_global_outline: dict[str, object]) -> Iterator[str]:
     """Create a temporary global outline file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(complete_global_outline, f)
@@ -110,7 +112,8 @@ def mock_global_outline_file(complete_global_outline):
 
 
 @pytest.mark.asyncio
-async def test_stage2_pipeline_complete(mock_global_outline_file):
+@pytest.mark.usefixtures("offline_graph_reads")
+async def test_stage2_pipeline_complete(mock_global_outline_file: str) -> None:
     """Test complete Stage 2 pipeline from parsing to Neo4j persistence.
 
     This integration test verifies that:
@@ -124,7 +127,7 @@ async def test_stage2_pipeline_complete(mock_global_outline_file):
     parser = GlobalOutlineParser(global_outline_path=mock_global_outline_file)
 
     # Mock the Neo4j manager and LLM extraction to capture the actual queries
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query, patch.object(parser, "_extract_world_items_from_outline") as mock_extract:
+    with patch_service('database.execute_write_query') as mock_query, patch.object(parser, "_extract_world_items_from_outline") as mock_extract:
         from models.kg_models import WorldItem
 
         mock_query.return_value = None
@@ -153,8 +156,8 @@ async def test_stage2_pipeline_complete(mock_global_outline_file):
         assert len(major_plot_point_queries) >= 4, "Expected at least 4 MajorPlotPoint creation queries"
 
         # Check for Location creation queries
-        location_queries = [q for q in query_types if "\n                MERGE (l:Location" in q]
-        assert len(location_queries) >= 2, "Expected at least 2 Location creation queries"
+        location_queries = [q for q in query_types if q.lstrip().startswith("MERGE (l:Location")]
+        assert len(location_queries) == 2, "Expected exactly 2 Location creation queries"
 
         # Check for Item creation queries
         item_queries = [q for q in query_types if "\n                MERGE (i:Item" in q]
@@ -171,7 +174,7 @@ async def test_stage2_pipeline_complete(mock_global_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_schema_compliance_major_plot_points(mock_global_outline_file):
+async def test_schema_compliance_major_plot_points(mock_global_outline_file: str) -> None:
     """Test that MajorPlotPoints comply with schema requirements.
 
     Verifies:
@@ -206,7 +209,7 @@ async def test_schema_compliance_major_plot_points(mock_global_outline_file):
 
     # Verify all required event names exist (using substring matching)
     event_names = [pp.name.lower() for pp in plot_points]
-    expected_keywords = [
+    expected_keywords: list[tuple[str, str] | str] = [
         ("inciting", "incident"),  # Event 0
         "midpoint",  # Event 1
         "climax",  # Event 2
@@ -221,7 +224,7 @@ async def test_schema_compliance_major_plot_points(mock_global_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_location_schema_compliance(mock_global_outline_file):
+async def test_location_schema_compliance(mock_global_outline_file: str) -> None:
     """Test that Location nodes comply with schema requirements.
 
     Verifies:
@@ -265,7 +268,7 @@ async def test_location_schema_compliance(mock_global_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_schema_compliance_items(mock_global_outline_file):
+async def test_schema_compliance_items(mock_global_outline_file: str) -> None:
     """Test that Item nodes comply with schema requirements.
 
     Verifies:
@@ -307,7 +310,7 @@ async def test_schema_compliance_items(mock_global_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_schema_compliance_character_arcs(mock_global_outline_file):
+async def test_schema_compliance_character_arcs(mock_global_outline_file: str) -> None:
     """Test that Character arcs comply with schema requirements.
 
     Verifies:
@@ -333,7 +336,7 @@ async def test_schema_compliance_character_arcs(mock_global_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_no_relationships_created_in_stage2(mock_global_outline_file):
+async def test_no_relationships_created_in_stage2(mock_global_outline_file: str) -> None:
     """Test that no relationships are created during Stage 2.
 
     Stage 2 should only create entities, not relationships between them.
@@ -368,7 +371,7 @@ async def test_no_relationships_created_in_stage2(mock_global_outline_file):
 
     # Verify that the create methods don't create relationships
     # They should only create nodes
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query:
+    with patch_service('database.execute_write_query') as mock_query:
         mock_query.return_value = None
 
         # Create all entities
@@ -384,7 +387,8 @@ async def test_no_relationships_created_in_stage2(mock_global_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_idempotency_of_node_creation(mock_global_outline_file):
+@pytest.mark.usefixtures("offline_graph_reads")
+async def test_idempotency_of_node_creation(mock_global_outline_file: str) -> None:
     """Test that node creation is idempotent (can run multiple times without errors).
 
     The MERGE query should handle re-running without creating duplicates.
@@ -392,7 +396,7 @@ async def test_idempotency_of_node_creation(mock_global_outline_file):
     parser = GlobalOutlineParser(global_outline_path=mock_global_outline_file)
 
     # Mock the Neo4j manager and LLM extraction
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query, patch.object(parser, "_extract_world_items_from_outline") as mock_extract:
+    with patch_service('database.execute_write_query') as mock_query, patch.object(parser, "_extract_world_items_from_outline") as mock_extract:
         mock_query.return_value = None
         mock_extract.return_value = []
 

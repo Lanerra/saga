@@ -7,10 +7,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from core.langgraph.initialization.run_parsers_node import run_initialization_parsers
+from core.langgraph.state import NarrativeState
 
 
-def _make_state(project_dir: str = "/tmp/fake-project") -> dict:
-    return {"project_dir": project_dir}
+def _make_state(project_dir: str = "/tmp/fake-project") -> NarrativeState:
+    return {"project_dir": project_dir, "initialization_id": "a" * 64}
 
 
 class TestRunInitializationParsers:
@@ -59,6 +60,7 @@ class TestRunInitializationParsers:
         assert result["has_fatal_error"] is True
         assert result["error_node"] == "run_parsers"
         assert result["initialization_step"] == "parsers_failed"
+        assert result["last_error"] is not None
         assert "global_outline" in result["last_error"]
         assert "chapter_outlines" in result["last_error"]
 
@@ -76,9 +78,10 @@ class TestRunInitializationParsers:
         assert result["has_fatal_error"] is True
         assert result["error_node"] == "run_parsers"
         assert result["initialization_step"] == "parsers_failed"
+        assert result["last_error"] is not None
         assert "disk full" in result["last_error"]
 
     async def test_missing_project_dir_raises(self) -> None:
-        state: dict = {}
+        state: NarrativeState = {}
         with pytest.raises(ValueError, match="project_dir is required"):
             await run_initialization_parsers(state)

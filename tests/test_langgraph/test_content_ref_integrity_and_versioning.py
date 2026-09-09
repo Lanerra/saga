@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from core.langgraph.content_manager import ContentManager
+from core.exceptions import ContentIntegrityError
+from core.langgraph.content_manager import ContentManager, ContentRef
 
 
 def test_content_ref_is_immutable(tmp_path: Path) -> None:
@@ -27,23 +28,27 @@ def test_load_text_raises_on_checksum_mismatch(tmp_path: Path) -> None:
     assert full_path.is_file()
 
     # Corrupt the file content after persisting the reference.
-    full_path.write_text("corrupted", encoding="utf-8")
+    full_path.write_text("other", encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"checksum mismatch"):
+    with pytest.raises(ContentIntegrityError, match=r"checksum mismatch"):
         manager.load_text(ref)
 
 
-def test_load_text_allows_missing_checksum_for_backward_compatibility(tmp_path: Path) -> None:
+def test_load_text_requires_explicit_legacy_admission(tmp_path: Path) -> None:
     manager = ContentManager(str(tmp_path))
 
     ref = manager.save_text("hello", content_type="unit_test_text", identifier="sample", version=1)
 
-    ref_without_checksum = {"path": ref["path"], "content_type": ref["content_type"], "version": ref["version"]}
+    ref_without_checksum: ContentRef = {"path": ref["path"], "content_type": ref["content_type"], "version": ref["version"]}
 
-    assert manager.load_text(ref_without_checksum) == "hello"
+    with pytest.raises(ContentIntegrityError, match="size_bytes metadata"):
+        manager.load_text(ref_without_checksum)
+    admitted = manager.admit_legacy_reference(**ref)
+    assert manager.load_text(admitted) == "hello"
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("offline_graph_reads")
 async def test_retrieve_context_writes_new_versions_without_overwriting(tmp_path: Path) -> None:
     from core.langgraph.nodes.context_retrieval_node import retrieve_context
 
@@ -76,23 +81,23 @@ async def test_retrieve_context_writes_new_versions_without_overwriting(tmp_path
 
     with (
         patch(
-            "core.langgraph.nodes.context_retrieval_node._get_scene_character_context",
+            "core.langgraph.nodes.context_retrieval_node.get_scene_character_context",
             new=AsyncMock(side_effect=["CHARACTER_CONTEXT_ONE", "CHARACTER_CONTEXT_TWO"]),
         ),
         patch(
-            "core.langgraph.nodes.context_retrieval_node._get_scene_specific_kg_facts",
+            "core.langgraph.nodes.context_retrieval_node.get_scene_kg_facts",
             new=AsyncMock(return_value=None),
         ),
         patch(
-            "core.langgraph.nodes.context_retrieval_node._get_previous_scenes_context",
+            "core.langgraph.nodes.context_retrieval_node.get_previous_scenes_context",
             new=AsyncMock(return_value=None),
         ),
         patch(
-            "core.langgraph.nodes.context_retrieval_node._get_scene_location_context",
+            "core.langgraph.nodes.context_retrieval_node.get_location_context",
             new=AsyncMock(return_value=None),
         ),
         patch(
-            "core.langgraph.nodes.context_retrieval_node._get_semantic_context",
+            "core.langgraph.nodes.context_retrieval_node.get_semantic_context",
             new=AsyncMock(return_value=None),
         ),
         patch(

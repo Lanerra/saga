@@ -1,11 +1,315 @@
 # tests/core/langgraph/nodes/test_commit_node.py
 """Tests for core/langgraph/nodes/commit_node.py - entity and relationship persistence."""
 
+from collections.abc import Callable
+from copy import deepcopy
+from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from neo4j import Driver
+from structlog.testing import capture_logs
 
-from core.langgraph.nodes.commit_node import commit_to_graph
+from core.db_manager import Neo4jManagerSingleton
+from core.graph_ownership import OWNER_QUERY
+from core.langgraph.content_manager import ContentManager
+from core.langgraph.nodes.commit_node import _build_entity_persistence_statements, commit_to_graph
+from core.langgraph.state import NarrativeState
+from core.service_context import get_services
+from data_access.cypher_builders.native_builders import NativeCypherBuilder, chapter_assertion_delete_statement
+from models.kg_models import CharacterProfile, WorldItem
+from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.fakes.service_context import patch_service
+
+pytestmark = pytest.mark.usefixtures("offline_commit_providers")
+
+
+@pytest.mark.parametrize(
+    ("character_names", "location_names", "chapter"),
+    [([], [], 0), (["Alice"], [], 0), (["Alice", "Bob"], [], 7),
+     ([], ["Castle"], 5), ([], ["Castle", "Forest"], 5), (["Alice"], ["Castle"], 7)],
+)
+async def test_native_entity_provider_preserves_payloads(
+    character_names: list[str], location_names: list[str], chapter: int,
+    monkeypatch: pytest.MonkeyPatch, offline_commit_providers: FakeNeo4jManager,
+) -> None:
+    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    characters = [CharacterProfile(name=name, personality_description=f"About {name}", traits=["brave"]) for name in character_names]
+    locations = [WorldItem.from_dict("Location", name, {"description": f"About {name}"}) for name in location_names]
+
+    statements = await _build_entity_persistence_statements(characters, locations, chapter)
+
+    assert statements == [
+        *[NativeCypherBuilder.character_upsert_cypher(character, chapter, assertion_origin="chapter_profile") for character in characters],
+        *[NativeCypherBuilder.world_item_upsert_cypher(location, chapter, assertion_origin="chapter_profile") for location in locations],
+    ]
+    assert [(parameters["name"], parameters["description"], parameters["chapter_number"]) for _, parameters in statements] == [
+        (name, f"About {name}", chapter) for name in character_names + location_names
+    ]
+    assert [parameters["trait_data"] for _, parameters in statements[:len(characters)]] == [["brave"] for _ in characters]
+    assert offline_commit_providers.executed_queries == []
+    assert offline_commit_providers.batch_statements == []
+
+
+async def test_commit_batches_real_conversions_embeddings_and_chapter(
+    tmp_path: Path, offline_commit_providers: FakeNeo4jManager, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
+    monkeypatch.setattr("config.MAIN_NOVEL_INFO_NODE_ID", "synthetic_novel")
+    content_manager = ContentManager(str(tmp_path))
+    entities = {
+        "characters": [{"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 2,
+                        "attributes": {"traits": ["brave"], "relationships": {"Bob": {"type": "FRIEND_OF", "description": "Companion"}}}}],
+        "world_items": [{"name": "Castle", "type": "Location", "description": "A fortress", "first_appearance_chapter": 2,
+                         "attributes": {"category": "location", "rules": ["Be quiet"]}}],
+    }
+    state: NarrativeState = {
+        "project_dir": str(tmp_path), "current_chapter": 7,
+        "extracted_entities_ref": content_manager.save_json(entities, "extracted_entities", "chapter_7", 1),
+        "extracted_relationships_ref": content_manager.save_json([], "extracted_relationships", "chapter_7", 1),
+        "draft_ref": content_manager.save_text("Alice entered the castle.", "draft", "chapter_7", 1),
+    }
+    original_state = dict(state)
+
+    result = await commit_to_graph(state)
+
+    assert result == {"current_node": "commit_to_graph", "last_error": None, "has_fatal_error": False}
+    assert state == original_state
+    assert len(offline_commit_providers.batch_statements) == 1
+    statements = offline_commit_providers.batch_statements[0]
+    assert len(statements) == 7
+    character_parameters = statements[1][1]
+    location_parameters = statements[2][1]
+    assert (character_parameters["name"], character_parameters["description"], character_parameters["trait_data"],
+            character_parameters["created_chapter"], character_parameters["chapter_number"]) == ("Alice", "A scout", ["brave"], 2, 7)
+    assert character_parameters["relationship_data"] == []
+    assert (statements[5][1]["object_name"], statements[5][1]["predicate_clean"], statements[5][1]["assertion_origin"]) == ("Bob", "FRIEND_OF", "chapter_profile")
+    assert statements[5][1]["relationship_properties"]["description"] == "Companion"
+    assert (location_parameters["name"], location_parameters["description"], location_parameters["rules"],
+            location_parameters["created_chapter"], location_parameters["chapter_number"]) == ("Castle", "A fortress", ["Be quiet"], 2, 7)
+    assert [parameters["vector"] for _, parameters in statements[3:5]] == [[0.25, 0.75], [0.25, 0.75]]
+    assert statements[3][1]["identity"] == {"label": "Character", "id": None, "name": "Alice"}
+    assert statements[4][1]["identity"] == {"label": "Location", "id": location_parameters["id"], "name": "Castle"}
+    assert statements[0] == chapter_assertion_delete_statement(7)
+    assert statements[6][1] == {
+        "chapter_number_param": 7, "chapter_id_param": "chapter_synthetic_novel_7", "summary_param": None,
+        "embedding_vector_param": None, "is_provisional_param": False, "title_param": None, "act_number_param": None,
+        "embedding_model_param": None, "embedding_identity_param": None,
+        "generation_status_param": None,
+    }
+
+
+class ChapterTransaction:
+    """Model only the chapter-write subset, not Cypher or Neo4j semantics."""
+
+    def __init__(self, database: "ChapterDriver") -> None:
+        self.database = database
+        self.pending = deepcopy(database.graph)
+        self.events: list[str] = []
+        self.finished = False
+
+    def run(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        from tests.fakes.schema_catalog import schema_catalog
+
+        catalog = schema_catalog()
+        if query in catalog:
+            return catalog[query]
+        if query == OWNER_QUERY:
+            return [{"key": "exclusive", "project_id": "11111111-1111-4111-8111-111111111111", "version": 1}]
+        assert parameters is not None
+        statement = " ".join(query.split())
+        if statement == "MATCH (n) WHERE n:Character OR n:Location OR n:Event OR n:Item RETURN DISTINCT toLower(n.name) AS name":
+            return [{"name": name.lower()} for name in self.pending["entities"]]
+        self.events.append("run")
+        if len(self.events) == 2 and self.database.failure in ("statement", "driver_rollback"):
+            if self.database.failure == "driver_rollback":
+                self.pending = deepcopy(self.database.graph)
+                self.finished = True
+                self.events.append("driver_rollback")
+            self.database.failure = "none"
+            raise RuntimeError("synthetic statement failure")
+        if statement == " ".join(chapter_assertion_delete_statement(parameters.get("chapter", 0))[0].split()):
+            self.pending["relationships"] = [relationship for relationship in self.pending["relationships"]
+                                              if not (relationship["chapter_added"] == parameters["chapter"]
+                                                      and relationship.get("assertion_origin") in {"chapter_extraction", "chapter_profile"})]
+        elif statement == "MATCH (n) WHERE n.created_chapter = $chapter AND NOT (n)--() DELETE n":
+            connected = {relationship[endpoint] for relationship in self.pending["relationships"] for endpoint in ("source", "target")}
+            self.pending["entities"] = {name: fields for name, fields in self.pending["entities"].items() if fields["created_chapter"] != parameters["chapter"] or name in connected}
+        elif statement == "MATCH (c:Chapter {number: $chapter}) DELETE c":
+            self.pending["chapters"].pop(parameters["chapter"], None)
+        elif statement.startswith("MERGE (c:Chapter {number: $chapter_number_param})"):
+            chapter = parameters["chapter_number_param"]
+            fields = self.pending["chapters"].setdefault(chapter, {"number": chapter, "id": parameters["chapter_id_param"]})
+            for name in ("summary", "is_provisional"):
+                if parameters[f"{name}_param"] is not None:
+                    fields[name] = parameters[f"{name}_param"]
+        else:
+            raise AssertionError(f"Unsupported synthetic statement: {statement}")
+        return []
+
+    def commit(self) -> None:
+        if self.database.failure == "commit_before":
+            self.database.failure = "none"
+            raise RuntimeError("synthetic commit failure")
+        self.database.graph = deepcopy(self.pending)
+        self.events.append("commit")
+        self.finished = True
+        if self.database.failure == "commit_acknowledgement":
+            self.database.failure = "none"
+            raise RuntimeError("synthetic acknowledgement failure")
+
+    def rollback(self) -> None:
+        assert not self.finished
+        self.pending = deepcopy(self.database.graph)
+        self.events.append("rollback")
+        self.finished = True
+
+    def closed(self) -> bool:
+        return self.finished
+
+
+class ChapterDriver:
+    def __init__(self) -> None:
+        self.failure = "none"
+        self.transactions: list[ChapterTransaction] = []
+        self.graph: dict[str, Any] = {
+            "chapters": {4: {"number": 4, "id": "prior-chapter-4", "summary": "Prior committed summary", "is_provisional": False}},
+            "entities": {
+                "Alice": {"description": "Prior committed scout", "created_chapter": 4},
+                "Bob": {"description": "Prior committed guide", "created_chapter": 3},
+                "Keepsake": {"description": "Prior committed orphan", "created_chapter": 4},
+            },
+            "relationships": [{"source": "Alice", "target": "Bob", "type": "KNOWS", "chapter_added": 4, "assertion_origin": "chapter_extraction", "description": "Prior committed fact"}],
+        }
+
+    def session(self, *, database: str) -> "ChapterDriver":
+        return self
+
+    def __enter__(self) -> "ChapterDriver":
+        return self
+
+    def __exit__(self, *arguments: Any) -> None:
+        pass
+
+    def execute_read(self, operation: Callable[..., Any], *arguments: Any) -> Any:
+        return operation(ChapterTransaction(self), *arguments)
+
+    def begin_transaction(self) -> ChapterTransaction:
+        transaction = ChapterTransaction(self)
+        self.transactions.append(transaction)
+        return transaction
+
+
+@pytest.fixture
+def chapter_driver(monkeypatch: pytest.MonkeyPatch) -> ChapterDriver:
+    driver = ChapterDriver()
+    manager = object.__new__(Neo4jManagerSingleton)
+    manager._initialized_flag = False
+    Neo4jManagerSingleton.__init__(manager)
+    manager.bind_project("11111111-1111-4111-8111-111111111111")
+    manager.driver = cast(Driver, driver)
+    monkeypatch.setattr(get_services(), 'database', manager)
+    monkeypatch.setattr("config.MAIN_NOVEL_INFO_NODE_ID", "synthetic_novel")
+    assert Path(commit_to_graph.__code__.co_filename).resolve() == Path(__file__).resolve().parents[4] / "core/langgraph/nodes/commit_node.py"
+    assert Path(Neo4jManagerSingleton.execute_cypher_batch.__code__.co_filename).resolve() == Path(__file__).resolve().parents[4] / "core/db_manager.py"
+    return driver
+
+
+def chapter_state(directory: Path, chapter: int = 4) -> NarrativeState:
+    content_manager = ContentManager(str(directory))
+    return {
+        "project_dir": str(directory), "current_chapter": chapter,
+        "draft_ref": content_manager.save_text("A synthetic draft.", "draft", f"chapter_{chapter}", 1),
+    }
+
+
+async def test_preparation_failure_preserves_prior_commit(tmp_path: Path, chapter_driver: ChapterDriver) -> None:
+    state = chapter_state(tmp_path)
+    reference = state["draft_ref"]
+    assert reference is not None
+    state["draft_ref"] = {**reference, "checksum": "0" * 64}
+    before = deepcopy(chapter_driver.graph)
+    original_state = deepcopy(state)
+
+    for _ in range(2):
+        result = await commit_to_graph(state)
+
+        assert chapter_driver.graph == before
+        assert chapter_driver.transactions == []
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "commit"
+        assert result["current_node"] == "commit_to_graph"
+        assert state == original_state
+
+
+@pytest.mark.parametrize("failure", ["statement", "driver_rollback", "commit_before"])
+async def test_commit_reports_batch_failure_with_real_content(tmp_path: Path, chapter_driver: ChapterDriver, failure: str) -> None:
+    state = chapter_state(tmp_path)
+    chapter_driver.failure = failure
+    before = deepcopy(chapter_driver.graph)
+    expected_events = ["run", "run", "driver_rollback" if failure == "driver_rollback" else "rollback"]
+
+    for attempt in range(2):
+        chapter_driver.failure = failure
+        result = await commit_to_graph(state)
+
+        assert chapter_driver.graph == before
+        assert [transaction.events for transaction in chapter_driver.transactions] == [expected_events] * (attempt + 1)
+        assert result == {
+            "current_node": "commit_to_graph", "has_fatal_error": True, "error_node": "commit",
+            "last_error": "Commit to graph failed: Batch Cypher execution failed (Details: "
+            + str({"batch_size": 2, "error_code": "UNKNOWN", "error_message": "synthetic commit failure" if failure == "commit_before" else "synthetic statement failure",
+                   "original_error": "synthetic commit failure" if failure == "commit_before" else "synthetic statement failure", "operation": "batch_execution"}) + ")",
+        }
+
+    chapter_driver.failure = "none"
+    expected = deepcopy(before)
+    expected["relationships"] = []
+    assert await commit_to_graph(state) == {"current_node": "commit_to_graph", "last_error": None, "has_fatal_error": False}
+    assert chapter_driver.graph == expected
+
+
+@pytest.mark.parametrize("chapter", [4, 5])
+@pytest.mark.parametrize("cache", ["character_queries.get_character_profile_by_name", "world_queries.get_world_item_by_id", "kg_queries.query_kg_from_db"])
+async def test_cache_failure_preserves_durable_commit(tmp_path: Path, chapter_driver: ChapterDriver, monkeypatch: pytest.MonkeyPatch, chapter: int, cache: str) -> None:
+    state = chapter_state(tmp_path, chapter)
+    expected = deepcopy(chapter_driver.graph)
+    if chapter == 4:
+        expected["relationships"] = []
+    else:
+        expected["chapters"][5] = {"number": 5, "id": "chapter_synthetic_novel_5", "is_provisional": False}
+
+    def fail_cache_clear() -> None:
+        raise RuntimeError("synthetic cache failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(f"data_access.{cache}.cache_clear", fail_cache_clear)
+        with capture_logs() as logs:
+            result = await commit_to_graph(state)
+        assert chapter_driver.graph == expected
+        assert [transaction.events for transaction in chapter_driver.transactions] == [["run", "run", "commit"]]
+        assert result == {"current_node": "commit_to_graph", "last_error": None, "has_fatal_error": False}
+        warnings = [entry for entry in logs if entry["event"] == "commit_to_graph: postcommit cache invalidation failed"]
+        assert warnings == [{"event": "commit_to_graph: postcommit cache invalidation failed", "chapter": chapter, "error": "synthetic cache failure", "log_level": "warning"}]
+
+    assert await commit_to_graph(state) == {"current_node": "commit_to_graph", "last_error": None, "has_fatal_error": False}
+    assert chapter_driver.graph == expected
+    assert [transaction.events for transaction in chapter_driver.transactions] == [["run", "run", "commit"], ["run", "run", "commit"]]
+
+
+async def test_unknown_commit_acknowledgement_never_compensates(tmp_path: Path, chapter_driver: ChapterDriver) -> None:
+    state = chapter_state(tmp_path)
+    chapter_driver.failure = "commit_acknowledgement"
+    expected = deepcopy(chapter_driver.graph)
+    expected["relationships"] = []
+
+    result = await commit_to_graph(state)
+
+    assert chapter_driver.graph == expected
+    assert [transaction.events for transaction in chapter_driver.transactions] == [["run", "run", "commit"]]
+    assert result["has_fatal_error"] is True
+    assert result["error_node"] == "commit"
 
 
 class TestCommitNodeEntityPersistence:
@@ -41,10 +345,10 @@ class TestCommitNodeEntityPersistence:
                 ],
             }
 
-            with patch("core.langgraph.nodes.commit_node.generate_entity_id") as mock_generate_id:
+            with patch("utils.text_processing.generate_entity_id") as mock_generate_id:
                 mock_generate_id.side_effect = lambda name, category: f"id_{name}"
 
-                with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
+                with patch_service('database.execute_cypher_batch'):
                     await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                     # Verify generate_entity_id was called for world items only
@@ -76,7 +380,7 @@ class TestCommitNodeEntityPersistence:
             }
             mock_cm.load_text_strict.return_value = "Test draft text"
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
+            with patch_service('database.execute_cypher_batch') as mock_execute:
                 # Add draft_ref to state so get_draft_text doesn't fail
                 mock_state["draft_ref"] = {
                     "path": ".saga/content/drafts/chapter_1.txt",
@@ -116,7 +420,7 @@ class TestCommitNodeEntityPersistence:
                 "world_items": [],
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
+            with patch_service('database.execute_cypher_batch'):
                 await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Should not call generate_entity_id since there are no world items
@@ -176,7 +480,7 @@ class TestCommitNodeRelationshipPersistence:
                 "checksum": "draft123",
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
+            with patch_service('database.execute_cypher_batch') as mock_execute:
                 await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Verify the batch was executed
@@ -216,7 +520,7 @@ class TestCommitNodeRelationshipPersistence:
                 "checksum": "draft123",
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
+            with patch_service('database.execute_cypher_batch') as mock_execute:
                 await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Should still execute the batch (for entities and chapter)
@@ -259,7 +563,7 @@ class TestCommitNodeChapterPersistence:
                 "checksum": "draft123",
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
+            with patch_service('database.execute_cypher_batch') as mock_execute:
                 await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Verify the batch was executed (should contain chapter creation)
@@ -298,7 +602,7 @@ class TestCommitNodeChapterPersistence:
                 "checksum": "draft123",
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
+            with patch_service('database.execute_cypher_batch') as mock_execute:
                 await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Verify the batch was executed
@@ -331,7 +635,7 @@ class TestCommitNodeErrorHandling:
                 "world_items": [],
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
+            with patch_service('database.execute_cypher_batch') as mock_execute:
                 mock_execute.side_effect = Exception("Database error")
 
                 result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
@@ -382,7 +686,7 @@ class TestCommitNodeStateManagement:
                 "world_items": [],
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
+            with patch_service('database.execute_cypher_batch'):
                 result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Should update current_node
@@ -422,7 +726,7 @@ class TestCommitNodeStateManagement:
                 "checksum": "draft123",
             }
 
-            with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
+            with patch_service('database.execute_cypher_batch'):
                 result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Should return success state with expected fields

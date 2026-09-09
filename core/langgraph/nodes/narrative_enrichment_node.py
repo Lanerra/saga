@@ -14,7 +14,6 @@ Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
 
 from typing import Any
 
-import numpy as np
 import structlog
 
 from core.langgraph.content_manager import (
@@ -115,7 +114,7 @@ class NarrativeEnrichmentNode:
                     )
                 else:
                     character.physical_description = extracted_description
-                    await sync_characters([character], chapter_number)
+                    await sync_characters([character], chapter_number, physical_description_only=True)
                     logger.info(
                         "NarrativeEnrichmentNode: Added character physical description",
                         character_name=character_name,
@@ -124,7 +123,7 @@ class NarrativeEnrichmentNode:
         if chapter_embeddings:
             for embedding in chapter_embeddings:
                 embedding_vector = embedding.embedding_vector
-                embedding_array = np.array(embedding_vector) if isinstance(embedding_vector, list) else embedding_vector
+                embedding_array = embedding.validated_vector()
 
                 if chapter_data.embedding:
                     if not self._validate_embedding(
@@ -138,6 +137,7 @@ class NarrativeEnrichmentNode:
                         act_number=chapter_data.act_number,
                         summary=chapter_data.summary,
                         embedding_array=embedding_array,
+                        embedding_model=embedding.embedding_model,
                         is_provisional=chapter_data.is_provisional,
                     )
                     logger.info(
@@ -151,6 +151,7 @@ class NarrativeEnrichmentNode:
                         act_number=chapter_data.act_number,
                         summary=chapter_data.summary,
                         embedding_array=embedding_array,
+                        embedding_model=embedding.embedding_model,
                         is_provisional=chapter_data.is_provisional,
                     )
                     logger.info(

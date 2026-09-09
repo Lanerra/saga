@@ -19,8 +19,19 @@ Notes:
     (e.g., `config.OPENAI_API_KEY`). New code should prefer the `settings` object.
 """
 
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel
+
 # Explicit exports for MyPy compatibility
 from . import settings as settings_mod
+from .settings import EffectiveSettings, SagaSettings
 from .settings import (
     Temperatures as Temperatures,
 )
@@ -169,17 +180,75 @@ NORMALIZE_COMMON_VARIANTS = settings.schema_enforcement.NORMALIZE_COMMON_VARIANT
 LOG_SCHEMA_VIOLATIONS = settings.schema_enforcement.LOG_SCHEMA_VIOLATIONS
 
 
-def reload() -> None:
-    """Reload configuration and refresh this package's exported constants.
-
-    This delegates to [`config.loader.reload_settings()`](config/loader.py:35), which may
-    overwrite process environment variables by re-reading `.env` with override enabled.
-
-    Raises:
-        Exception: Any exception raised by the loader propagates if the loader's internal
-            error handling changes. Currently, the loader returns a boolean status and
-            suppresses exceptions.
-    """
+def reload(*, env_file: Path | None = Path(".env")) -> bool:
+    """Load defaults for future runs; active runs keep their own snapshot."""
     from .loader import reload_settings
 
-    reload_settings()
+    return reload_settings(env_file=env_file)
+
+
+@dataclass
+class _ConfigurationScope:
+    settings: EffectiveSettings
+    active: bool = True
+
+
+_current_configuration: ContextVar[_ConfigurationScope] = ContextVar("saga_run_configuration")
+
+
+def get_settings() -> SagaSettings:
+    scope = _current_configuration.get(None)
+    if scope is None:
+        return settings_mod.settings
+    if not scope.active:
+        raise RuntimeError("SAGA configuration scope has expired")
+    return scope.settings
+
+
+def snapshot_settings() -> EffectiveSettings:
+    """Validate a detached snapshot before allocating any run clients."""
+    values: dict[str, Any] = {}
+    for name in SagaSettings.model_fields:
+        value = globals().get(name, getattr(settings_mod.settings, name))
+        if isinstance(value, BaseModel):
+            value = value.model_dump()
+        values[name] = value
+    return EffectiveSettings(**values)
+
+
+@contextmanager
+def bind_settings(effective: EffectiveSettings) -> Iterator[None]:
+    scope = _ConfigurationScope(effective)
+    token = _current_configuration.set(scope)
+    try:
+        yield
+    finally:
+        scope.active = False
+        _current_configuration.reset(token)
+
+
+_paths = {"PLOT_OUTLINE_FILE", "CHARACTER_PROFILES_FILE", "WORLD_BUILDER_FILE", "CHAPTERS_DIR", "CHAPTER_LOGS_DIR"}
+_relationship_aliases = {
+    "ENABLE_RELATIONSHIP_NORMALIZATION": "ENABLE_RELATIONSHIP_NORMALIZATION",
+    **{name: name.removeprefix("REL_NORM_") for name in globals() if name.startswith("REL_NORM_")},
+}
+_schema_aliases = set(settings_mod.SchemaEnforcementSettings.model_fields)
+
+
+def __getattr__(name: str) -> Any:
+    effective = get_settings()
+    if name == "settings":
+        return effective
+    if name in _paths:
+        return os.path.join(effective.BASE_OUTPUT_DIR, getattr(effective, name))
+    if name in SagaSettings.model_fields:
+        return getattr(effective, name)
+    if name in _relationship_aliases:
+        return getattr(effective.relationship_normalization, _relationship_aliases[name])
+    if name in _schema_aliases:
+        return getattr(effective.schema_enforcement, name)
+    raise AttributeError(name)
+
+
+for _name in {*SagaSettings.model_fields, *_relationship_aliases, *_schema_aliases, "settings"}:
+    globals().pop(_name, None)

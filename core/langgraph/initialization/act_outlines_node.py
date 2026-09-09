@@ -21,7 +21,7 @@ from core.langgraph.content_manager import (
 from core.langgraph.initialization.chapter_allocation import choose_act_ranges
 from core.langgraph.initialization.chapter_outline_node import build_character_summary
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -332,7 +332,7 @@ async def _generate_single_act_outline(
     )
 
     try:
-        data, usage = await llm_service.async_call_llm_json_object(
+        data, usage = await get_services().language_model.async_call_llm_json_object(
             model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,

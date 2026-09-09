@@ -253,7 +253,7 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
 
     This ensures consistency and prevents drift across 16+ JSON-outputting templates.
     """
-    templates_requiring_json_contract = [
+    templates_requiring_json_contract: list[tuple[str, dict[str, object]]] = [
         (
             "knowledge_agent/extract_characters.j2",
             {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text", "canonical_relationship_types": sorted(RELATIONSHIP_TYPES)},
@@ -274,7 +274,11 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
         ),
         (
             "narrative_agent/plan_scenes.j2",
-            {"novel_title": "Test", "novel_genre": "Fantasy", "novel_theme": "Adventure", "chapter_number": 1, "num_scenes": 4, "outline": {"scene_description": "Desc", "key_beats": ["Beat1"]}},
+            {
+                "novel_title": "Test", "novel_genre": "Fantasy", "novel_theme": "Adventure", "chapter_number": 1, "num_scenes": 4,
+                "narrative_style": "First person", "chapter_target_word_count": 3000,
+                "outline": {"scene_description": "Desc", "key_beats": ["Beat1"]},
+            },
         ),
         (
             "initialization/generate_act_outline.j2",
@@ -489,6 +493,8 @@ def test_plan_scenes_template_does_not_require_scene_number() -> None:
             "novel_theme": "Adventure",
             "chapter_number": 1,
             "num_scenes": 4,
+            "narrative_style": "First person",
+            "chapter_target_word_count": 3000,
             "outline": {"scene_description": "Desc", "key_beats": ["Beat1"]},
         },
     )

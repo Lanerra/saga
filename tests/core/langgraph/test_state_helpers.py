@@ -16,6 +16,7 @@ class TestClearGenerationArtifacts:
         """Returns dict with all generation fields set to their cleared values."""
         result = clear_generation_artifacts()
         assert result == {
+            "chapter_plan_ref": None,
             "draft_ref": None,
             "embedding_ref": None,
             "scene_embeddings_ref": None,
@@ -26,14 +27,14 @@ class TestClearGenerationArtifacts:
         }
 
     def test_key_count_and_types(self) -> None:
-        """Contains exactly 7 keys with correct value types."""
+        """Contains exactly 8 keys with correct value types."""
         result = clear_generation_artifacts()
-        assert len(result) == 7
+        assert len(result) == 8
         assert result["current_scene_index"] == 0
         assert isinstance(result["current_scene_index"], int)
         assert result["chapter_plan_scene_count"] == 0
         assert isinstance(result["chapter_plan_scene_count"], int)
-        for key in ("draft_ref", "embedding_ref", "scene_embeddings_ref", "generated_embedding", "scene_drafts_ref"):
+        for key in ("chapter_plan_ref", "draft_ref", "embedding_ref", "scene_embeddings_ref", "generated_embedding", "scene_drafts_ref"):
             assert result[key] is None
 
     def test_idempotent(self) -> None:
@@ -51,12 +52,15 @@ class TestClearValidationState:
             "contradictions": [],
             "needs_revision": False,
             "revision_guidance_ref": None,
+            "quality_checks": {},
+            "graph_quality_check": {},
         }
 
     def test_key_count_and_types(self) -> None:
-        """Contains exactly 3 keys with correct value types."""
         result = clear_validation_state()
-        assert len(result) == 3
+        assert len(result) == 5
+        assert result["quality_checks"] == {}
+        assert result["graph_quality_check"] == {}
         assert isinstance(result["contradictions"], list)
         assert result["contradictions"] == []
         assert result["needs_revision"] is False

@@ -1,7 +1,7 @@
 """Tests for models/user_input_models.py - user story input parsing and conversion."""
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from models.kg_models import WorldItem
 from models.user_input_models import (
@@ -19,8 +19,9 @@ from models.user_input_models import (
 
 class TestNovelConceptModel:
     def test_title_is_required(self) -> None:
+        model_type: type[BaseModel] = NovelConceptModel
         with pytest.raises(ValidationError):
-            NovelConceptModel()
+            model_type()
 
     def test_empty_title_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -48,8 +49,9 @@ class TestNovelConceptModel:
 
 class TestProtagonistModel:
     def test_name_is_required(self) -> None:
+        model_type: type[BaseModel] = ProtagonistModel
         with pytest.raises(ValidationError):
-            ProtagonistModel()
+            model_type()
 
     def test_name_only(self) -> None:
         protagonist = ProtagonistModel(name="Alice")

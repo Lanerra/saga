@@ -17,7 +17,7 @@ from typing import Any
 
 import structlog
 
-from core.db_manager import neo4j_manager
+from core.service_context import get_services
 from data_access.character_queries import sync_characters
 from data_access.kg_queries import validate_relationship_type_for_cypher_interpolation
 from models.kg_models import CharacterProfile
@@ -365,7 +365,7 @@ class CharacterSheetParser:
 
             # Execute all queries
             for query, params in cypher_queries:
-                await neo4j_manager.execute_write_query(query, params)
+                await get_services().database.execute_write_query(query, params)
 
             logger.info("Successfully created %d relationships", len(cypher_queries), extra={"chapter": self.chapter_number})
 

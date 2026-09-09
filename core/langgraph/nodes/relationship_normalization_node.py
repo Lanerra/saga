@@ -13,7 +13,7 @@ Notes:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 import structlog
 
@@ -24,13 +24,29 @@ from core.langgraph.content_manager import (
     require_project_dir,
     set_extracted_relationships,
 )
-from core.langgraph.state import ExtractedRelationship, NarrativeState
+from core.langgraph.state import ContentRef, ExtractedRelationship, NarrativeState
 from core.relationship_normalization_service import normalization_service
 
 logger = structlog.get_logger(__name__)
 
 
-async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
+class RelationshipNormalizationUpdate(TypedDict, total=False):
+    """Node output, including legacy telemetry outside the checkpoint schema."""
+
+    extracted_relationships_ref: ContentRef
+    extracted_relationships: list[ExtractedRelationship | dict[str, object]]
+    relationship_vocabulary: dict[str, Any]
+    relationship_vocabulary_size: int
+    relationships_normalized_this_chapter: int
+    relationships_novel_this_chapter: int
+    relationships_rejected_this_chapter: int
+    relationships_property_converted_this_chapter: int
+    relationship_rejection_rate: float
+    last_pruned_chapter: int
+    current_node: str
+
+
+async def normalize_relationships(state: NarrativeState) -> RelationshipNormalizationUpdate:
     """Normalize extracted relationship types against accumulated vocabulary.
 
     Args:

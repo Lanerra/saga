@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 import config
 from core.langgraph.content_manager import ContentManager, get_character_sheets, require_project_dir
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
 
@@ -113,7 +113,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     )
 
     try:
-        response, usage = await llm_service.async_call_llm(
+        response, usage = await get_services().language_model.async_call_llm(
             model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,

@@ -1,0 +1,243 @@
+{
+  "provenance": "authored_synthetic_controls_not_model_outputs",
+  "stories": [
+    {
+      "identifier": "archive-key",
+      "title": "The Spare Key",
+      "genre": "Mystery",
+      "setting": "Island archive",
+      "protagonist": "Mara",
+      "style": "First-person present, spare concrete sentences; no access to other minds.",
+      "prior_story": "Mara has the brass key. The archive door is locked. Iven waits outside. The ferry leaves at dawn.",
+      "scene_plan": [
+        {
+          "title": "Signal 1",
+          "pov_character": "Mara",
+          "setting": "Island archive",
+          "characters": [
+            "Mara"
+          ],
+          "plot_point": "Enter the obstacle",
+          "conflict": "Time is running out",
+          "outcome": "Iven waits outside while I cross the threshold.",
+          "beats": [
+            "I turn the brass key in the archive door"
+          ]
+        },
+        {
+          "title": "Signal 2",
+          "pov_character": "Mara",
+          "setting": "Island archive",
+          "characters": [
+            "Mara"
+          ],
+          "plot_point": "Resolve the obstacle",
+          "conflict": "Time is running out",
+          "outcome": "I carry the name to Iven.",
+          "beats": [
+            "I find the ledger beneath a folded map"
+          ]
+        }
+      ],
+      "synthetic_scenes": [
+        "I turn the brass key in the archive door. Salt catches in the lock. I lean harder, and the door opens. Iven waits outside while I cross the threshold.",
+        "I find the ledger beneath a folded map. The ferry leaves at dawn. I copy the missing name and close the book. I carry the name to Iven."
+      ],
+      "expectations": {
+        "forbidden_continuity_phrases": [
+          "The archive door was never locked."
+        ],
+        "required_facts": [
+          "brass key",
+          "Iven waits outside",
+          "ferry leaves at dawn"
+        ],
+        "required_perspective_markers": [
+          "I"
+        ],
+        "forbidden_perspective_phrases": [
+          "She knew",
+          "Iven secretly thought"
+        ],
+        "forbidden_style_phrases": [
+          "a tapestry of destiny"
+        ],
+        "maximum_sentence_words": 20,
+        "required_outcome": "I carry the name to Iven",
+        "minimum_words": 30,
+        "maximum_words": 120
+      },
+      "negative_controls": {
+        "continuity": {
+          "remove": "",
+          "append": " The archive door was never locked.",
+          "expected_issues": [
+            "The archive door was never locked."
+          ]
+        },
+        "fact_coverage": {
+          "remove": "brass key",
+          "append": "",
+          "expected_issues": [
+            "brass key"
+          ]
+        },
+        "repetition": {
+          "remove": "",
+          "append": " I turn the brass key in the archive door.",
+          "expected_issues": [
+            "i turn the brass key in the archive door"
+          ]
+        },
+        "perspective": {
+          "remove": "",
+          "append": " Iven secretly thought of home.",
+          "expected_issues": [
+            "Iven secretly thought"
+          ]
+        },
+        "prose_fidelity": {
+          "remove": "",
+          "append": " It was a tapestry of destiny.",
+          "expected_issues": [
+            "a tapestry of destiny"
+          ]
+        },
+        "usefulness": {
+          "remove": "I carry the name to Iven",
+          "append": "",
+          "expected_issues": [
+            "missing_outcome"
+          ]
+        }
+      },
+      "human_review_questions": {
+        "continuity": "Do actions preserve the prior story state and follow causally across scenes, without re-enacting completed beats?",
+        "fact_coverage": "Are required facts used accurately in events rather than merely mentioned? Note omissions and contradictions with quotes.",
+        "repetition": "Are there repeated events, dialogue, images or sentence structures beyond intentional motifs?",
+        "perspective": "Does narration preserve the requested person, tense and knowledge limits? Quote any head-hopping.",
+        "prose_fidelity": "Does diction, rhythm and imagery follow the author style, while remaining coherent and readable?",
+        "usefulness": "Would the author retain this continuation? Identify actionable edits, plot progress and whether the outcome is earned."
+      }
+    },
+    {
+      "identifier": "canal-signal",
+      "title": "The Last Signal",
+      "genre": "Science Fiction",
+      "setting": "Canal control station",
+      "protagonist": "Tavi",
+      "style": "Third-person limited past through Tavi; restrained concrete imagery and short sentences.",
+      "prior_story": "Tavi carried a red lantern. The canal gate was closed. Ren stayed on the eastern bank. The radio was broken.",
+      "scene_plan": [
+        {
+          "title": "Signal 1",
+          "pov_character": "Tavi",
+          "setting": "Canal control station",
+          "characters": [
+            "Tavi"
+          ],
+          "plot_point": "Enter the obstacle",
+          "conflict": "Time is running out",
+          "outcome": "Ren stayed on the eastern bank, beyond her reach.",
+          "beats": [
+            "Tavi raised the red lantern"
+          ]
+        },
+        {
+          "title": "Signal 2",
+          "pov_character": "Tavi",
+          "setting": "Canal control station",
+          "characters": [
+            "Tavi"
+          ],
+          "plot_point": "Resolve the obstacle",
+          "conflict": "Time is running out",
+          "outcome": "The gate opened before the water reached Ren.",
+          "beats": [
+            "She found the manual lever beneath the steps"
+          ]
+        }
+      ],
+      "synthetic_scenes": [
+        "Tavi raised the red lantern. The canal gate was closed. Rain tapped the glass as she checked the catch. Ren stayed on the eastern bank, beyond her reach.",
+        "She found the manual lever beneath the steps. The radio was broken, but the signal rope held. She pulled twice and waited. The gate opened before the water reached Ren."
+      ],
+      "expectations": {
+        "forbidden_continuity_phrases": [
+          "The radio worked perfectly."
+        ],
+        "required_facts": [
+          "red lantern",
+          "Ren stayed on the eastern bank",
+          "radio was broken"
+        ],
+        "required_perspective_markers": [
+          "she"
+        ],
+        "forbidden_perspective_phrases": [
+          "I",
+          "Ren secretly thought"
+        ],
+        "forbidden_style_phrases": [
+          "a tapestry of destiny"
+        ],
+        "maximum_sentence_words": 20,
+        "required_outcome": "The gate opened before the water reached Ren",
+        "minimum_words": 30,
+        "maximum_words": 120
+      },
+      "negative_controls": {
+        "continuity": {
+          "remove": "",
+          "append": " The radio worked perfectly.",
+          "expected_issues": [
+            "The radio worked perfectly."
+          ]
+        },
+        "fact_coverage": {
+          "remove": "red lantern",
+          "append": "",
+          "expected_issues": [
+            "red lantern"
+          ]
+        },
+        "repetition": {
+          "remove": "",
+          "append": " Tavi raised the red lantern.",
+          "expected_issues": [
+            "tavi raised the red lantern"
+          ]
+        },
+        "perspective": {
+          "remove": "",
+          "append": " Ren secretly thought of home.",
+          "expected_issues": [
+            "Ren secretly thought"
+          ]
+        },
+        "prose_fidelity": {
+          "remove": "",
+          "append": " It was a tapestry of destiny.",
+          "expected_issues": [
+            "a tapestry of destiny"
+          ]
+        },
+        "usefulness": {
+          "remove": "The gate opened before the water reached Ren",
+          "append": "",
+          "expected_issues": [
+            "missing_outcome"
+          ]
+        }
+      },
+      "human_review_questions": {
+        "continuity": "Do actions preserve the prior story state and follow causally across scenes, without re-enacting completed beats?",
+        "fact_coverage": "Are required facts used accurately in events rather than merely mentioned? Note omissions and contradictions with quotes.",
+        "repetition": "Are there repeated events, dialogue, images or sentence structures beyond intentional motifs?",
+        "perspective": "Does narration preserve the requested person, tense and knowledge limits? Quote any head-hopping.",
+        "prose_fidelity": "Does diction, rhythm and imagery follow the author style, while remaining coherent and readable?",
+        "usefulness": "Would the author retain this continuation? Identify actionable edits, plot progress and whether the outcome is earned."
+      }
+    }
+  ]
+}

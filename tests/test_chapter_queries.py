@@ -1,20 +1,26 @@
 # tests/test_chapter_queries.py
 """Tests for data_access/chapter_queries.py"""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
 from neo4j.exceptions import Neo4jError
 
+import config
+from core.embedding_contract import embedding_identity
 from core.exceptions import DatabaseError
+from core.service_context import get_services
 from data_access import chapter_queries
 from data_access.cache_coordinator import clear_chapter_read_caches
 
 
 @pytest.fixture(autouse=True)
-def clear_caches():
+def clear_caches(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Clear chapter read caches before each test."""
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float32")
     clear_chapter_read_caches()
     yield
     clear_chapter_read_caches()
@@ -24,26 +30,26 @@ def clear_caches():
 class TestLoadChapterCount:
     """Tests for loading chapter count."""
 
-    async def test_load_chapter_count_zero(self, monkeypatch):
+    async def test_load_chapter_count_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading chapter count when zero."""
         mock_read = AsyncMock(return_value=[{"chapter_count": 0}])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.load_chapter_count_from_db()
         assert result == 0
 
-    async def test_load_chapter_count_multiple(self, monkeypatch):
+    async def test_load_chapter_count_multiple(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading chapter count when multiple chapters exist."""
         mock_read = AsyncMock(return_value=[{"chapter_count": 5}])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.load_chapter_count_from_db()
         assert result >= 0
 
-    async def test_load_chapter_count_no_result(self, monkeypatch):
+    async def test_load_chapter_count_no_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test loading chapter count when no result."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.load_chapter_count_from_db()
         assert result == 0
@@ -53,10 +59,10 @@ class TestLoadChapterCount:
 class TestSaveChapterData:
     """Tests for saving chapter data."""
 
-    async def test_save_chapter_data_basic(self, monkeypatch):
+    async def test_save_chapter_data_basic(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test saving basic chapter data (must always set Chapter.id)."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_write_query", mock_execute)
+        monkeypatch.setattr(get_services().database, "execute_write_query", mock_execute)
 
         await chapter_queries.save_chapter_data_to_db(
             chapter_number=1,
@@ -77,16 +83,17 @@ class TestSaveChapterData:
         assert params["embedding_vector_param"] is None
         assert params["is_provisional_param"] is False
 
-    async def test_save_chapter_data_with_embedding(self, monkeypatch):
+    async def test_save_chapter_data_with_embedding(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test saving chapter data with embedding (must always set Chapter.id)."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_write_query", mock_execute)
+        monkeypatch.setattr(get_services().database, "execute_write_query", mock_execute)
 
         embedding = np.array([0.1, 0.2, 0.3])
         await chapter_queries.save_chapter_data_to_db(
             chapter_number=1,
             summary="Chapter summary",
             embedding_array=embedding,
+            embedding_model=config.EMBEDDING_MODEL,
         )
         mock_execute.assert_called_once()
 
@@ -105,7 +112,7 @@ class TestSaveChapterData:
 class TestGetChapterData:
     """Tests for getting chapter data."""
 
-    async def test_get_chapter_data_found(self, monkeypatch):
+    async def test_get_chapter_data_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting chapter data when found."""
         mock_read = AsyncMock(
             return_value=[
@@ -123,25 +130,25 @@ class TestGetChapterData:
                 }
             ]
         )
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_chapter_data_from_db(1)
         assert result is not None
         assert result.summary == "Chapter summary"
         assert result.is_provisional is False
 
-    async def test_get_chapter_data_not_found(self, monkeypatch):
+    async def test_get_chapter_data_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting chapter data when not found."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_chapter_data_from_db(999)
         assert result is None
 
-    async def test_get_chapter_data_raises_database_error_on_db_failure(self, monkeypatch):
+    async def test_get_chapter_data_raises_database_error_on_db_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """P1.9: DB failures should raise standardized DatabaseError (not return None)."""
         mock_read = AsyncMock(side_effect=Neo4jError("connection refused"))
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         with pytest.raises(DatabaseError):
             await chapter_queries.get_chapter_data_from_db(1)
@@ -151,45 +158,46 @@ class TestGetChapterData:
 class TestGetEmbedding:
     """Tests for getting chapter embedding."""
 
-    async def test_get_embedding_found(self, monkeypatch):
+    async def test_get_embedding_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting embedding when found."""
         embedding_list = [0.1, 0.2, 0.3, 0.4, 0.5]
-        mock_read = AsyncMock(return_value=[{"embedding_vector": embedding_list}])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 5)
+        mock_read = AsyncMock(return_value=[{"embedding_vector": embedding_list, "embedding_model": config.EMBEDDING_MODEL, "embedding_identity": embedding_identity()}])
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_embedding_from_db(1)
         assert result is not None
         assert isinstance(result, np.ndarray)
         assert len(result) == 5
 
-    async def test_get_embedding_not_found(self, monkeypatch):
+    async def test_get_embedding_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting embedding when not found."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_embedding_from_db(999)
         assert result is None
 
-    async def test_get_embedding_null(self, monkeypatch):
+    async def test_get_embedding_null(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting embedding when null."""
         mock_read = AsyncMock(return_value=[{"embedding_vector": None}])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_embedding_from_db(1)
         assert result is None
 
-    async def test_get_embedding_raises_on_database_error(self, monkeypatch):
+    async def test_get_embedding_raises_on_database_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """get_embedding_from_db should propagate DatabaseError, not return None."""
         mock_read = AsyncMock(side_effect=Neo4jError("Database connection failed"))
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         with pytest.raises(DatabaseError):
             await chapter_queries.get_embedding_from_db(1)
 
-    async def test_get_embedding_returns_none_when_missing(self, monkeypatch):
+    async def test_get_embedding_returns_none_when_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When embedding doesn't exist, should return None (not an error)."""
         mock_read = AsyncMock(return_value=[{}])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_embedding_from_db(999)
         assert result is None
@@ -199,7 +207,7 @@ class TestGetEmbedding:
 class TestFindSemanticContext:
     """Tests for finding semantic context."""
 
-    async def test_find_semantic_context_found(self, monkeypatch):
+    async def test_find_semantic_context_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test finding semantic context when found (correct return shape + deterministic contract)."""
         mock_read = AsyncMock(
             return_value=[
@@ -216,24 +224,24 @@ class TestFindSemanticContext:
                 }
             ]
         )
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         query_embedding = np.array([0.1, 0.2, 0.3])
-        result = await chapter_queries.find_semantic_context_native(query_embedding, current_chapter_number=5, limit=3)
+        result = await chapter_queries.find_semantic_context_native(query_embedding, current_chapter_number=5, limit=3, embedding_model=config.EMBEDDING_MODEL)
         assert isinstance(result, list)
         assert result[0]["chapter_number"] == 2
 
-    async def test_find_semantic_context_empty(self, monkeypatch):
+    async def test_find_semantic_context_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test finding semantic context when empty."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         query_embedding = np.array([0.1, 0.2, 0.3])
-        result = await chapter_queries.find_semantic_context_native(query_embedding, current_chapter_number=5, limit=3)
+        result = await chapter_queries.find_semantic_context_native(query_embedding, current_chapter_number=5, limit=3, embedding_model=config.EMBEDDING_MODEL)
         assert isinstance(result, list)
         assert len(result) == 0
 
-    async def test_find_semantic_context_enforces_limit_and_order(self, monkeypatch):
+    async def test_find_semantic_context_enforces_limit_and_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Enforces P1.8: score-desc ordering + strict output limit."""
         mock_read = AsyncMock(
             return_value=[
@@ -247,10 +255,10 @@ class TestFindSemanticContext:
                 }
             ]
         )
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         query_embedding = np.array([0.1, 0.2, 0.3])
-        result = await chapter_queries.find_semantic_context_native(query_embedding, current_chapter_number=20, limit=2)
+        result = await chapter_queries.find_semantic_context_native(query_embedding, current_chapter_number=20, limit=2, embedding_model=config.EMBEDDING_MODEL)
 
         assert [r["chapter_number"] for r in result] == [11, 13]
         assert len(result) == 2
@@ -260,16 +268,16 @@ class TestFindSemanticContext:
 class TestGetChapterContentBatch:
     """Tests for getting chapter content in batch."""
 
-    async def test_get_chapter_content_batch_empty(self, monkeypatch):
+    async def test_get_chapter_content_batch_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting chapter content batch when empty."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_chapter_content_batch_native([])
         assert isinstance(result, dict)
         assert len(result) == 0
 
-    async def test_get_chapter_content_batch_single(self, monkeypatch):
+    async def test_get_chapter_content_batch_single(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting chapter content batch with single chapter."""
         mock_read = AsyncMock(
             return_value=[
@@ -280,14 +288,14 @@ class TestGetChapterContentBatch:
                 }
             ]
         )
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_chapter_content_batch_native([1])
         assert len(result) == 1
         assert 1 in result
         assert result[1]["summary"] == "Chapter 1 summary"
 
-    async def test_get_chapter_content_batch_multiple(self, monkeypatch):
+    async def test_get_chapter_content_batch_multiple(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting chapter content batch with multiple chapters."""
         mock_read = AsyncMock(
             return_value=[
@@ -303,7 +311,7 @@ class TestGetChapterContentBatch:
                 },
             ]
         )
-        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+        monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_chapter_content_batch_native([1, 2])
         assert len(result) == 2
@@ -311,7 +319,7 @@ class TestGetChapterContentBatch:
         assert 2 in result
 
 
-def test_chapter_queries_catch_specific_exceptions():
+def test_chapter_queries_catch_specific_exceptions() -> None:
     """Verify chapter_queries catches specific exceptions, not Exception (F006)."""
     import inspect
 

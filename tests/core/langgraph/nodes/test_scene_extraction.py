@@ -1,10 +1,22 @@
 # tests/core/langgraph/nodes/test_scene_extraction.py
 import json
-from typing import Any
+from typing import Any, get_type_hints
 from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel
+
+from tests.fakes.service_context import patch_service
+
+
+def test_character_parser_returns_named_info_pairs() -> None:
+    from core.langgraph.nodes.scene_extraction_parsing import parse_character_updates
+
+    data = {"character_updates": {"Alice": {"description": "A scout"}}}
+    assert parse_character_updates(data, 0, 1) == [("Alice", {"description": "A scout"})]
+    assert get_type_hints(parse_character_updates)["return"] == list[tuple[str, dict[str, Any]]]
+    with pytest.raises(ValueError, match="entries must map nonblank names to objects"):
+        parse_character_updates({"character_updates": {"Alice": {"description": "A scout"}, "ignored": None}}, 0, 1)
 
 
 def _assert_no_pydantic_models(value: Any) -> None:
@@ -73,8 +85,8 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
             return mock_event_response, None
         return mock_rel_response, None
 
-    with patch(
-        "core.llm_interface_refactored.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         side_effect=mock_llm_json,
     ):
         result = await extract_from_scene(
@@ -109,9 +121,9 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
 
 
 def test_consolidate_scene_extractions_deduplicates_by_name() -> None:
-    from core.langgraph.nodes.scene_extraction import consolidate_scene_extractions
+    from core.langgraph.nodes.scene_extraction_normalization import consolidate_scene_extractions
 
-    scene_results = [
+    scene_results: list[dict[str, Any]] = [
         {
             "characters": [
                 {"name": "Elara", "type": "Character", "description": "A hero", "attributes": {}},
@@ -177,8 +189,8 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
     async def mock_llm(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], None]:
         return {"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None
 
-    with patch(
-        "core.llm_interface_refactored.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         side_effect=mock_llm,
     ):
         result = await extract_from_scenes(state)
@@ -212,9 +224,11 @@ async def test_extract_from_scenes_no_scenes_returns_empty_serializable_state(tm
 
     result = await extract_from_scenes(state)
 
-    # When no scenes, refs should still be created (pointing to empty files)
-    assert "extracted_entities_ref" in result
-    assert "extracted_relationships_ref" in result
+    assert result["extracted_entities_ref"] is None
+    assert result["extracted_relationships_ref"] is None
+    assert result["has_fatal_error"] is True
+    assert result["extraction_status"] == "failed"
+    assert result["extraction_outcomes"] == []
     _assert_no_pydantic_models(result)
     _assert_json_serializable(result)
 
@@ -270,20 +284,13 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
             "relationships": [extracted_relationship],
         }
 
-    async def fake_extract_from_scene(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        return {"characters": [], "world_items": [], "relationships": []}
-
     with (
         patch(
             "core.langgraph.nodes.scene_extraction.consolidate_scene_extractions",
             side_effect=fake_consolidate,
         ),
-        patch(
-            "core.langgraph.nodes.scene_extraction.extract_from_scene",
-            side_effect=fake_extract_from_scene,
-        ),
-        patch(
-            "core.llm_interface_refactored.llm_service.async_call_llm_json_object",
+        patch_service(
+            'language_model.async_call_llm_json_object',
             return_value=({"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None),
         ),
     ):
@@ -304,6 +311,7 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
     extracted_entities = content_manager.load_json(result["extracted_entities_ref"])
     extracted_relationships = content_manager.load_json(result["extracted_relationships_ref"])
 
+    assert isinstance(extracted_entities, dict)
     characters = extracted_entities["characters"]
     assert isinstance(characters, list)
     assert characters == [

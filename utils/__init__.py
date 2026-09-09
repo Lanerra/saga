@@ -75,9 +75,9 @@ def format_scene_plan_for_prompt(
 
         # Local import to avoid circular import chain:
         # utils -> core -> data_access -> processing -> utils
-        from core.llm_interface_refactored import llm_service
+        from core.service_context import get_services
 
-        if llm_service.count_tokens(prospective_plan, model_name_for_tokens) > max_tokens_budget:
+        if get_services().language_model.count_tokens(prospective_plan, model_name_for_tokens) > max_tokens_budget:
             current_plan_parts.append("... (plan truncated in prompt due to token limit)")
             logger.warning(
                 "Chapter plan was token-truncated for the prompt. Max tokens for plan: %d. Stopped before scene %s.",

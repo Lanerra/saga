@@ -20,7 +20,6 @@ from pathlib import Path
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
     ContentManager,
     get_draft_text,
@@ -28,7 +27,7 @@ from core.langgraph.content_manager import (
     require_project_dir,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from data_access import chapter_queries
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
@@ -120,7 +119,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             if attempt_index > 0:
                 attempt_prompt = attempt_prompt + _SUMMARY_CORRECTION_INSTRUCTION
 
-            summary_text, usage = await llm_service.async_call_llm(
+            summary_text, usage = await get_services().language_model.async_call_llm(
                 model_name=state.get("small_model", config.SMALL_MODEL),  # Use fast model
                 prompt=attempt_prompt,
                 temperature=0.3,  # Low temperature for consistency
@@ -286,7 +285,7 @@ async def _save_summary_to_neo4j(
     )
 
     try:
-        await neo4j_manager.execute_write_query(query, parameters)
+        await get_services().database.execute_write_query(query, parameters)
         logger.info(
             "summarize_chapter: summary saved to Neo4j (canonical chapter upsert)",
             chapter=chapter_number,

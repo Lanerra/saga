@@ -1,0 +1,1850 @@
+[
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 2,
+      "row": 65
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from __future__ import annotations\n\nimport hashlib\nfrom typing import Any, Literal, cast\n\nimport structlog\n\nimport config\nfrom core.langgraph.content_manager import (\n    ContentManager,\n    ContentRef,\n    get_draft_text,\n    get_extracted_entities,\n    get_extracted_relationships,\n    load_embedding,\n    load_scene_embeddings,\n    require_project_dir,\n)\nfrom core.langgraph.nodes.commit_entity_conversion import (\n    _convert_to_character_profiles,\n    _convert_to_world_items,\n)\nfrom core.langgraph.nodes.commit_graph_ops import (\n    _aggregate_scene_embeddings_to_chapter,\n    _build_chapter_node_statement,\n)\n\n# Import extracted helpers\nfrom core.langgraph.nodes.commit_validation import (\n    _deduplicate_entity_list,\n    _filter_invalid_relationships,\n)\nfrom core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState\nfrom core.schema_validator import canonicalize_entity_type_for_persistence\nfrom data_access import chapter_queries\nfrom data_access.kg_queries import (\n    _get_cypher_labels as _get_cypher_labels,\n)\nfrom data_access.kg_queries import (\n    validate_relationship_type,\n    validate_relationship_type_for_cypher_interpolation,\n)\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 67
+          },
+          "location": {
+            "column": 1,
+            "row": 24
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 24
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 24,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 40,
+      "row": 44
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 45
+          },
+          "location": {
+            "column": 1,
+            "row": 44
+          }
+        }
+      ],
+      "message": "Remove unused import: `data_access.chapter_queries`"
+    },
+    "location": {
+      "column": 25,
+      "row": 44
+    },
+    "message": "`data_access.chapter_queries` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 44,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 23,
+      "row": 472
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 26,
+            "row": 472
+          },
+          "location": {
+            "column": 13,
+            "row": 472
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `draft_text`"
+    },
+    "location": {
+      "column": 13,
+      "row": 472
+    },
+    "message": "Local variable `draft_text` is assigned to but never used",
+    "name": "unused-variable",
+    "noqa_row": 472,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  },
+  {
+    "cell": null,
+    "code": "F821",
+    "end_location": {
+      "column": 38,
+      "row": 599
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py",
+    "fix": null,
+    "location": {
+      "column": 22,
+      "row": 599
+    },
+    "message": "Undefined name `CharacterProfile`",
+    "name": "undefined-name",
+    "noqa_row": 599,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/undefined-name"
+  },
+  {
+    "cell": null,
+    "code": "F821",
+    "end_location": {
+      "column": 32,
+      "row": 600
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py",
+    "fix": null,
+    "location": {
+      "column": 23,
+      "row": 600
+    },
+    "message": "Undefined name `WorldItem`",
+    "name": "undefined-name",
+    "noqa_row": 600,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/undefined-name"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 50,
+      "row": 613
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 614
+          },
+          "location": {
+            "column": 1,
+            "row": 613
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 34,
+      "row": 613
+    },
+    "message": "`models.kg_models.CharacterProfile` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 613,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 61,
+      "row": 613
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 614
+          },
+          "location": {
+            "column": 1,
+            "row": 613
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 52,
+      "row": 613
+    },
+    "message": "`models.kg_models.WorldItem` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 613,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 53,
+      "row": 678
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 679
+          },
+          "location": {
+            "column": 1,
+            "row": 678
+          }
+        }
+      ],
+      "message": "Remove unused import: `core.langgraph.state.ExtractedEntity`"
+    },
+    "location": {
+      "column": 38,
+      "row": 678
+    },
+    "message": "`core.langgraph.state.ExtractedEntity` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 678,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F821",
+    "end_location": {
+      "column": 60,
+      "row": 104
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_validation.py",
+    "fix": null,
+    "location": {
+      "column": 45,
+      "row": 104
+    },
+    "message": "Undefined name `ExtractedEntity`",
+    "name": "undefined-name",
+    "noqa_row": 104,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/undefined-name"
+  },
+  {
+    "cell": null,
+    "code": "F821",
+    "end_location": {
+      "column": 86,
+      "row": 104
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_validation.py",
+    "fix": null,
+    "location": {
+      "column": 71,
+      "row": 104
+    },
+    "message": "Undefined name `ExtractedEntity`",
+    "name": "undefined-name",
+    "noqa_row": 104,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/undefined-name"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 23,
+      "row": 6
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_character_retrieval.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 7
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 20,
+      "row": 6
+    },
+    "message": "`typing.Any` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 6,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 29,
+      "row": 6
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_character_retrieval.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 7
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 25,
+      "row": 6
+    },
+    "message": "`typing.cast` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 6,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 25,
+      "row": 13
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_character_retrieval.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from core.langgraph.content_manager import (\n    ContentManager,\n)",
+          "end_location": {
+            "column": 2,
+            "row": 15
+          },
+          "location": {
+            "column": 1,
+            "row": 11
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 13
+    },
+    "message": "`core.langgraph.content_manager.get_chapter_outlines` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 13,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 24,
+      "row": 14
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_character_retrieval.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from core.langgraph.content_manager import (\n    ContentManager,\n)",
+          "end_location": {
+            "column": 2,
+            "row": 15
+          },
+          "location": {
+            "column": 1,
+            "row": 11
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 14
+    },
+    "message": "`core.langgraph.content_manager.require_project_dir` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 14,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 54,
+      "row": 17
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_character_retrieval.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from core.text_processing_service import truncate_text_by_tokens",
+          "end_location": {
+            "column": 79,
+            "row": 17
+          },
+          "location": {
+            "column": 1,
+            "row": 17
+          }
+        }
+      ],
+      "message": "Remove unused import: `core.text_processing_service.count_tokens`"
+    },
+    "location": {
+      "column": 42,
+      "row": 17
+    },
+    "message": "`core.text_processing_service.count_tokens` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 17,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 44,
+      "row": 18
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_character_retrieval.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 19
+          },
+          "location": {
+            "column": 1,
+            "row": 18
+          }
+        }
+      ],
+      "message": "Remove unused import: `models.agent_models.SceneDetail`"
+    },
+    "location": {
+      "column": 33,
+      "row": 18
+    },
+    "message": "`models.agent_models.SceneDetail` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 18,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 50,
+      "row": 22
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_character_retrieval.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 23
+          },
+          "location": {
+            "column": 1,
+            "row": 22
+          }
+        }
+      ],
+      "message": "Remove unused import: `prompts.prompt_renderer.render_prompt`"
+    },
+    "location": {
+      "column": 37,
+      "row": 22
+    },
+    "message": "`prompts.prompt_renderer.render_prompt` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 22,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 14,
+      "row": 43
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_retrieval_node.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "import structlog\n\nimport config\nfrom core.langgraph.content_manager import (\n    ContentManager,\n    get_chapter_outlines,\n    get_chapter_plan,\n    get_previous_summaries,\n    get_scene_drafts,\n    require_project_dir,\n)\nfrom core.langgraph.state import NarrativeState\nfrom core.text_processing_service import count_tokens\n\nfrom .context_character_retrieval import get_scene_character_context\nfrom .context_plot_retrieval import (\n    get_act_events_context,\n    get_character_items_context,\n    get_character_relationships_context,\n    get_scene_events_context,\n)\nfrom .context_scene_retrieval import (\n    get_location_context,\n    get_previous_scenes_context,\n    get_scene_items_context,\n    get_semantic_context,\n)\nfrom .context_world_retrieval import get_scene_kg_facts\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 45
+          },
+          "location": {
+            "column": 1,
+            "row": 15
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 15
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 15,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 31,
+      "row": 32
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/scene_extraction.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from core.langgraph.nodes.scene_extraction_validation import (\n    _validate_entity_with_spacy,\n    load_spacy_model_if_enabled,\n)",
+          "end_location": {
+            "column": 2,
+            "row": 35
+          },
+          "location": {
+            "column": 1,
+            "row": 31
+          }
+        }
+      ],
+      "message": "Remove unused import: `core.langgraph.nodes.scene_extraction_validation._get_normalized_entity_key`"
+    },
+    "location": {
+      "column": 5,
+      "row": 32
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_validation._get_normalized_entity_key` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 32,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "UP037",
+    "end_location": {
+      "column": 57,
+      "row": 21
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/scene_extraction_validation.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "TextProcessingService | None",
+          "end_location": {
+            "column": 57,
+            "row": 21
+          },
+          "location": {
+            "column": 27,
+            "row": 21
+          }
+        }
+      ],
+      "message": "Remove quotes"
+    },
+    "location": {
+      "column": 27,
+      "row": 21
+    },
+    "message": "Remove quotes from type annotation",
+    "name": "quoted-annotation",
+    "noqa_row": 21,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
+  },
+  {
+    "cell": null,
+    "code": "UP037",
+    "end_location": {
+      "column": 62,
+      "row": 24
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/nodes/scene_extraction_validation.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "TextProcessingService",
+          "end_location": {
+            "column": 62,
+            "row": 24
+          },
+          "location": {
+            "column": 39,
+            "row": 24
+          }
+        }
+      ],
+      "message": "Remove quotes"
+    },
+    "location": {
+      "column": 39,
+      "row": 24
+    },
+    "message": "Remove quotes from type annotation",
+    "name": "quoted-annotation",
+    "noqa_row": 24,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/quoted-annotation"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 71,
+      "row": 21
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/subgraphs/generation.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from typing import Literal\n\nimport structlog\nfrom langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]\n\nfrom core.langgraph.nodes.context_retrieval_node import retrieve_context\nfrom core.langgraph.nodes.scene_generation_node import draft_scene\nfrom core.langgraph.nodes.scene_planning_node import plan_scenes\nfrom core.langgraph.state import NarrativeState\nfrom core.langgraph.subgraphs._shared import _should_continue_or_error\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 23
+          },
+          "location": {
+            "column": 1,
+            "row": 11
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 11
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 11,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 71,
+      "row": 16
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/subgraphs/scene_extraction.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from typing import Literal\n\nimport structlog\nfrom langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]\n\nfrom core.langgraph.nodes.extraction_nodes import consolidate_extraction\nfrom core.langgraph.nodes.scene_extraction import extract_from_scenes\nfrom core.langgraph.state import NarrativeState\nfrom core.langgraph.subgraphs._shared import _should_continue_or_error\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 18
+          },
+          "location": {
+            "column": 1,
+            "row": 7
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 7
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 7,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 27,
+      "row": 7
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/subgraphs/scene_extraction.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 8
+          },
+          "location": {
+            "column": 1,
+            "row": 7
+          }
+        }
+      ],
+      "message": "Remove unused import: `typing.Literal`"
+    },
+    "location": {
+      "column": 20,
+      "row": 7
+    },
+    "message": "`typing.Literal` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 7,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 32,
+      "row": 21
+    },
+    "filename": "/tmp/saga-audit-20260906/source/core/langgraph/subgraphs/validation.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from typing import Any",
+          "end_location": {
+            "column": 32,
+            "row": 21
+          },
+          "location": {
+            "column": 1,
+            "row": 21
+          }
+        }
+      ],
+      "message": "Remove unused import: `typing.Literal`"
+    },
+    "location": {
+      "column": 25,
+      "row": 21
+    },
+    "message": "`typing.Literal` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 21,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 19,
+      "row": 428
+    },
+    "filename": "/tmp/saga-audit-20260906/source/data_access/cypher_builders/native_builders.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 22,
+            "row": 428
+          },
+          "location": {
+            "column": 9,
+            "row": 428
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `where_line`"
+    },
+    "location": {
+      "column": 9,
+      "row": 428
+    },
+    "message": "Local variable `where_line` is assigned to but never used",
+    "name": "unused-variable",
+    "noqa_row": 428,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 21,
+      "row": 13
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/core/langgraph/nodes/test_context_retrieval_node.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from core.langgraph.nodes.context_retrieval_node import (\n    _extract_scene_characters,\n)",
+          "end_location": {
+            "column": 2,
+            "row": 14
+          },
+          "location": {
+            "column": 1,
+            "row": 11
+          }
+        }
+      ],
+      "message": "Remove unused import: `core.langgraph.nodes.context_retrieval_node.retrieve_context`"
+    },
+    "location": {
+      "column": 5,
+      "row": 13
+    },
+    "message": "`core.langgraph.nodes.context_retrieval_node.retrieve_context` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 13,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "B007",
+    "end_location": {
+      "column": 17,
+      "row": 243
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_act_outline_parser.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "_event_id",
+          "end_location": {
+            "column": 17,
+            "row": 243
+          },
+          "location": {
+            "column": 9,
+            "row": 243
+          }
+        }
+      ],
+      "message": "Rename unused `event_id` to `_event_id`"
+    },
+    "location": {
+      "column": 9,
+      "row": 243
+    },
+    "message": "Loop control variable `event_id` not used within loop body",
+    "name": "unused-loop-control-variable",
+    "noqa_row": 243,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-loop-control-variable"
+  },
+  {
+    "cell": null,
+    "code": "B007",
+    "end_location": {
+      "column": 18,
+      "row": 359
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_act_outline_parser.py",
+    "fix": null,
+    "location": {
+      "column": 17,
+      "row": 359
+    },
+    "message": "Loop control variable `j` not used within loop body",
+    "name": "unused-loop-control-variable",
+    "noqa_row": 359,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-loop-control-variable"
+  },
+  {
+    "cell": null,
+    "code": "B007",
+    "end_location": {
+      "column": 14,
+      "row": 366
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_act_outline_parser.py",
+    "fix": null,
+    "location": {
+      "column": 9,
+      "row": 366
+    },
+    "message": "Loop control variable `query` not used within loop body",
+    "name": "unused-loop-control-variable",
+    "noqa_row": 366,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-loop-control-variable"
+  },
+  {
+    "cell": null,
+    "code": "F821",
+    "end_location": {
+      "column": 48,
+      "row": 186
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_langgraph/conftest.py",
+    "fix": null,
+    "location": {
+      "column": 32,
+      "row": 186
+    },
+    "message": "Undefined name `FakeNeo4jManager`",
+    "name": "undefined-name",
+    "noqa_row": 186,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/undefined-name"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 23,
+      "row": 798
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_langgraph/test_narrative_enrichment_node.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 26,
+            "row": 798
+          },
+          "location": {
+            "column": 17,
+            "row": 798
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `result`"
+    },
+    "location": {
+      "column": 17,
+      "row": 798
+    },
+    "message": "Local variable `result` is assigned to but never used",
+    "name": "unused-variable",
+    "noqa_row": 798,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 23,
+      "row": 837
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_langgraph/test_narrative_enrichment_node.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 26,
+            "row": 837
+          },
+          "location": {
+            "column": 17,
+            "row": 837
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `result`"
+    },
+    "location": {
+      "column": 17,
+      "row": 837
+    },
+    "message": "Local variable `result` is assigned to but never used",
+    "name": "unused-variable",
+    "noqa_row": 837,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 23,
+      "row": 874
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_langgraph/test_narrative_enrichment_node.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 26,
+            "row": 874
+          },
+          "location": {
+            "column": 17,
+            "row": 874
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `result`"
+    },
+    "location": {
+      "column": 17,
+      "row": 874
+    },
+    "message": "Local variable `result` is assigned to but never used",
+    "name": "unused-variable",
+    "noqa_row": 874,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 23,
+      "row": 911
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_langgraph/test_narrative_enrichment_node.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 26,
+            "row": 911
+          },
+          "location": {
+            "column": 17,
+            "row": 911
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `result`"
+    },
+    "location": {
+      "column": 17,
+      "row": 911
+    },
+    "message": "Local variable `result` is assigned to but never used",
+    "name": "unused-variable",
+    "noqa_row": 911,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 15,
+      "row": 168
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_narrative_quality_with_graph_context.py",
+    "fix": {
+      "applicability": "unsafe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 173
+          },
+          "location": {
+            "column": 1,
+            "row": 168
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `events`"
+    },
+    "location": {
+      "column": 9,
+      "row": 168
+    },
+    "message": "Local variable `events` is assigned to but never used",
+    "name": "unused-variable",
+    "noqa_row": 168,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 2,
+      "row": 14
+    },
+    "filename": "/tmp/saga-audit-20260906/source/tests/test_scene_extraction_validation.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from unittest.mock import MagicMock, patch\n\nimport pytest\n\nfrom core.langgraph.nodes.scene_extraction_normalization import (\n    consolidate_scene_extractions,\n)\nfrom core.langgraph.nodes.scene_extraction_validation import (\n    _get_normalized_entity_key,\n    _validate_entity_with_spacy,\n)\n\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 17
+          },
+          "location": {
+            "column": 1,
+            "row": 4
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 4
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 4,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 11,
+      "row": 3
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "import sys\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 4
+          },
+          "location": {
+            "column": 1,
+            "row": 3
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 3
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 3,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 2,
+      "row": 28
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from core.langgraph.nodes.scene_extraction import (\n    _extract_characters_from_scene,\n    _extract_events_from_scene,\n    _extract_locations_from_scene,\n    _extract_relationships_from_scene,\n    extract_from_scene,\n    extract_from_scenes,\n)\nfrom core.langgraph.nodes.scene_extraction_normalization import (\n    consolidate_scene_extractions,\n)\nfrom core.langgraph.nodes.scene_extraction_parsing import (\n    normalize_dict_items,\n    normalize_triple_entities,\n    parse_character_updates,\n    parse_kg_triples,\n    parse_world_updates,\n)\nfrom core.langgraph.nodes.scene_extraction_validation import (\n    _get_normalized_entity_key,\n    _validate_entity_with_spacy,\n    load_spacy_model_if_enabled,\n)\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 29
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 6
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 6,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 24,
+      "row": 7
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 14
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 7
+    },
+    "message": "`core.langgraph.nodes.scene_extraction.extract_from_scenes` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 7,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 23,
+      "row": 8
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 14
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 8
+    },
+    "message": "`core.langgraph.nodes.scene_extraction.extract_from_scene` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 8,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 35,
+      "row": 9
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 14
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 9
+    },
+    "message": "`core.langgraph.nodes.scene_extraction._extract_characters_from_scene` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 9,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 34,
+      "row": 10
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 14
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 10
+    },
+    "message": "`core.langgraph.nodes.scene_extraction._extract_locations_from_scene` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 10,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 31,
+      "row": 11
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 14
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 11
+    },
+    "message": "`core.langgraph.nodes.scene_extraction._extract_events_from_scene` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 11,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 38,
+      "row": 12
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 14
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 12
+    },
+    "message": "`core.langgraph.nodes.scene_extraction._extract_relationships_from_scene` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 12,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 28,
+      "row": 15
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 21
+          },
+          "location": {
+            "column": 1,
+            "row": 14
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 15
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_parsing.parse_character_updates` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 15,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 24,
+      "row": 16
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 21
+          },
+          "location": {
+            "column": 1,
+            "row": 14
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 16
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_parsing.parse_world_updates` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 16,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 21,
+      "row": 17
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 21
+          },
+          "location": {
+            "column": 1,
+            "row": 14
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 17
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_parsing.parse_kg_triples` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 17,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 30,
+      "row": 18
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 21
+          },
+          "location": {
+            "column": 1,
+            "row": 14
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 18
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_parsing.normalize_triple_entities` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 18,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 25,
+      "row": 19
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 21
+          },
+          "location": {
+            "column": 1,
+            "row": 14
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 19
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_parsing.normalize_dict_items` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 19,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 32,
+      "row": 22
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 26
+          },
+          "location": {
+            "column": 1,
+            "row": 21
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 22
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_validation._validate_entity_with_spacy` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 22,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 31,
+      "row": 23
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 26
+          },
+          "location": {
+            "column": 1,
+            "row": 21
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 23
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_validation._get_normalized_entity_key` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 23,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 32,
+      "row": 24
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 26
+          },
+          "location": {
+            "column": 1,
+            "row": 21
+          }
+        }
+      ],
+      "message": "Remove unused import"
+    },
+    "location": {
+      "column": 5,
+      "row": 24
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_validation.load_spacy_model_if_enabled` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 24,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 34,
+      "row": 27
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_split.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 29
+          },
+          "location": {
+            "column": 1,
+            "row": 26
+          }
+        }
+      ],
+      "message": "Remove unused import: `core.langgraph.nodes.scene_extraction_normalization.consolidate_scene_extractions`"
+    },
+    "location": {
+      "column": 5,
+      "row": 27
+    },
+    "message": "`core.langgraph.nodes.scene_extraction_normalization.consolidate_scene_extractions` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 27,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 11,
+      "row": 3
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_subgraph.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "import sys\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 4
+          },
+          "location": {
+            "column": 1,
+            "row": 3
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 3
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 3,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 87,
+      "row": 6
+    },
+    "filename": "/tmp/saga-audit-20260906/source/verify_subgraph.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 7
+          },
+          "location": {
+            "column": 1,
+            "row": 6
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 6
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 6,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  }
+]

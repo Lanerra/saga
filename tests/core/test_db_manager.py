@@ -3,10 +3,13 @@
 
 import asyncio
 import threading
+from collections.abc import Callable, Generator
+from typing import Never, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+from neo4j import Driver, ManagedTransaction
 from neo4j.exceptions import ServiceUnavailable
 
 from core.db_manager import Neo4jManagerSingleton, neo4j_manager
@@ -15,10 +18,11 @@ from core.exceptions import (
     DatabaseError,
     DatabaseTransactionError,
 )
+from tests.fakes.graph_ownership import OwnershipDriver, OwnershipTransaction
 
 
 @pytest.fixture(autouse=True)
-def _restore_global_neo4j_manager_singleton_state():
+def _restore_global_neo4j_manager_singleton_state(owned_graph_cache: None) -> Generator[None, None, None]:
     """
     Prevent state leakage from these unit tests into the rest of the suite.
 
@@ -53,13 +57,13 @@ def _restore_global_neo4j_manager_singleton_state():
 class TestNeo4jManagerSingleton:
     """Singleton pattern and initialization"""
 
-    def test_singleton_pattern(self):
+    def test_singleton_pattern(self) -> None:
         """Multiple instantiations return the same instance"""
         instance1 = Neo4jManagerSingleton()
         instance2 = Neo4jManagerSingleton()
         assert instance1 is instance2
 
-    def test_initialization_only_once(self):
+    def test_initialization_only_once(self) -> None:
         """Initialization occurs only once despite multiple instantiations"""
         manager = Neo4jManagerSingleton()
         assert manager._initialized_flag is True
@@ -69,7 +73,7 @@ class TestNeo4jManagerSingleton:
         assert manager2 is manager
         assert manager2.driver is initial_driver
 
-    def test_initial_state(self):
+    def test_initial_state(self) -> None:
         """Manager starts with expected initial state"""
         manager = Neo4jManagerSingleton()
         assert manager._property_keys_cache is None
@@ -80,13 +84,14 @@ class TestNeo4jManagerSingleton:
 class TestConnection:
     """Connection establishment and teardown"""
 
-    async def test_connect_success(self, monkeypatch):
+    async def test_connect_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Successful connection to Neo4j"""
         mock_driver = MagicMock()
         mock_driver.verify_connectivity = MagicMock()
 
         mock_graph_database = MagicMock()
         mock_graph_database.driver.return_value = mock_driver
+        mock_driver.session.return_value.__enter__.return_value = OwnershipDriver()
 
         monkeypatch.setattr("core.db_manager.GraphDatabase", mock_graph_database)
         monkeypatch.setattr(Neo4jManagerSingleton, "_sync_probe_apoc_version", lambda _self: "5.0.0")
@@ -97,7 +102,7 @@ class TestConnection:
         assert manager.driver is mock_driver
         mock_driver.verify_connectivity.assert_called_once()
 
-    async def test_connect_service_unavailable(self, monkeypatch):
+    async def test_connect_service_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Connection fails when Neo4j service is unavailable"""
         mock_graph_database = MagicMock()
         mock_graph_database.driver.side_effect = ServiceUnavailable("Service down")
@@ -113,7 +118,7 @@ class TestConnection:
         assert "Neo4j database is not available" in str(exc_info.value)
         assert manager.driver is None
 
-    async def test_connect_unexpected_error(self, monkeypatch):
+    async def test_connect_unexpected_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Connection fails with unexpected error"""
         mock_graph_database = MagicMock()
         mock_graph_database.driver.side_effect = RuntimeError("Unexpected error")
@@ -128,7 +133,7 @@ class TestConnection:
 
         assert manager.driver is None
 
-    async def test_connect_closes_existing_driver(self, monkeypatch):
+    async def test_connect_closes_existing_driver(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Connect closes existing driver before creating new one"""
         old_driver = MagicMock()
         old_driver.close = MagicMock()
@@ -138,6 +143,7 @@ class TestConnection:
 
         mock_graph_database = MagicMock()
         mock_graph_database.driver.return_value = new_driver
+        new_driver.session.return_value.__enter__.return_value = OwnershipDriver()
 
         monkeypatch.setattr("core.db_manager.GraphDatabase", mock_graph_database)
         monkeypatch.setattr(Neo4jManagerSingleton, "_sync_probe_apoc_version", lambda _self: "5.0.0")
@@ -150,7 +156,7 @@ class TestConnection:
         old_driver.close.assert_called_once()
         assert manager.driver is new_driver
 
-    async def test_close_with_active_driver(self, monkeypatch):
+    async def test_close_with_active_driver(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Close properly closes active driver"""
         mock_driver = MagicMock()
         mock_driver.close = MagicMock()
@@ -163,7 +169,7 @@ class TestConnection:
         mock_driver.close.assert_called_once()
         assert manager.driver is None
 
-    async def test_close_with_no_driver(self):
+    async def test_close_with_no_driver(self) -> None:
         """Close handles case when driver is None"""
         manager = Neo4jManagerSingleton()
         manager.driver = None
@@ -172,7 +178,7 @@ class TestConnection:
 
         assert manager.driver is None
 
-    async def test_close_with_error(self, monkeypatch):
+    async def test_close_with_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Close handles errors during driver closure"""
         mock_driver = MagicMock()
         mock_driver.close = MagicMock(side_effect=RuntimeError("Close error"))
@@ -184,10 +190,10 @@ class TestConnection:
 
         assert manager.driver is None
 
-    async def test_ensure_connected_when_disconnected(self, monkeypatch):
+    async def test_ensure_connected_when_disconnected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """_ensure_connected connects when driver is None"""
 
-        async def mock_connect(self):
+        async def mock_connect(self: Neo4jManagerSingleton) -> None:
             self.driver = MagicMock()
 
         monkeypatch.setattr(Neo4jManagerSingleton, "connect", mock_connect)
@@ -199,7 +205,7 @@ class TestConnection:
 
         assert manager.driver is not None
 
-    async def test_ensure_connected_when_already_connected(self, monkeypatch):
+    async def test_ensure_connected_when_already_connected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """_ensure_connected does nothing when driver exists"""
         mock_connect = AsyncMock()
         monkeypatch.setattr(Neo4jManagerSingleton, "connect", mock_connect)
@@ -211,10 +217,10 @@ class TestConnection:
 
         mock_connect.assert_not_called()
 
-    async def test_ensure_connected_fails_after_connect_attempt(self, monkeypatch):
+    async def test_ensure_connected_fails_after_connect_attempt(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """_ensure_connected raises error if connect fails to set driver"""
 
-        async def mock_connect_fail(self):
+        async def mock_connect_fail(self: Neo4jManagerSingleton) -> None:
             pass
 
         monkeypatch.setattr(Neo4jManagerSingleton, "connect", mock_connect_fail)
@@ -231,14 +237,14 @@ class TestConnection:
 class TestSyncConnection:
     """Synchronous connection checks"""
 
-    def test_ensure_connected_sync_with_driver(self):
+    def test_ensure_connected_sync_with_driver(self) -> None:
         """_ensure_connected_sync succeeds when driver exists"""
         manager = Neo4jManagerSingleton()
         manager.driver = MagicMock()
 
         manager._ensure_connected_sync()
 
-    def test_ensure_connected_sync_without_driver(self):
+    def test_ensure_connected_sync_without_driver(self) -> None:
         """_ensure_connected_sync raises error when driver is None"""
         manager = Neo4jManagerSingleton()
         manager.driver = None
@@ -252,7 +258,7 @@ class TestSyncConnection:
 class TestSyncQueryExecution:
     """Synchronous query execution methods"""
 
-    def test_sync_execute_query_tx(self):
+    def test_sync_execute_query_tx(self) -> None:
         """_sync_execute_query_tx executes query in transaction"""
         manager = Neo4jManagerSingleton()
 
@@ -264,12 +270,12 @@ class TestSyncQueryExecution:
 
         mock_tx.run.return_value = [mock_record1, mock_record2]
 
-        result = manager._sync_execute_query_tx(mock_tx, "MATCH (n) RETURN n", {})
+        result = manager._sync_execute_query_tx(cast(ManagedTransaction, OwnershipTransaction(mock_tx)), "MATCH (n) RETURN n", {})
 
         assert len(result) == 2
         mock_tx.run.assert_called_once_with("MATCH (n) RETURN n", {})
 
-    def test_sync_execute_read_query(self):
+    def test_sync_execute_read_query(self) -> None:
         """_sync_execute_read_query uses execute_read (Neo4j v5+ API)"""
         manager = Neo4jManagerSingleton()
 
@@ -287,7 +293,7 @@ class TestSyncQueryExecution:
         assert result == [{"name": "Alice"}]
         mock_session.execute_read.assert_called_once_with(manager._sync_execute_query_tx, "MATCH (n) RETURN n", {})
 
-    def test_sync_execute_write_query(self):
+    def test_sync_execute_write_query(self) -> None:
         """_sync_execute_write_query uses execute_write (Neo4j v5+ API)"""
         manager = Neo4jManagerSingleton()
 
@@ -303,16 +309,16 @@ class TestSyncQueryExecution:
         result = manager._sync_execute_write_query("CREATE (n:Node)", {})
 
         assert result == [{"created": 1}]
-        mock_session.execute_write.assert_called_once_with(manager._sync_execute_query_tx, "CREATE (n:Node)", {})
+        mock_session.execute_write.assert_called_once_with(manager._sync_execute_write_query_tx, "CREATE (n:Node)", {})
 
-    def test_sync_execute_cypher_batch_empty(self):
+    def test_sync_execute_cypher_batch_empty(self) -> None:
         """_sync_execute_cypher_batch handles empty statement list"""
         manager = Neo4jManagerSingleton()
         manager.driver = MagicMock()
 
         manager._sync_execute_cypher_batch([])
 
-    def test_sync_execute_cypher_batch_success(self):
+    def test_sync_execute_cypher_batch_success(self) -> None:
         """_sync_execute_cypher_batch commits transaction successfully"""
         manager = Neo4jManagerSingleton()
 
@@ -322,7 +328,7 @@ class TestSyncQueryExecution:
         mock_tx.commit = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
 
         mock_driver = MagicMock()
         mock_driver.session.return_value.__enter__.return_value = mock_session
@@ -340,13 +346,13 @@ class TestSyncQueryExecution:
         assert mock_tx.run.call_count == 2
         mock_tx.commit.assert_called_once()
 
-    def test_sync_execute_cypher_batch_statement_error(self):
+    def test_sync_execute_cypher_batch_statement_error(self) -> None:
         """_sync_execute_cypher_batch handles statement-level errors"""
         manager = Neo4jManagerSingleton()
 
         mock_error = Exception("Statement error")
-        mock_error.code = "Neo.ClientError.Statement.SyntaxError"
-        mock_error.message = "Invalid syntax"
+        mock_error.__dict__["code"] = "Neo.ClientError.Statement.SyntaxError"
+        mock_error.__dict__["message"] = "Invalid syntax"
 
         mock_tx = MagicMock()
         mock_tx.closed.return_value = False
@@ -354,7 +360,7 @@ class TestSyncQueryExecution:
         mock_tx.rollback = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
 
         mock_driver = MagicMock()
         mock_driver.session.return_value.__enter__.return_value = mock_session
@@ -362,12 +368,12 @@ class TestSyncQueryExecution:
 
         manager.driver = mock_driver
 
-        statements = [("INVALID QUERY", {})]
+        statements: list[tuple[str, dict[str, object]]] = [("INVALID QUERY", {})]
 
         with pytest.raises(DatabaseTransactionError):
             manager._sync_execute_cypher_batch(statements)
 
-    def test_sync_execute_cypher_batch_transaction_error(self):
+    def test_sync_execute_cypher_batch_transaction_error(self) -> None:
         """_sync_execute_cypher_batch raises DatabaseTransactionError on failure"""
         manager = Neo4jManagerSingleton()
 
@@ -379,7 +385,7 @@ class TestSyncQueryExecution:
         mock_tx.rollback = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
 
         mock_driver = MagicMock()
         mock_driver.session.return_value.__enter__.return_value = mock_session
@@ -387,7 +393,7 @@ class TestSyncQueryExecution:
 
         manager.driver = mock_driver
 
-        statements = [("CREATE (n:Node)", {})]
+        statements: list[tuple[str, dict[str, object]]] = [("CREATE (n:Node)", {})]
 
         with pytest.raises(DatabaseTransactionError) as exc_info:
             manager._sync_execute_cypher_batch(statements)
@@ -400,11 +406,11 @@ class TestSyncQueryExecution:
 class TestQueryExecution:
     """Async query execution methods"""
 
-    async def test_execute_read_query_success(self, monkeypatch):
+    async def test_execute_read_query_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Execute read query successfully"""
         mock_result = [{"name": "Alice"}, {"name": "Bob"}]
 
-        async def mock_sync_read(query, params):
+        async def mock_sync_read(query: str, params: dict[str, object]) -> list[dict[str, str]]:
             return mock_result
 
         manager = Neo4jManagerSingleton()
@@ -416,7 +422,7 @@ class TestQueryExecution:
 
         assert result == mock_result
 
-    async def test_execute_write_query_success(self, monkeypatch):
+    async def test_execute_write_query_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Execute write query successfully"""
         mock_result = [{"created": 1}]
 
@@ -429,14 +435,14 @@ class TestQueryExecution:
 
         assert result == mock_result
 
-    async def test_execute_cypher_batch_empty(self, monkeypatch):
+    async def test_execute_cypher_batch_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Execute empty batch does nothing"""
         manager = Neo4jManagerSingleton()
         manager.driver = MagicMock()
 
         called = []
 
-        def mock_batch(statements):
+        def mock_batch(statements: list[tuple[str, dict[str, object]]]) -> None:
             called.append(True)
 
         monkeypatch.setattr(manager, "_sync_execute_cypher_batch", mock_batch)
@@ -445,7 +451,7 @@ class TestQueryExecution:
 
         assert len(called) == 1
 
-    async def test_execute_cypher_batch_with_statements(self, monkeypatch):
+    async def test_execute_cypher_batch_with_statements(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Execute batch with multiple statements"""
         statements = [
             ("CREATE (n:Node {id: $id})", {"id": "1"}),
@@ -455,9 +461,9 @@ class TestQueryExecution:
         manager = Neo4jManagerSingleton()
         manager.driver = MagicMock()
 
-        executed_statements = []
+        executed_statements: list[tuple[str, dict[str, object]]] = []
 
-        def mock_batch(stmts):
+        def mock_batch(stmts: list[tuple[str, dict[str, object]]]) -> None:
             executed_statements.extend(stmts)
 
         monkeypatch.setattr(manager, "_sync_execute_cypher_batch", mock_batch)
@@ -471,7 +477,7 @@ class TestQueryExecution:
 class TestTransactionManagement:
     """Transaction execution with automatic rollback"""
 
-    async def test_execute_in_transaction_success(self, monkeypatch):
+    async def test_execute_in_transaction_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Execute transaction successfully"""
         manager = Neo4jManagerSingleton()
 
@@ -480,7 +486,7 @@ class TestTransactionManagement:
         mock_tx.commit = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
         mock_session.__enter__ = lambda self: self
         mock_session.__exit__ = MagicMock(return_value=False)
 
@@ -489,10 +495,10 @@ class TestTransactionManagement:
 
         manager.driver = mock_driver
 
-        def transaction_func(tx, value):
+        def transaction_func(tx: ManagedTransaction, value: int) -> int:
             return value * 2
 
-        async def mock_to_thread(func):
+        async def mock_to_thread[Result](func: Callable[[], Result]) -> Result:
             return func()
 
         monkeypatch.setattr(asyncio, "to_thread", mock_to_thread)
@@ -502,7 +508,7 @@ class TestTransactionManagement:
         assert result == 10
         mock_tx.commit.assert_called_once()
 
-    async def test_execute_in_transaction_rollback_on_error(self, monkeypatch):
+    async def test_execute_in_transaction_rollback_on_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Transaction rolls back on error"""
         manager = Neo4jManagerSingleton()
 
@@ -511,7 +517,7 @@ class TestTransactionManagement:
         mock_tx.rollback = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
         mock_session.__enter__ = lambda self: self
         mock_session.__exit__ = MagicMock(return_value=False)
 
@@ -520,7 +526,7 @@ class TestTransactionManagement:
 
         manager.driver = mock_driver
 
-        def failing_transaction(tx):
+        def failing_transaction(tx: ManagedTransaction) -> Never:
             raise RuntimeError("Transaction failed")
 
         with pytest.raises(DatabaseTransactionError) as exc_info:
@@ -529,7 +535,7 @@ class TestTransactionManagement:
         assert "Transaction failed and was rolled back" in str(exc_info.value)
         mock_tx.rollback.assert_called_once()
 
-    async def test_execute_in_transaction_with_kwargs(self, monkeypatch):
+    async def test_execute_in_transaction_with_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Transaction executes with keyword arguments"""
         manager = Neo4jManagerSingleton()
 
@@ -538,7 +544,7 @@ class TestTransactionManagement:
         mock_tx.commit = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
         mock_session.__enter__ = lambda self: self
         mock_session.__exit__ = MagicMock(return_value=False)
 
@@ -547,10 +553,10 @@ class TestTransactionManagement:
 
         manager.driver = mock_driver
 
-        def transaction_func(tx, value, multiplier=2):
+        def transaction_func(tx: ManagedTransaction, value: int, multiplier: int = 2) -> int:
             return value * multiplier
 
-        async def mock_to_thread(func):
+        async def mock_to_thread[Result](func: Callable[[], Result]) -> Result:
             return func()
 
         monkeypatch.setattr(asyncio, "to_thread", mock_to_thread)
@@ -565,7 +571,7 @@ class TestTransactionManagement:
 class TestPropertyKeyCache:
     """Property key caching functionality"""
 
-    async def test_refresh_property_keys_cache_success(self, monkeypatch):
+    async def test_refresh_property_keys_cache_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Refresh property keys cache successfully"""
         manager = Neo4jManagerSingleton()
         manager.driver = MagicMock()
@@ -584,7 +590,7 @@ class TestPropertyKeyCache:
         assert manager._property_keys_cache == keys
         assert manager._property_keys_cache_ts is not None
 
-    async def test_refresh_property_keys_cache_alternative_field_names(self, monkeypatch):
+    async def test_refresh_property_keys_cache_alternative_field_names(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Refresh handles alternative field names"""
         manager = Neo4jManagerSingleton()
         manager.driver = MagicMock()
@@ -600,12 +606,12 @@ class TestPropertyKeyCache:
 
         assert keys == {"name", "description"}
 
-    async def test_refresh_property_keys_cache_error(self, monkeypatch):
+    async def test_refresh_property_keys_cache_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Refresh handles errors gracefully"""
         manager = Neo4jManagerSingleton()
         manager.driver = MagicMock()
 
-        def mock_failing_query(q, p):
+        def mock_failing_query(q: str, p: dict[str, object]) -> Never:
             raise RuntimeError("Query failed")
 
         monkeypatch.setattr(manager, "_sync_execute_read_query", mock_failing_query)
@@ -616,7 +622,7 @@ class TestPropertyKeyCache:
         assert manager._property_keys_cache == set()
         assert manager._property_keys_cache_ts is None
 
-    async def test_has_property_key_cache_hit(self, monkeypatch):
+    async def test_has_property_key_cache_hit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """has_property_key uses cached values"""
         manager = Neo4jManagerSingleton()
         manager._property_keys_cache = {"name", "description"}
@@ -630,7 +636,7 @@ class TestPropertyKeyCache:
 
         assert result is True
 
-    async def test_has_property_key_cache_miss(self, monkeypatch):
+    async def test_has_property_key_cache_miss(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """has_property_key returns False for missing key"""
         manager = Neo4jManagerSingleton()
         manager._property_keys_cache = {"name", "description"}
@@ -641,16 +647,18 @@ class TestPropertyKeyCache:
 
         assert result is False
 
-    async def test_has_property_key_cache_expired(self, monkeypatch):
+    async def test_has_property_key_cache_expired(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """has_property_key refreshes expired cache"""
         manager = Neo4jManagerSingleton()
-        manager.driver = MagicMock()
         manager._property_keys_cache = {"old_key"}
         manager._property_keys_cache_ts = 1000.0
 
         mock_results = [{"propertyKey": "new_key"}]
 
-        monkeypatch.setattr(manager, "_sync_execute_read_query", lambda q, p: mock_results)
+        driver = OwnershipDriver()
+        driver.transaction.payload = MagicMock()
+        driver.transaction.payload.run.return_value = mock_results
+        manager.driver = cast(Driver, driver)
 
         with patch("time.monotonic", return_value=1400.0):
             result = await manager.has_property_key("new_key", max_age_seconds=300)
@@ -658,15 +666,17 @@ class TestPropertyKeyCache:
         assert result is True
         assert manager._property_keys_cache == {"new_key"}
 
-    async def test_has_property_key_no_cache(self, monkeypatch):
+    async def test_has_property_key_no_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """has_property_key initializes cache when None"""
         manager = Neo4jManagerSingleton()
-        manager.driver = MagicMock()
         manager._property_keys_cache = None
 
         mock_results = [{"propertyKey": "name"}]
 
-        monkeypatch.setattr(manager, "_sync_execute_read_query", lambda q, p: mock_results)
+        driver = OwnershipDriver()
+        driver.transaction.payload = MagicMock()
+        driver.transaction.payload.run.return_value = mock_results
+        manager.driver = cast(Driver, driver)
 
         result = await manager.has_property_key("name")
 
@@ -705,17 +715,17 @@ class TestApocCapabilityDetection:
 class TestSchemaCreation:
     """Schema creation and management"""
 
-    async def test_create_db_schema_phases(self, monkeypatch):
+    async def test_create_db_schema_phases(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """create_db_schema executes both phases"""
         manager = Neo4jManagerSingleton()
 
         phase1_called = []
         phase2_called = []
 
-        async def mock_phase1():
+        async def mock_phase1() -> None:
             phase1_called.append(True)
 
-        async def mock_phase2():
+        async def mock_phase2() -> None:
             phase2_called.append(True)
 
         monkeypatch.setattr(manager, "_create_constraints_and_indexes", mock_phase1)
@@ -726,7 +736,7 @@ class TestSchemaCreation:
         assert len(phase1_called) == 1
         assert len(phase2_called) == 1
 
-    async def test_create_constraints_and_indexes_batch_success(self, monkeypatch):
+    async def test_create_constraints_and_indexes_batch_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Constraints and indexes created via batch (offloaded via asyncio.to_thread)"""
         manager = Neo4jManagerSingleton()
 
@@ -737,7 +747,7 @@ class TestSchemaCreation:
 
         to_thread_calls: list[tuple[object, tuple[object, ...], dict[str, object], int]] = []
 
-        async def mock_to_thread(func, *args, **kwargs):
+        async def mock_to_thread[**Parameters, Result](func: Callable[Parameters, Result], *args: Parameters.args, **kwargs: Parameters.kwargs) -> Result:
             # Record the calling thread id (the event loop thread for this test),
             # and execute inline to keep this unit test deterministic.
             to_thread_calls.append((func, args, kwargs, threading.get_ident()))
@@ -749,12 +759,12 @@ class TestSchemaCreation:
 
         await manager._create_constraints_and_indexes()
 
-        assert len(executed_queries) == 41
-        assert len(to_thread_calls) == 1
+        assert len(executed_queries) == 47
+        assert len(to_thread_calls) == 8
         # Ensure the schema batch path uses asyncio.to_thread(...) rather than running directly on the loop.
-        assert to_thread_calls[0][0] is manager._execute_schema_batch
+        assert to_thread_calls[1][0] is manager._execute_schema_batch
 
-    async def test_create_constraints_and_indexes_batch_failure_fallback(self, monkeypatch):
+    async def test_create_constraints_and_indexes_batch_failure_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Falls back to individual execution on batch failure (batch runs via asyncio.to_thread)"""
         manager = Neo4jManagerSingleton()
 
@@ -766,7 +776,7 @@ class TestSchemaCreation:
         async def mock_individual(queries: list[str]) -> None:
             individual_calls.append(queries)
 
-        async def mock_to_thread(func, *args, **kwargs):
+        async def mock_to_thread[**Parameters, Result](func: Callable[Parameters, Result], *args: Parameters.args, **kwargs: Parameters.kwargs) -> Result:
             return func(*args, **kwargs)
 
         monkeypatch.setattr(asyncio, "to_thread", mock_to_thread)
@@ -778,26 +788,29 @@ class TestSchemaCreation:
 
         assert len(individual_calls) == 1
 
-    async def test_create_constraints_and_indexes_vector_index_error(self, monkeypatch):
-        """Vector index creation error is logged but doesn't fail"""
+    async def test_create_constraints_and_indexes_vector_index_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Missing required vector index rejects schema admission."""
         manager = Neo4jManagerSingleton()
+        from core.schema_readiness import INDEX_QUERY
 
-        def mock_batch_success(queries: list[str]) -> None:
-            return None
+        catalog = OwnershipDriver()
+        catalog.transaction.catalog[INDEX_QUERY] = [row for row in catalog.transaction.catalog[INDEX_QUERY] if row["type"] != "VECTOR"]
+        manager.driver = cast(Driver, catalog)
 
-        async def mock_to_thread(func, *args, **kwargs):
+        def schema_batch(queries: list[str]) -> None:
+            if queries[0].startswith("CREATE VECTOR INDEX"):
+                raise RuntimeError("Vector index not supported")
+
+        async def mock_to_thread[**Parameters, Result](func: Callable[Parameters, Result], *args: Parameters.args, **kwargs: Parameters.kwargs) -> Result:
             return func(*args, **kwargs)
 
-        async def mock_vector_fail(query):
-            raise RuntimeError("Vector index not supported")
-
         monkeypatch.setattr(asyncio, "to_thread", mock_to_thread)
-        monkeypatch.setattr(manager, "_execute_schema_batch", mock_batch_success)
-        monkeypatch.setattr(manager, "execute_write_query", mock_vector_fail)
+        monkeypatch.setattr(manager, "_execute_schema_batch", schema_batch)
 
-        await manager._create_constraints_and_indexes()
+        with pytest.raises(DatabaseConnectionError, match="schema prerequisites"):
+            await manager._create_constraints_and_indexes()
 
-    async def test_create_constraints_and_indexes_schema_batch_tx_run_off_event_loop_thread(self, monkeypatch):
+    async def test_create_constraints_and_indexes_schema_batch_tx_run_off_event_loop_thread(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """tx.run for schema batch does not execute on the asyncio event loop thread (CORE-001)"""
         manager = Neo4jManagerSingleton()
 
@@ -813,10 +826,13 @@ class TestSchemaCreation:
         mock_tx.commit = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
 
         mock_driver = MagicMock()
         # driver.session(...) returns a context manager; its __enter__ yields the session object.
+        catalog = OwnershipDriver()
+        mock_session.run.side_effect = catalog.run
+        mock_session.execute_read.side_effect = catalog.execute_read
         mock_driver.session.return_value.__enter__.return_value = mock_session
         mock_driver.session.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -826,17 +842,17 @@ class TestSchemaCreation:
 
         await manager._create_constraints_and_indexes()
 
-        assert len(tx_run_thread_ids) == 41
+        assert len(tx_run_thread_ids) == 47
         # The schema batch is offloaded via asyncio.to_thread, so tx.run must not run on the event loop thread.
         assert all(tid != event_loop_thread_id for tid in tx_run_thread_ids)
 
-    async def test_create_type_placeholders_success(self, monkeypatch):
+    async def test_create_type_placeholders_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Type placeholders created successfully"""
         manager = Neo4jManagerSingleton()
 
-        executed = []
+        executed: list[tuple[str, dict[str, object]]] = []
 
-        async def mock_batch(statements):
+        async def mock_batch(statements: list[tuple[str, dict[str, object]]]) -> None:
             executed.extend(statements)
 
         monkeypatch.setattr(manager, "execute_cypher_batch", mock_batch)
@@ -845,16 +861,16 @@ class TestSchemaCreation:
 
         assert len(executed) == 72
 
-    async def test_create_type_placeholders_fallback(self, monkeypatch):
+    async def test_create_type_placeholders_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Type placeholders fall back to individual execution"""
         manager = Neo4jManagerSingleton()
 
-        async def mock_batch_fail(statements):
+        async def mock_batch_fail(statements: list[tuple[str, dict[str, object]]]) -> Never:
             raise RuntimeError("Batch failed")
 
         individual_calls = []
 
-        async def mock_individual(query):
+        async def mock_individual(query: str) -> Never:
             individual_calls.append(query)
             raise RuntimeError("Individual also fails")
 
@@ -865,16 +881,16 @@ class TestSchemaCreation:
 
         assert len(individual_calls) == 72
 
-    async def test_execute_schema_individually_success(self, monkeypatch):
+    async def test_execute_schema_individually_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Schema queries executed individually"""
         manager = Neo4jManagerSingleton()
 
         executed = []
 
-        async def mock_write(query):
-            executed.append(query)
+        def schema_batch(queries: list[str]) -> None:
+            executed.extend(queries)
 
-        monkeypatch.setattr(manager, "execute_write_query", mock_write)
+        monkeypatch.setattr(manager, "_execute_schema_batch", schema_batch)
 
         queries = ["QUERY1", "QUERY2", "QUERY3"]
 
@@ -882,18 +898,18 @@ class TestSchemaCreation:
 
         assert executed == queries
 
-    async def test_execute_schema_individually_continues_on_error(self, monkeypatch):
+    async def test_execute_schema_individually_continues_on_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Schema individual execution continues on error"""
         manager = Neo4jManagerSingleton()
 
         executed = []
 
-        async def mock_write(query):
-            executed.append(query)
-            if query == "QUERY2":
+        def schema_batch(queries: list[str]) -> None:
+            executed.extend(queries)
+            if queries == ["QUERY2"]:
                 raise RuntimeError("Query2 failed")
 
-        monkeypatch.setattr(manager, "execute_write_query", mock_write)
+        monkeypatch.setattr(manager, "_execute_schema_batch", schema_batch)
 
         queries = ["QUERY1", "QUERY2", "QUERY3"]
 
@@ -905,7 +921,7 @@ class TestSchemaCreation:
 class TestSyncSchemaOperations:
     """Synchronous schema operations"""
 
-    def test_execute_schema_batch_success(self):
+    def test_execute_schema_batch_success(self) -> None:
         """Schema batch executes and commits"""
         manager = Neo4jManagerSingleton()
 
@@ -915,7 +931,7 @@ class TestSyncSchemaOperations:
         mock_tx.commit = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
         mock_session.__enter__ = lambda self: self
         mock_session.__exit__ = MagicMock(return_value=False)
 
@@ -934,7 +950,7 @@ class TestSyncSchemaOperations:
         assert mock_tx.run.call_count == 2
         mock_tx.commit.assert_called_once()
 
-    def test_execute_schema_batch_rollback_on_error(self):
+    def test_execute_schema_batch_rollback_on_error(self) -> None:
         """Schema batch rolls back on error"""
         manager = Neo4jManagerSingleton()
 
@@ -944,7 +960,7 @@ class TestSyncSchemaOperations:
         mock_tx.rollback = MagicMock()
 
         mock_session = MagicMock()
-        mock_session.begin_transaction.return_value = mock_tx
+        mock_session.begin_transaction.return_value = OwnershipTransaction(mock_tx)
         mock_session.__enter__ = lambda self: self
         mock_session.__exit__ = MagicMock(return_value=False)
 
@@ -964,7 +980,7 @@ class TestSyncSchemaOperations:
 class TestEmbeddingConversion:
     """Embedding conversion utilities"""
 
-    def test_embedding_to_list_numpy_array(self):
+    def test_embedding_to_list_numpy_array(self) -> None:
         """Convert numpy array to list"""
         manager = Neo4jManagerSingleton()
 
@@ -975,7 +991,7 @@ class TestEmbeddingConversion:
         assert len(result) == 3
         assert result == [1.0, 2.0, 3.0]
 
-    def test_embedding_to_list_none(self):
+    def test_embedding_to_list_none(self) -> None:
         """Convert None returns None"""
         manager = Neo4jManagerSingleton()
 
@@ -983,7 +999,7 @@ class TestEmbeddingConversion:
 
         assert result is None
 
-    def test_embedding_to_list_scalar_array(self):
+    def test_embedding_to_list_scalar_array(self) -> None:
         """Convert scalar (0-d) array to single-element list"""
         manager = Neo4jManagerSingleton()
 
@@ -994,28 +1010,30 @@ class TestEmbeddingConversion:
         assert len(result) == 1
         assert result == [5.0]
 
-    def test_embedding_to_list_with_tolist_method(self):
+    def test_embedding_to_list_with_tolist_method(self) -> None:
         """Convert object with tolist method"""
         manager = Neo4jManagerSingleton()
 
         class FakeEmbedding:
-            def tolist(self):
+            def tolist(self) -> list[float]:
                 return [1.0, 2.0]
 
         embedding = FakeEmbedding()
-        result = manager.embedding_to_list(embedding)
+        convert: Callable[..., list[float] | None] = manager.embedding_to_list
+        result = convert(embedding)
 
         assert result == [1.0, 2.0]
 
-    def test_embedding_to_list_invalid_type(self):
+    def test_embedding_to_list_invalid_type(self) -> None:
         """Invalid type returns None"""
         manager = Neo4jManagerSingleton()
 
-        result = manager.embedding_to_list("invalid")
+        convert: Callable[..., list[float] | None] = manager.embedding_to_list
+        result = convert("invalid")
 
         assert result is None
 
-    def test_list_to_embedding_success(self):
+    def test_list_to_embedding_success(self) -> None:
         """Convert list to numpy array"""
         manager = Neo4jManagerSingleton()
 
@@ -1026,17 +1044,17 @@ class TestEmbeddingConversion:
         assert result.shape == (3,)
         assert np.array_equal(result, np.array([1.0, 2.0, 3.0]))
 
-    def test_list_to_embedding_with_integers(self):
+    def test_list_to_embedding_with_integers(self) -> None:
         """Convert list with integers to numpy array"""
         manager = Neo4jManagerSingleton()
 
-        embedding_list = [1, 2, 3]
+        embedding_list: list[float | int] = [1, 2, 3]
         result = manager.list_to_embedding(embedding_list)
 
         assert isinstance(result, np.ndarray)
         assert result.shape == (3,)
 
-    def test_list_to_embedding_none(self):
+    def test_list_to_embedding_none(self) -> None:
         """Convert None returns None"""
         manager = Neo4jManagerSingleton()
 
@@ -1044,11 +1062,11 @@ class TestEmbeddingConversion:
 
         assert result is None
 
-    def test_list_to_embedding_error(self, monkeypatch):
+    def test_list_to_embedding_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Conversion error returns None"""
         manager = Neo4jManagerSingleton()
 
-        def mock_array_fail(*args, **kwargs):
+        def mock_array_fail(*args: object, **kwargs: object) -> Never:
             raise ValueError("Conversion failed")
 
         monkeypatch.setattr(np, "array", mock_array_fail)
@@ -1061,11 +1079,11 @@ class TestEmbeddingConversion:
 class TestSingletonInstance:
     """Module-level singleton instance"""
 
-    def test_neo4j_manager_is_singleton(self):
+    def test_neo4j_manager_is_singleton(self) -> None:
         """neo4j_manager is singleton instance"""
         assert isinstance(neo4j_manager, Neo4jManagerSingleton)
 
-    def test_neo4j_manager_same_as_new_instance(self):
+    def test_neo4j_manager_same_as_new_instance(self) -> None:
         """neo4j_manager is same instance as newly created"""
         new_instance = Neo4jManagerSingleton()
         assert neo4j_manager is new_instance

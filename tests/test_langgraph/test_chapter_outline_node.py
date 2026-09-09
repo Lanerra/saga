@@ -1,5 +1,6 @@
 # tests/test_langgraph/test_chapter_outline_node.py
 import json
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,11 +12,12 @@ from core.langgraph.initialization.chapter_outline_node import (
     build_character_summary,
     generate_chapter_outline,
 )
-from core.langgraph.state import create_initial_state
+from core.langgraph.state import NarrativeState, create_initial_state
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def base_state():
+def base_state() -> NarrativeState:
     """Create a base state for testing."""
     return create_initial_state(
         project_id="test-project",
@@ -31,7 +33,7 @@ def base_state():
 
 
 @pytest.fixture
-def mock_content_manager():
+def mock_content_manager() -> Iterator[MagicMock]:
     """Create a mock ContentManager."""
     with patch("core.langgraph.initialization.chapter_outline_node.ContentManager") as mock:
         instance = MagicMock()
@@ -46,9 +48,9 @@ def mock_content_manager():
 
 
 @pytest.fixture
-def mock_llm_service():
+def mock_llm_service() -> Iterator[MagicMock]:
     """Create a mock LLM service."""
-    with patch("core.langgraph.initialization.chapter_outline_node.llm_service") as mock:
+    with patch_service('language_model') as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
                 json.dumps(
@@ -65,7 +67,7 @@ def mock_llm_service():
 
 
 @pytest.fixture
-def mock_get_functions():
+def mock_get_functions() -> Iterator[dict[str, MagicMock]]:
     """Mock the content getter functions."""
     with (
         patch("core.langgraph.initialization.chapter_outline_node.get_chapter_outlines") as mock_outlines,
@@ -103,9 +105,9 @@ def mock_get_functions():
 
 
 @pytest.mark.asyncio
-async def test_generate_chapter_outline_success(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_chapter_outline_success(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify successful chapter outline generation."""
-    state = {**base_state, "current_chapter": 1}
+    state: NarrativeState = {**base_state, "current_chapter": 1}
 
     result = await generate_chapter_outline(state)
 
@@ -113,15 +115,16 @@ async def test_generate_chapter_outline_success(base_state, mock_content_manager
     assert result["current_node"] == "chapter_outline"
     assert result["last_error"] is None
     assert "chapter_outlines_ref" in result
+    assert result["chapter_outlines_ref"] is not None
     assert result["chapter_outlines_ref"]["size_bytes"] == 1024
 
 
 @pytest.mark.asyncio
-async def test_generate_chapter_outline_already_exists(base_state, mock_content_manager, mock_get_functions):
+async def test_generate_chapter_outline_already_exists(base_state: NarrativeState, mock_content_manager: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify behavior when outline already exists."""
     mock_get_functions["outlines"].return_value = {1: {"scene_description": "Existing outline"}}
 
-    state = {**base_state, "current_chapter": 1}
+    state: NarrativeState = {**base_state, "current_chapter": 1}
 
     result = await generate_chapter_outline(state)
 
@@ -130,11 +133,11 @@ async def test_generate_chapter_outline_already_exists(base_state, mock_content_
 
 
 @pytest.mark.asyncio
-async def test_generate_chapter_outline_missing_global_outline(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_chapter_outline_missing_global_outline(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify warning when global outline is missing."""
     mock_get_functions["global"].return_value = None
 
-    state = {**base_state, "current_chapter": 1}
+    state: NarrativeState = {**base_state, "current_chapter": 1}
 
     result = await generate_chapter_outline(state)
 
@@ -143,11 +146,11 @@ async def test_generate_chapter_outline_missing_global_outline(base_state, mock_
 
 
 @pytest.mark.asyncio
-async def test_generate_chapter_outline_missing_act_outlines(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_chapter_outline_missing_act_outlines(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify warning when act outlines are missing."""
     mock_get_functions["acts"].return_value = {}
 
-    state = {**base_state, "current_chapter": 1}
+    state: NarrativeState = {**base_state, "current_chapter": 1}
 
     result = await generate_chapter_outline(state)
 
@@ -156,23 +159,24 @@ async def test_generate_chapter_outline_missing_act_outlines(base_state, mock_co
 
 
 @pytest.mark.asyncio
-async def test_generate_chapter_outline_generation_failure(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_chapter_outline_generation_failure(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify handling when generation returns None."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
-    state = {**base_state, "current_chapter": 1}
+    state: NarrativeState = {**base_state, "current_chapter": 1}
 
     result = await generate_chapter_outline(state)
 
     assert result["initialization_step"] == "chapter_outline_1_failed"
     assert result["current_node"] == "chapter_outline"
+    assert result["last_error"] is not None
     assert "Failed to generate outline" in result["last_error"]
 
 
 @pytest.mark.asyncio
-async def test_generate_single_chapter_outline_success(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_single_chapter_outline_success(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify _generate_single_chapter_outline returns valid outline."""
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await _generate_single_chapter_outline(state, 1, 1)
 
@@ -186,11 +190,11 @@ async def test_generate_single_chapter_outline_success(base_state, mock_content_
 
 
 @pytest.mark.asyncio
-async def test_generate_single_chapter_outline_empty_response(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_single_chapter_outline_empty_response(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify handling of empty LLM response."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await _generate_single_chapter_outline(state, 1, 1)
 
@@ -198,18 +202,18 @@ async def test_generate_single_chapter_outline_empty_response(base_state, mock_c
 
 
 @pytest.mark.asyncio
-async def test_generate_single_chapter_outline_exception(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_single_chapter_outline_exception(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify exception handling during generation."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await _generate_single_chapter_outline(state, 1, 1)
 
     assert result is None
 
 
-def test_determine_act_for_chapter_three_act():
+def test_determine_act_for_chapter_three_act() -> None:
     """Verify act determination for 3-act structure."""
     with patch("core.langgraph.initialization.chapter_outline_node.ContentManager") as mock_cm:
         instance = MagicMock()
@@ -218,7 +222,7 @@ def test_determine_act_for_chapter_three_act():
         with patch("core.langgraph.initialization.chapter_outline_node.get_global_outline") as mock_get:
             mock_get.return_value = {"act_count": 3}
 
-            state = {"total_chapters": 21, "project_dir": "/tmp"}
+            state: NarrativeState = {"total_chapters": 21, "project_dir": "/tmp"}
 
             assert _determine_act_for_chapter(state, 1) == 1
             assert _determine_act_for_chapter(state, 7) == 1
@@ -228,7 +232,7 @@ def test_determine_act_for_chapter_three_act():
             assert _determine_act_for_chapter(state, 21) == 3
 
 
-def test_determine_act_for_chapter_five_act():
+def test_determine_act_for_chapter_five_act() -> None:
     """Verify act determination for 5-act structure."""
     with patch("core.langgraph.initialization.chapter_outline_node.ContentManager") as mock_cm:
         instance = MagicMock()
@@ -237,7 +241,7 @@ def test_determine_act_for_chapter_five_act():
         with patch("core.langgraph.initialization.chapter_outline_node.get_global_outline") as mock_get:
             mock_get.return_value = {"act_count": 5}
 
-            state = {"total_chapters": 20, "project_dir": "/tmp"}
+            state: NarrativeState = {"total_chapters": 20, "project_dir": "/tmp"}
 
             assert _determine_act_for_chapter(state, 1) == 1
             assert _determine_act_for_chapter(state, 4) == 1
@@ -251,7 +255,7 @@ def test_determine_act_for_chapter_five_act():
             assert _determine_act_for_chapter(state, 20) == 5
 
 
-def test_determine_act_for_chapter_boundary():
+def test_determine_act_for_chapter_boundary() -> None:
     """Verify act determination doesn't exceed act count."""
     with patch("core.langgraph.initialization.chapter_outline_node.ContentManager") as mock_cm:
         instance = MagicMock()
@@ -260,12 +264,12 @@ def test_determine_act_for_chapter_boundary():
         with patch("core.langgraph.initialization.chapter_outline_node.get_global_outline") as mock_get:
             mock_get.return_value = {"act_count": 3}
 
-            state = {"total_chapters": 20, "project_dir": "/tmp"}
+            state: NarrativeState = {"total_chapters": 20, "project_dir": "/tmp"}
 
             assert _determine_act_for_chapter(state, 99) == 3
 
 
-def test_determine_act_for_chapter_uses_explicit_ranges():
+def test_determine_act_for_chapter_uses_explicit_ranges() -> None:
     """If global outline provides explicit act ranges, mapping should follow those ranges."""
     with patch("core.langgraph.initialization.chapter_outline_node.ContentManager") as mock_cm:
         instance = MagicMock()
@@ -281,7 +285,7 @@ def test_determine_act_for_chapter_uses_explicit_ranges():
                 ],
             }
 
-            state = {"total_chapters": 6, "project_dir": "/tmp"}
+            state: NarrativeState = {"total_chapters": 6, "project_dir": "/tmp"}
 
             assert _determine_act_for_chapter(state, 1) == 1
             assert _determine_act_for_chapter(state, 2) == 1
@@ -290,7 +294,7 @@ def test_determine_act_for_chapter_uses_explicit_ranges():
             assert _determine_act_for_chapter(state, 6) == 3
 
 
-def test_determine_act_for_chapter_act_count_greater_than_chapters_no_crash():
+def test_determine_act_for_chapter_act_count_greater_than_chapters_no_crash() -> None:
     """
     act_count > total_chapters must not cause division/modulo by zero.
 
@@ -305,7 +309,7 @@ def test_determine_act_for_chapter_act_count_greater_than_chapters_no_crash():
         with patch("core.langgraph.initialization.chapter_outline_node.get_global_outline") as mock_get:
             mock_get.return_value = {"act_count": 5}
 
-            state = {"total_chapters": 2, "project_dir": "/tmp"}
+            state: NarrativeState = {"total_chapters": 2, "project_dir": "/tmp"}
 
             assert _determine_act_for_chapter(state, 1) == 1
             assert _determine_act_for_chapter(state, 2) == 2
@@ -314,7 +318,9 @@ def test_determine_act_for_chapter_act_count_greater_than_chapters_no_crash():
 
 
 @pytest.mark.asyncio
-async def test_generate_single_chapter_outline_uses_explicit_ranges_for_chapter_in_act(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_single_chapter_outline_uses_explicit_ranges_for_chapter_in_act(
+    base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]
+) -> None:
     """chapter_in_act should be computed using explicit global act ranges when present."""
     # Act 2 starts at chapter 3; chapter 4 should be "Chapter 2 of this act"
     mock_get_functions["global"].return_value = {
@@ -327,7 +333,7 @@ async def test_generate_single_chapter_outline_uses_explicit_ranges_for_chapter_
         "raw_text": "Global outline text",
     }
 
-    state = {**base_state, "total_chapters": 6}
+    state: NarrativeState = {**base_state, "total_chapters": 6}
 
     await _generate_single_chapter_outline(state, chapter_number=4, act_number=2)
 
@@ -337,7 +343,7 @@ async def test_generate_single_chapter_outline_uses_explicit_ranges_for_chapter_
     assert "Chapter 2 of this act" in prompt
 
 
-def test_build_character_summary_with_characters():
+def test_build_character_summary_with_characters() -> None:
     """Verify character summary with multiple characters."""
     character_sheets = {
         "Hero": {"is_protagonist": True},
@@ -353,14 +359,14 @@ def test_build_character_summary_with_characters():
     assert "Character" in result
 
 
-def test_build_character_summary_empty():
+def test_build_character_summary_empty() -> None:
     """Verify character summary with no characters."""
     result = build_character_summary({})
 
     assert result == "No characters defined."
 
 
-def test_build_character_summary_respects_max_characters():
+def test_build_character_summary_respects_max_characters() -> None:
     """Verify character summary respects max_characters limit."""
     character_sheets = {f"Character{i}": {"is_protagonist": i == 0} for i in range(10)}
 
@@ -370,7 +376,7 @@ def test_build_character_summary_respects_max_characters():
     assert len(lines) == 3
 
 
-def test_build_character_summary_includes_description():
+def test_build_character_summary_includes_description() -> None:
     """Verify character summary includes descriptions when requested."""
     character_sheets = {
         "Hero": {
@@ -386,7 +392,7 @@ def test_build_character_summary_includes_description():
     assert "A brave warrior on a quest." in result
 
 
-def test_build_character_summary_no_limit_returns_all():
+def test_build_character_summary_no_limit_returns_all() -> None:
     """Verify character summary returns all characters when max_characters is 0."""
     character_sheets = {f"Character{i}": {"is_protagonist": i == 0} for i in range(10)}
 
@@ -396,7 +402,7 @@ def test_build_character_summary_no_limit_returns_all():
     assert len(lines) == 10
 
 
-def test_parse_chapter_outline_valid_json():
+def test_parse_chapter_outline_valid_json() -> None:
     """Verify parsing of valid JSON response."""
     response = json.dumps(
         {
@@ -416,7 +422,7 @@ def test_parse_chapter_outline_valid_json():
     assert result["raw_text"] == response
 
 
-def test_parse_chapter_outline_json_with_markdown():
+def test_parse_chapter_outline_json_with_markdown() -> None:
     """Verify parsing of JSON wrapped in markdown code blocks."""
     response = """```json
 {
@@ -433,7 +439,7 @@ def test_parse_chapter_outline_json_with_markdown():
     assert result["plot_point"] == "Test plot"
 
 
-def test_parse_chapter_outline_invalid_json_fallback():
+def test_parse_chapter_outline_invalid_json_fallback() -> None:
     """Verify fallback parsing when JSON is invalid."""
     response = """Scene: The hero enters the castle
 
@@ -452,7 +458,7 @@ Plot Point: The adventure begins"""
     assert result["scene_description"] == response
 
 
-def test_parse_chapter_outline_empty_response():
+def test_parse_chapter_outline_empty_response() -> None:
     """Verify parsing handles empty response."""
     response = ""
 
@@ -464,7 +470,7 @@ def test_parse_chapter_outline_empty_response():
     assert result["key_beats"] == []
 
 
-def test_parse_chapter_outline_limits_beats():
+def test_parse_chapter_outline_limits_beats() -> None:
     """Verify parsing limits key beats to 10."""
     response = json.dumps(
         {
@@ -479,7 +485,7 @@ def test_parse_chapter_outline_limits_beats():
     assert len(result["key_beats"]) == 10
 
 
-def test_parse_chapter_outline_text_with_beats():
+def test_parse_chapter_outline_text_with_beats() -> None:
     """Verify text parsing extracts beats correctly."""
     response = """Scene Description: Opening scene
 
@@ -495,7 +501,7 @@ Plot Point: The journey begins"""
     assert len(result["key_beats"]) == 3
 
 
-def test_parse_chapter_outline_fallback_uses_full_text():
+def test_parse_chapter_outline_fallback_uses_full_text() -> None:
     """Verify fallback uses full text when no structure found."""
     response = "Just a plain text outline with no structure."
 
@@ -507,10 +513,10 @@ def test_parse_chapter_outline_fallback_uses_full_text():
 
 
 @pytest.mark.asyncio
-async def test_generate_chapter_outline_different_chapters(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+async def test_generate_chapter_outline_different_chapters(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_functions: dict[str, MagicMock]) -> None:
     """Verify generation works for different chapter numbers."""
     for chapter_num in [1, 5, 10, 15, 20]:
-        state = {**base_state, "current_chapter": chapter_num}
+        state: NarrativeState = {**base_state, "current_chapter": chapter_num}
 
         result = await generate_chapter_outline(state)
 

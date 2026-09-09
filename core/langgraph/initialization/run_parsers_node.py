@@ -46,7 +46,10 @@ async def run_initialization_parsers(state: NarrativeState) -> NarrativeState:
 
     try:
         runner = ParserRunner(project_path)
-        results = await runner.run_all_parsers()
+        identity = state.get("initialization_id")
+        if not identity:
+            raise ValueError("Initialization acceptance requires an explicit frozen initialization_id")
+        results = await runner.run_all_parsers(identity)
 
         failed_parsers = [name for name, (success, _) in results.items() if not success]
 

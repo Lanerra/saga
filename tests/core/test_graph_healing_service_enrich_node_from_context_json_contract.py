@@ -7,6 +7,7 @@ import pytest
 
 from core.exceptions import ValidationError
 from core.graph_healing_service import GraphHealingService
+from tests.fakes.service_context import patch_service
 
 _ENRICHMENT_JSON_CONTRACT_ERROR_MESSAGE = "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
 
@@ -40,8 +41,8 @@ async def test_enrich_node_from_context_invalid_json_then_valid_retries_and_succ
             "data_access.kg_queries.get_chapter_context_for_entity",
             new=AsyncMock(return_value=mentions),
         ),
-        patch(
-            "core.graph_healing_service.llm_service.async_call_llm",
+        patch_service(
+            'language_model.async_call_llm',
             new=AsyncMock(side_effect=[(invalid_response, {}), (valid_response, {})]),
         ) as mock_llm,
     ):
@@ -88,8 +89,8 @@ async def test_enrich_node_from_context_all_attempts_invalid_json_raises_stable_
             "data_access.kg_queries.get_chapter_context_for_entity",
             new=AsyncMock(return_value=mentions),
         ),
-        patch(
-            "core.graph_healing_service.llm_service.async_call_llm",
+        patch_service(
+            'language_model.async_call_llm',
             new=AsyncMock(side_effect=[(invalid_response_one, {}), (invalid_response_two, {})]),
         ) as mock_llm,
     ):
@@ -128,8 +129,8 @@ async def test_enrich_node_from_context_valid_json_first_attempt_succeeds() -> N
             "data_access.kg_queries.get_chapter_context_for_entity",
             new=AsyncMock(return_value=mentions),
         ),
-        patch(
-            "core.graph_healing_service.llm_service.async_call_llm",
+        patch_service(
+            'language_model.async_call_llm',
             new=AsyncMock(return_value=(valid_response, {})),
         ) as mock_llm,
     ):

@@ -10,11 +10,14 @@ This module tests the NarrativeEnrichmentParser class for:
 Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
 """
 
+from collections.abc import Sequence
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import BaseModel
 
+import config
+from core.embedding_contract import embedding_identity
 from core.parsers.narrative_enrichment_parser import (
     ChapterEmbeddingExtractionResult,
     NarrativeEnrichmentParser,
@@ -49,7 +52,7 @@ class MockChapter(BaseModel):
 
 
 @pytest.fixture
-def sample_narrative_text():
+def sample_narrative_text() -> str:
     """Sample narrative text for testing."""
     return """
     Chapter 1: The Beginning
@@ -65,7 +68,7 @@ def sample_narrative_text():
 
 
 @pytest.fixture
-def sample_character_data():
+def sample_character_data() -> list[CharacterProfile]:
     """Sample character data for testing."""
     return [
         CharacterProfile(
@@ -90,7 +93,7 @@ def sample_character_data():
 
 
 @pytest.fixture
-def sample_chapter_data():
+def sample_chapter_data() -> Chapter:
     """Sample chapter data for testing."""
     return Chapter(
         id="chapter_1",
@@ -105,7 +108,7 @@ def sample_chapter_data():
 
 
 @pytest.mark.asyncio
-async def test_extract_physical_descriptions(sample_narrative_text, sample_character_data):
+async def test_extract_physical_descriptions(sample_narrative_text: str, sample_character_data: list[CharacterProfile]) -> None:
     """Test physical description extraction from narrative text."""
     parser = NarrativeEnrichmentParser(sample_narrative_text, chapter_number=1)
 
@@ -129,8 +132,9 @@ async def test_extract_physical_descriptions(sample_narrative_text, sample_chara
 
 
 @pytest.mark.asyncio
-async def test_extract_chapter_embeddings(sample_narrative_text, sample_chapter_data):
+async def test_extract_chapter_embeddings(sample_narrative_text: str, sample_chapter_data: Chapter, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test chapter embedding extraction from narrative text."""
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 5)
     parser = NarrativeEnrichmentParser(sample_narrative_text, chapter_number=1)
 
     # Mock the get_chapter_data_from_db function
@@ -169,7 +173,7 @@ async def test_extract_chapter_embeddings(sample_narrative_text, sample_chapter_
 
 
 @pytest.mark.asyncio
-async def test_validate_character_enrichment(sample_character_data):
+async def test_validate_character_enrichment(sample_character_data: list[CharacterProfile]) -> None:
     """Test validation of character enrichment."""
     parser = NarrativeEnrichmentParser("Test narrative", chapter_number=1)
 
@@ -193,7 +197,7 @@ async def test_validate_character_enrichment(sample_character_data):
 
 
 @pytest.mark.asyncio
-async def test_update_character_physical_descriptions(sample_character_data):
+async def test_update_character_physical_descriptions(sample_character_data: list[CharacterProfile]) -> None:
     """Test updating character physical descriptions."""
     parser = NarrativeEnrichmentParser("Test narrative", chapter_number=1)
 
@@ -213,11 +217,16 @@ async def test_update_character_physical_descriptions(sample_character_data):
         mock_get_chars.return_value = sample_character_data
 
         # Mock the sync_characters function
-        with patch("core.parsers.narrative_enrichment_parser.sync_characters") as mock_sync_chars:
+        with (
+            patch("core.parsers.narrative_enrichment_parser.sync_characters") as mock_sync_chars,
+            patch("core.parsers.narrative_enrichment_parser.get_character_profile_by_name", new_callable=AsyncMock, return_value=sample_character_data[0]) as get_character,
+        ):
             mock_sync_chars.return_value = True
 
             # Call the update_character_physical_descriptions method
             success = await parser.update_character_physical_descriptions(extraction_results)
+            get_character.assert_awaited_once_with("John")
+            assert sample_character_data[0].physical_description == extraction_results[0].extracted_description
 
             # Verify that the method was called
             mock_get_chars.assert_called_once()
@@ -228,8 +237,9 @@ async def test_update_character_physical_descriptions(sample_character_data):
 
 
 @pytest.mark.asyncio
-async def test_update_chapter_embeddings(sample_chapter_data):
+async def test_update_chapter_embeddings(sample_chapter_data: Chapter, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test updating chapter embeddings."""
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 5)
     parser = NarrativeEnrichmentParser("Test narrative", chapter_number=1)
 
     # Create mock extraction results
@@ -237,6 +247,8 @@ async def test_update_chapter_embeddings(sample_chapter_data):
         ChapterEmbeddingExtractionResult(
             chapter_number=1,
             embedding_vector=[0.1, 0.2, 0.3, 0.4, 0.5],
+            embedding_model=config.EMBEDDING_MODEL,
+            embedding_identity=embedding_identity(),
             confidence=0.95,
             source_text="Test source text",
             extraction_method="embedding_service",
@@ -258,7 +270,7 @@ async def test_update_chapter_embeddings(sample_chapter_data):
 
 
 @pytest.mark.asyncio
-async def test_parse_and_persist(sample_narrative_text, sample_character_data, sample_chapter_data):
+async def test_parse_and_persist(sample_narrative_text: str, sample_character_data: list[CharacterProfile], sample_chapter_data: Chapter) -> None:
     """Test the complete parse and persist workflow."""
     parser = NarrativeEnrichmentParser(sample_narrative_text, chapter_number=1)
 
@@ -280,6 +292,8 @@ async def test_parse_and_persist(sample_narrative_text, sample_character_data, s
                 ChapterEmbeddingExtractionResult(
                     chapter_number=1,
                     embedding_vector=[0.1, 0.2, 0.3, 0.4, 0.5],
+                    embedding_model=config.EMBEDDING_MODEL,
+                    embedding_identity=embedding_identity(),
                     confidence=0.95,
                     source_text="Test source text",
                     extraction_method="embedding_service",
@@ -313,12 +327,12 @@ async def test_parse_and_persist(sample_narrative_text, sample_character_data, s
 
 
 @pytest.mark.asyncio
-async def test_empty_narrative_text():
+async def test_empty_narrative_text() -> None:
     """Test that empty narrative text returns empty results."""
     parser = NarrativeEnrichmentParser("", chapter_number=1)
 
     # Call the extract_physical_descriptions method
-    results = await parser.extract_physical_descriptions()
+    results: Sequence[BaseModel] = await parser.extract_physical_descriptions()
 
     # Verify that no results were returned
     assert len(results) == 0
@@ -331,7 +345,7 @@ async def test_empty_narrative_text():
 
 
 @pytest.mark.asyncio
-async def test_invalid_character_name():
+async def test_invalid_character_name() -> None:
     """Test that invalid character names are handled gracefully."""
     parser = NarrativeEnrichmentParser("Test narrative", chapter_number=1)
 
@@ -352,50 +366,50 @@ async def test_invalid_character_name():
 class TestExtractCharacterDescription:
     """Verify _extract_character_description handles regex-special characters in names."""
 
-    def test_plain_name_matches_was_pattern(self):
+    def test_plain_name_matches_was_pattern(self) -> None:
         parser = NarrativeEnrichmentParser("unused", chapter_number=1)
         text = "John was a tall man with dark hair"
         result = parser._extract_character_description("John", text)
         assert result == "a tall man with dark hair"
 
-    def test_plain_name_matches_had_pattern(self):
+    def test_plain_name_matches_had_pattern(self) -> None:
         parser = NarrativeEnrichmentParser("unused", chapter_number=1)
         text = "Mary had bright red hair"
         result = parser._extract_character_description("Mary", text)
         assert result == "bright red hair"
 
-    def test_plain_name_matches_looked_pattern(self):
+    def test_plain_name_matches_looked_pattern(self) -> None:
         parser = NarrativeEnrichmentParser("unused", chapter_number=1)
         text = "Mary looked exhausted and pale"
         result = parser._extract_character_description("Mary", text)
         assert result == "exhausted and pale"
 
-    def test_name_with_period_is_escaped(self):
+    def test_name_with_period_is_escaped(self) -> None:
         parser = NarrativeEnrichmentParser("unused", chapter_number=1)
         text = "R.J. MacReady was a grizzled helicopter pilot"
         result = parser._extract_character_description("R.J. MacReady", text)
         assert result == "a grizzled helicopter pilot"
 
-    def test_period_in_name_does_not_match_arbitrary_characters(self):
+    def test_period_in_name_does_not_match_arbitrary_characters(self) -> None:
         parser = NarrativeEnrichmentParser("unused", chapter_number=1)
         # Without re.escape(), "R.J." would match "RXJ!" via the dot metacharacter
         text = "RXJ! MacReady was a grizzled helicopter pilot"
         result = parser._extract_character_description("R.J. MacReady", text)
         assert result is None
 
-    def test_name_with_parentheses_is_escaped(self):
+    def test_name_with_parentheses_is_escaped(self) -> None:
         parser = NarrativeEnrichmentParser("unused", chapter_number=1)
         text = "O'Brien (Scientist) was hunched over the microscope"
         result = parser._extract_character_description("O'Brien (Scientist)", text)
         assert result == "hunched over the microscope"
 
-    def test_name_with_plus_is_escaped(self):
+    def test_name_with_plus_is_escaped(self) -> None:
         parser = NarrativeEnrichmentParser("unused", chapter_number=1)
         text = "K+ had a mechanical gait and cold eyes"
         result = parser._extract_character_description("K+", text)
         assert result == "a mechanical gait and cold eyes"
 
-    def test_no_match_returns_none(self):
+    def test_no_match_returns_none(self) -> None:
         parser = NarrativeEnrichmentParser("unused", chapter_number=1)
         text = "The sun set over the mountains"
         result = parser._extract_character_description("John", text)

@@ -13,16 +13,19 @@ This test file covers:
 Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
 """
 
+from collections.abc import Awaitable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import config
 from core.langgraph.nodes.narrative_enrichment_node import NarrativeEnrichmentNode
 from models.kg_models import Chapter, CharacterProfile
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def sample_narrative_text():
+def sample_narrative_text() -> str:
     """Sample narrative text for testing."""
     return """
     Chapter 1: The Beginning
@@ -34,7 +37,7 @@ def sample_narrative_text():
 
 
 @pytest.fixture
-def sample_character_profiles():
+def sample_character_profiles() -> list[CharacterProfile]:
     """Sample character profiles for testing."""
     return [
         CharacterProfile(
@@ -63,7 +66,7 @@ def sample_character_profiles():
 
 
 @pytest.fixture
-def sample_chapter_data():
+def sample_chapter_data() -> Chapter:
     """Sample chapter data for testing."""
     return Chapter(
         id="chapter_001",
@@ -81,7 +84,7 @@ def sample_chapter_data():
 class TestNarrativeEnrichmentNode:
     """Test the NarrativeEnrichmentNode class."""
 
-    async def test_process_success(self, sample_narrative_text, sample_character_profiles, sample_chapter_data):
+    async def test_process_success(self, sample_narrative_text: str, sample_character_profiles: list[CharacterProfile], sample_chapter_data: Chapter) -> None:
         """Test successful processing of narrative text."""
         node = NarrativeEnrichmentNode()
 
@@ -93,25 +96,36 @@ class TestNarrativeEnrichmentNode:
             patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
         ):
             # Set up mocks to return sample data
+            parser_characters = patch("core.parsers.narrative_enrichment_parser.get_character_profiles", new_callable=AsyncMock, return_value=sample_character_profiles)
+            parser_embedding = patch_service('language_model.async_get_embedding', new_callable=AsyncMock, return_value=[0.25] * config.EXPECTED_EMBEDDING_DIM)
+            parser_chapter = patch("core.parsers.narrative_enrichment_parser.get_chapter_data_from_db", new_callable=AsyncMock, return_value=sample_chapter_data)
             mock_get_chars.return_value = sample_character_profiles
             mock_get_chapter.return_value = sample_chapter_data
             mock_sync_chars.return_value = True
             mock_save_chapter.return_value = True
 
             # Call the process method
-            result = await node.process(sample_narrative_text, 1)
+            with parser_characters, parser_embedding, parser_chapter:
+                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                result = await pending_result
 
             # Verify success
             assert result is None
+            assert [(character.name, character.physical_description) for character in sample_character_profiles] == [
+                ("Alice", "a tall woman with long brown hair and piercing blue eyes"),
+                ("Bob", None),
+            ]
+            assert mock_sync_chars.await_count == 1
+            mock_save_chapter.assert_awaited_once()
 
-    async def test_process_empty_narrative_text(self):
+    async def test_process_empty_narrative_text(self) -> None:
         """Test error handling when narrative text is empty."""
         node = NarrativeEnrichmentNode()
 
         with pytest.raises(ValueError, match="Empty narrative text provided"):
             await node.process("", 1)
 
-    async def test_process_invalid_chapter_number(self):
+    async def test_process_invalid_chapter_number(self) -> None:
         """Test error handling when chapter number is invalid."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -119,7 +133,7 @@ class TestNarrativeEnrichmentNode:
         with pytest.raises(ValueError, match="Invalid chapter number 0"):
             await node.process(narrative_text, 0)
 
-    async def test_process_no_character_profiles(self):
+    async def test_process_no_character_profiles(self) -> None:
         """Test error handling when no character profiles are found."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -130,7 +144,7 @@ class TestNarrativeEnrichmentNode:
             with pytest.raises(ValueError, match="No character profiles found"):
                 await node.process(narrative_text, 1)
 
-    async def test_process_no_chapter_data(self):
+    async def test_process_no_chapter_data(self) -> None:
         """Test error handling when no chapter data is found."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -149,7 +163,7 @@ class TestNarrativeEnrichmentNode:
             with pytest.raises(ValueError, match="No chapter data found for chapter 1"):
                 await node.process(narrative_text, 1)
 
-    async def test_validate_physical_description(self):
+    async def test_validate_physical_description(self) -> None:
         """Test validation of physical descriptions."""
         node = NarrativeEnrichmentNode()
 
@@ -157,14 +171,14 @@ class TestNarrativeEnrichmentNode:
         result = node._validate_physical_description("Alice is tall with brown hair", "Alice has long brown hair and blue eyes")
         assert result is True
 
-    async def test_validate_embedding(self):
+    async def test_validate_embedding(self) -> None:
         """Test validation of embeddings."""
         node = NarrativeEnrichmentNode()
 
         result = node._validate_embedding([0.1, 0.2, 0.3], [0.11, 0.21, 0.31])
         assert result == True
 
-    async def test_physical_description_extraction(self, sample_narrative_text):
+    async def test_physical_description_extraction(self, sample_narrative_text: str) -> None:
         """Test extraction of physical descriptions from narrative text."""
         node = NarrativeEnrichmentNode()
 
@@ -201,12 +215,13 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
 
-    async def test_chapter_embedding_extraction(self, sample_narrative_text):
+    async def test_chapter_embedding_extraction(self, sample_narrative_text: str) -> None:
         """Test extraction of chapter embeddings from narrative text."""
         node = NarrativeEnrichmentNode()
 
@@ -239,12 +254,13 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
 
-    async def test_character_enrichment_with_physical_description(self, sample_narrative_text):
+    async def test_character_enrichment_with_physical_description(self, sample_narrative_text: str) -> None:
         """Test enrichment of character with physical description."""
         node = NarrativeEnrichmentNode()
 
@@ -277,12 +293,13 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
 
-    async def test_chapter_enrichment_with_embedding(self, sample_narrative_text):
+    async def test_chapter_enrichment_with_embedding(self, sample_narrative_text: str) -> None:
         """Test enrichment of chapter with embedding."""
         node = NarrativeEnrichmentNode()
 
@@ -315,12 +332,13 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(sample_narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(sample_narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
 
-    async def test_validation_no_new_structural_entities(self):
+    async def test_validation_no_new_structural_entities(self) -> None:
         """Test that no new structural entities are created during enrichment."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -352,12 +370,13 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
 
-    async def test_validation_character_name_matching(self):
+    async def test_validation_character_name_matching(self) -> None:
         """Test that character names match canonical names."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -391,12 +410,13 @@ class TestNarrativeEnrichmentNode:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
 
-    async def test_validation_no_contradictions_in_enrichment(self):
+    async def test_validation_no_contradictions_in_enrichment(self) -> None:
         """Test that enrichments don't contradict existing properties."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -446,7 +466,7 @@ class TestNarrativeEnrichmentNode:
 class TestNarrativeEnrichmentNodeIntegration:
     """Integration tests for NarrativeEnrichmentNode."""
 
-    async def test_full_pipeline_stage_5(self):
+    async def test_full_pipeline_stage_5(self) -> None:
         """Test full Stage 5 pipeline from narrative text to enrichment."""
         node = NarrativeEnrichmentNode()
         narrative_text = """
@@ -492,12 +512,13 @@ class TestNarrativeEnrichmentNodeIntegration:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
 
-    async def test_error_handling_in_pipeline(self):
+    async def test_error_handling_in_pipeline(self) -> None:
         """Test error handling in the full pipeline."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -536,21 +557,21 @@ class TestNarrativeEnrichmentNodeIntegration:
 class TestNarrativeEnrichmentNodeEdgeCases:
     """Edge case tests for NarrativeEnrichmentNode."""
 
-    async def test_empty_narrative_text(self):
+    async def test_empty_narrative_text(self) -> None:
         """Test with empty narrative text."""
         node = NarrativeEnrichmentNode()
 
         with pytest.raises(ValueError, match="Empty narrative text provided"):
             await node.process("", 1)
 
-    async def test_whitespace_only_narrative_text(self):
+    async def test_whitespace_only_narrative_text(self) -> None:
         """Test with whitespace-only narrative text."""
         node = NarrativeEnrichmentNode()
 
         with pytest.raises(ValueError, match="Empty narrative text provided"):
             await node.process("   ", 1)
 
-    async def test_invalid_chapter_number_zero(self):
+    async def test_invalid_chapter_number_zero(self) -> None:
         """Test with chapter number 0."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -558,7 +579,7 @@ class TestNarrativeEnrichmentNodeEdgeCases:
         with pytest.raises(ValueError, match="Invalid chapter number 0"):
             await node.process(narrative_text, 0)
 
-    async def test_invalid_chapter_number_negative(self):
+    async def test_invalid_chapter_number_negative(self) -> None:
         """Test with negative chapter number."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -566,7 +587,7 @@ class TestNarrativeEnrichmentNodeEdgeCases:
         with pytest.raises(ValueError, match="Invalid chapter number -1"):
             await node.process(narrative_text, -1)
 
-    async def test_character_not_found(self):
+    async def test_character_not_found(self) -> None:
         """Test when character is not found in database."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -602,7 +623,7 @@ class TestNarrativeEnrichmentNodeEdgeCases:
                 with pytest.raises(ValueError, match="Character UnknownCharacter not found"):
                     await node.process(narrative_text, 1)
 
-    async def test_chapter_not_found(self):
+    async def test_chapter_not_found(self) -> None:
         """Test when no chapter data is returned from database."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -626,7 +647,7 @@ class TestNarrativeEnrichmentNodeEdgeCases:
 class TestNarrativeEnrichmentNodePerformance:
     """Performance tests for NarrativeEnrichmentNode."""
 
-    async def test_large_narrative_text(self):
+    async def test_large_narrative_text(self) -> None:
         """Test with large narrative text."""
         node = NarrativeEnrichmentNode()
         narrative_text = "A" * 10000  # 10KB of text
@@ -658,12 +679,13 @@ class TestNarrativeEnrichmentNodePerformance:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
 
-    async def test_many_character_profiles(self):
+    async def test_many_character_profiles(self) -> None:
         """Test with many character profiles."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -708,7 +730,8 @@ class TestNarrativeEnrichmentNodePerformance:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify success
                 assert result is None
@@ -718,7 +741,7 @@ class TestNarrativeEnrichmentNodePerformance:
 class TestNarrativeEnrichmentNodeValidation:
     """Validation tests for NarrativeEnrichmentNode."""
 
-    async def test_validate_physical_description_contradiction(self):
+    async def test_validate_physical_description_contradiction(self) -> None:
         """Test validation of contradictory physical descriptions."""
         node = NarrativeEnrichmentNode()
 
@@ -728,7 +751,7 @@ class TestNarrativeEnrichmentNodeValidation:
         # Now that validation is implemented, it should return False
         assert result is False
 
-    async def test_validate_embedding_significant_difference(self):
+    async def test_validate_embedding_significant_difference(self) -> None:
         """Test validation of significantly different embeddings."""
         node = NarrativeEnrichmentNode()
 
@@ -738,7 +761,7 @@ class TestNarrativeEnrichmentNodeValidation:
         )
         assert result == False
 
-    async def test_validate_embedding_similar(self):
+    async def test_validate_embedding_similar(self) -> None:
         """Test validation of similar embeddings."""
         node = NarrativeEnrichmentNode()
 
@@ -748,7 +771,7 @@ class TestNarrativeEnrichmentNodeValidation:
         )
         assert result == True
 
-    async def test_validate_physical_description_consistency(self):
+    async def test_validate_physical_description_consistency(self) -> None:
         """Test validation of consistent physical descriptions."""
         node = NarrativeEnrichmentNode()
 
@@ -761,7 +784,7 @@ class TestNarrativeEnrichmentNodeValidation:
 class TestNarrativeEnrichmentNodeDatabaseOperations:
     """Database operation tests for NarrativeEnrichmentNode."""
 
-    async def test_sync_characters_called(self):
+    async def test_sync_characters_called(self) -> None:
         """Test that sync_characters is called when character is updated."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -795,12 +818,13 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify that sync_characters was called
                 mock_sync_chars.assert_called_once()
 
-    async def test_save_chapter_data_called(self):
+    async def test_save_chapter_data_called(self) -> None:
         """Test that save_chapter_data_to_db is called when chapter is updated."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -834,12 +858,13 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify that save_chapter_data_to_db was called
                 mock_save_chapter.assert_called_once()
 
-    async def test_get_character_profiles_called(self):
+    async def test_get_character_profiles_called(self) -> None:
         """Test that get_character_profiles is called."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -871,12 +896,13 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify that get_character_profiles was called
                 mock_get_chars.assert_called_once()
 
-    async def test_get_chapter_data_called(self):
+    async def test_get_chapter_data_called(self) -> None:
         """Test that get_chapter_data_from_db is called."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
@@ -908,7 +934,9 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 mock_save_chapter.return_value = True
 
                 # Call the process method
-                result = await node.process(narrative_text, 1)
+                pending_result: Awaitable[object] = node.process(narrative_text, 1)
+                result = await pending_result
 
                 # Verify that get_chapter_data_from_db was called
                 mock_get_chapter.assert_called_once_with(1)
+

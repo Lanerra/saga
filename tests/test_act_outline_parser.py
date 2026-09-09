@@ -4,16 +4,28 @@
 import json
 import os
 import tempfile
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from core.parsers.act_outline_parser import ActOutlineParser
+from core.service_context import get_services
 from models.kg_models import ActKeyEvent
+from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def sample_act_outline():
+def act_providers(monkeypatch: pytest.MonkeyPatch) -> FakeNeo4jManager:
+    database = FakeNeo4jManager()
+    monkeypatch.setattr(get_services(), 'database', database)
+    monkeypatch.setattr(get_services().language_model, 'async_call_llm', AsyncMock(return_value=("[]", {})))
+    return database
+
+
+@pytest.fixture
+def sample_act_outline() -> dict[str, object]:
     """Sample valid act outline JSON."""
     return {
         "format_version": 2,
@@ -64,7 +76,7 @@ def sample_act_outline():
 
 
 @pytest.fixture
-def mock_act_outline_file(sample_act_outline):
+def mock_act_outline_file(sample_act_outline: dict[str, object]) -> Iterator[str]:
     """Create a temporary act outline file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(sample_act_outline, f)
@@ -78,7 +90,7 @@ def mock_act_outline_file(sample_act_outline):
 
 
 @pytest.mark.asyncio
-async def test_parse_act_outline_success(mock_act_outline_file):
+async def test_parse_act_outline_success(mock_act_outline_file: str) -> None:
     """Test successful parsing of act outline."""
     parser = ActOutlineParser(act_outline_path=mock_act_outline_file)
 
@@ -90,7 +102,7 @@ async def test_parse_act_outline_success(mock_act_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_parse_act_outline_file_not_found():
+async def test_parse_act_outline_file_not_found() -> None:
     """Test error handling when file is not found."""
     parser = ActOutlineParser(act_outline_path="/nonexistent/path.json")
 
@@ -99,7 +111,7 @@ async def test_parse_act_outline_file_not_found():
 
 
 @pytest.mark.asyncio
-async def test_parse_act_outline_invalid_json():
+async def test_parse_act_outline_invalid_json() -> None:
     """Test error handling when JSON is invalid."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write("invalid json {{{")
@@ -116,7 +128,7 @@ async def test_parse_act_outline_invalid_json():
 
 
 @pytest.mark.asyncio
-async def test_parse_act_key_events(sample_act_outline):
+async def test_parse_act_key_events(sample_act_outline: dict[str, object]) -> None:
     """Test parsing of act key events."""
     parser = ActOutlineParser()
 
@@ -138,7 +150,7 @@ async def test_parse_act_key_events(sample_act_outline):
 
 
 @pytest.mark.asyncio
-async def test_parse_location_enrichment(sample_act_outline):
+async def test_parse_location_enrichment(sample_act_outline: dict[str, object]) -> None:
     """Test parsing of location name enrichment."""
     parser = ActOutlineParser()
 
@@ -156,7 +168,7 @@ async def test_parse_location_enrichment(sample_act_outline):
 
 
 @pytest.mark.asyncio
-async def test_generate_event_id():
+async def test_generate_event_id() -> None:
     """Test event ID generation."""
     parser = ActOutlineParser()
 
@@ -176,7 +188,8 @@ async def test_generate_event_id():
 
 
 @pytest.mark.asyncio
-async def test_parse_and_persist_integration(mock_act_outline_file):
+@pytest.mark.usefixtures("act_providers")
+async def test_parse_and_persist_integration(mock_act_outline_file: str) -> None:
     """Test full integration of parse_and_persist method."""
     parser = ActOutlineParser(act_outline_path=mock_act_outline_file)
 
@@ -205,7 +218,7 @@ async def test_parse_and_persist_integration(mock_act_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_parse_and_persist_failure(mock_act_outline_file):
+async def test_parse_and_persist_failure(mock_act_outline_file: str) -> None:
     """Test error handling in parse_and_persist method."""
     parser = ActOutlineParser(act_outline_path=mock_act_outline_file)
 
@@ -222,38 +235,22 @@ async def test_parse_and_persist_failure(mock_act_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_parse_character_involvements(sample_act_outline):
+async def test_parse_character_involvements(sample_act_outline: dict[str, object], act_providers: FakeNeo4jManager) -> None:
     """Test parsing of character involvements from act key events."""
     parser = ActOutlineParser()
 
     # Parse act key events first
     act_events = parser._parse_act_key_events(sample_act_outline)
 
-    # Parse character involvements (note: this is now async)
-    character_involvements = await parser._parse_character_involvements(act_events)
-
-    # Verify the method returns a dictionary
-    assert isinstance(character_involvements, dict)
-
-    # Verify that it processes all events
-    assert len(character_involvements) >= 0
-
-    # The _extract_character_names method now returns character names
-    # So all character_involvements should contain character names
-    for event_id, characters in character_involvements.items():
-        assert isinstance(characters, list)
-        # Character involvements should now contain character names
-        # The test should verify that characters are extracted correctly
-        if characters:
-            for char in characters:
-                assert isinstance(char, tuple)
-                assert len(char) == 2
-                assert isinstance(char[0], str)  # character name
-                assert char[1] is None or isinstance(char[1], str)  # role (optional)
+    act_providers.configure_response(r"MATCH \(c:Character", [{"name": "Hero"}])
+    with patch_service('language_model.async_call_llm', new_callable=AsyncMock, return_value=('[{"name":"Hero","role":"protagonist"}]', {})) as completion:
+        character_involvements = await parser._parse_character_involvements(act_events)
+    assert character_involvements == {event.id: [("Hero", "protagonist")] for event in act_events}
+    assert completion.await_count == 5
 
 
 @pytest.mark.asyncio
-async def test_extract_character_names_with_characters():
+async def test_extract_character_names_with_characters() -> None:
     """Character name extraction returns matched characters from LLM response."""
     parser = ActOutlineParser()
 
@@ -264,8 +261,8 @@ async def test_extract_character_names_with_characters():
         ]
     )
 
-    with patch(
-        "core.parsers.act_outline_parser.llm_service.async_call_llm",
+    with patch_service(
+        'language_model.async_call_llm',
         new_callable=AsyncMock,
         return_value=(fake_llm_response, {}),
     ):
@@ -281,7 +278,7 @@ async def test_extract_character_names_with_characters():
 
 
 @pytest.mark.asyncio
-async def test_extract_character_names_empty():
+async def test_extract_character_names_empty() -> None:
     """Character name extraction returns empty list when no known characters provided."""
     parser = ActOutlineParser()
 
@@ -297,27 +294,22 @@ async def test_extract_character_names_empty():
 
 
 @pytest.mark.asyncio
-async def test_parse_location_involvements(sample_act_outline):
+async def test_parse_location_involvements(sample_act_outline: dict[str, object], act_providers: FakeNeo4jManager) -> None:
     """Test parsing of location involvements from act outline data."""
     parser = ActOutlineParser()
 
     # First parse the act key events from the outline
     act_events = parser._parse_act_key_events(sample_act_outline)
 
-    # Call the method with act_events instead of sample_act_outline
-    location_involvements = await parser._parse_location_involvements(act_events)
-
-    # Verify it returns a dictionary
-    assert isinstance(location_involvements, dict)
-
-    # Note: In production, this would extract locations from event descriptions
-    # For now, we just verify the method runs without errors
-    # The actual location extraction depends on LLM calls which may not work in tests
-    assert True  # Test passes - method executed successfully
+    act_providers.configure_response(r"MATCH \(l:Location", [{"name": "Village", "description": "A mountain village"}])
+    with patch_service('language_model.async_call_llm', new_callable=AsyncMock, return_value=('{"location":"Village"}', {})) as completion:
+        location_involvements = await parser._parse_location_involvements(act_events)
+    assert location_involvements == {event.id: "Village" for event in act_events}
+    assert completion.await_count == 5
 
 
 @pytest.mark.asyncio
-async def test_create_event_relationships_happens_before(sample_act_outline):
+async def test_create_event_relationships_happens_before(sample_act_outline: dict[str, object]) -> None:
     """Test creation of HAPPENS_BEFORE relationships between events in the same act."""
     parser = ActOutlineParser()
 
@@ -371,7 +363,8 @@ async def test_create_event_relationships_happens_before(sample_act_outline):
 
 
 @pytest.mark.asyncio
-async def test_parse_and_persist_with_new_relationships(mock_act_outline_file):
+@pytest.mark.usefixtures("act_providers")
+async def test_parse_and_persist_with_new_relationships(mock_act_outline_file: str) -> None:
     """parse_and_persist returns success message mentioning persisted entities."""
     parser = ActOutlineParser(act_outline_path=mock_act_outline_file)
 

@@ -1,4 +1,5 @@
 # tests/core/langgraph/subgraphs/test_generation_subgraph.py
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -7,31 +8,36 @@ from core.exceptions import MissingDraftReferenceError
 from core.langgraph.content_manager import ContentManager, get_draft_text, get_scene_drafts
 from core.langgraph.state import create_initial_state
 from core.langgraph.subgraphs.generation import create_generation_subgraph
+from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.fakes.service_context import patch_service
 
 
 @pytest.mark.asyncio
-async def test_generation_subgraph_flow():
+@pytest.mark.usefixtures("offline_graph_reads")
+async def test_generation_subgraph_flow(tmp_path: Path) -> None:
     with (
-        patch("core.langgraph.nodes.scene_planning_node.llm_service") as mock_llm_plan,
-        patch("core.langgraph.nodes.scene_generation_node.llm_service") as mock_llm_draft,
+        patch_service('database', FakeNeo4jManager()),
+        patch_service('language_model.async_get_embedding', new=AsyncMock(return_value=[0.25, 0.75])),
+        patch_service('language_model.async_call_llm', new_callable=AsyncMock) as completions,
         patch(
-            "core.langgraph.nodes.context_retrieval_node.get_reliable_kg_facts_for_drafting_prompt",
+            "core.langgraph.nodes.context_world_retrieval.get_reliable_kg_facts_for_drafting_prompt",
             new_callable=AsyncMock,
         ) as mock_kg,
     ):
-        mock_llm_plan.async_call_llm = AsyncMock(
-            return_value=(
+        completions.side_effect = [
+            (
                 '[{"title": "Scene 1", "pov_character": "Hero", "setting": "Room", "characters": ["Hero"], "plot_point": "Start", "conflict": "None", "outcome": "Next", "beats": ["Setup"]}, '
                 '{"title": "Scene 2", "pov_character": "Hero", "setting": "Outside", "characters": ["Hero"], "plot_point": "End", "conflict": "None", "outcome": "Done", "beats": ["Climax"]}]',
                 {},
-            )
-        )
-        mock_llm_draft.async_call_llm = AsyncMock(side_effect=[("Draft for Scene 1", {}), ("Draft for Scene 2", {})])
+            ),
+            ("Draft for Scene 1", {}),
+            ("Draft for Scene 2", {}),
+        ]
         mock_kg.return_value = "KG Context"
 
         graph = create_generation_subgraph()
 
-        project_dir = "/tmp"
+        project_dir = str(tmp_path)
         state = create_initial_state(
             project_id="test",
             title="Test Novel",
@@ -63,5 +69,4 @@ async def test_generation_subgraph_flow():
         scene_drafts = get_scene_drafts(result, content_manager)
         assert scene_drafts == ["Draft for Scene 1", "Draft for Scene 2"]
 
-        assert mock_llm_plan.async_call_llm.called
-        assert mock_llm_draft.async_call_llm.call_count == 2
+        assert completions.await_count == 3

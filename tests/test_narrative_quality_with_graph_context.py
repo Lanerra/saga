@@ -11,15 +11,16 @@ This test file verifies that narrative generation uses graph context properly:
 Based on: docs/schema-design.md - Phase 5: Testing
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from models.kg_models import CharacterProfile, Scene
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def mock_character_with_context():
+def mock_character_with_context() -> CharacterProfile:
     """Character with rich graph context."""
     return CharacterProfile(
         id="char_001",
@@ -36,7 +37,7 @@ def mock_character_with_context():
 
 
 @pytest.fixture
-def mock_scene_with_context():
+def mock_scene_with_context() -> Scene:
     """Scene with graph context."""
     return Scene(
         id="scene_001",
@@ -60,7 +61,7 @@ def mock_scene_with_context():
 class TestNarrativeWithCharacterContext:
     """Test narrative quality with character context."""
 
-    async def test_character_personality_in_narrative(self, mock_character_with_context):
+    async def test_character_personality_in_narrative(self, mock_character_with_context: CharacterProfile) -> None:
         """Test that character personality traits are reflected in narrative."""
         narrative = """
         Eleanor's heart raced as she scanned the empty tent. Her daughter's absence
@@ -73,7 +74,7 @@ class TestNarrativeWithCharacterContext:
         for keyword in personality_keywords:
             assert keyword.lower() in narrative.lower(), f"Personality keyword '{keyword}' not found in narrative"
 
-    async def test_character_traits_in_dialogue(self, mock_character_with_context):
+    async def test_character_traits_in_dialogue(self, mock_character_with_context: CharacterProfile) -> None:
         """Test that character traits influence dialogue."""
         dialogue = """
         "I won't rest until I find her," Eleanor said, her voice steady despite
@@ -91,7 +92,7 @@ class TestNarrativeWithCharacterContext:
                 found = any(ind.lower() in dialogue.lower() for ind in indicators)
                 assert found, f"Trait '{trait}' not reflected in dialogue"
 
-    async def test_physical_description_consistency(self, mock_character_with_context):
+    async def test_physical_description_consistency(self, mock_character_with_context: CharacterProfile) -> None:
         """Test that physical descriptions are consistent with graph."""
         narrative = """
         The tall woman with dark hair stood at the tent entrance, her weary eyes
@@ -108,7 +109,7 @@ class TestNarrativeWithCharacterContext:
 class TestNarrativeWithRelationshipContext:
     """Test narrative quality with relationship context."""
 
-    async def test_relationship_influences_interaction(self):
+    async def test_relationship_influences_interaction(self) -> None:
         """Test that relationships from graph influence character interactions."""
         narrative = """
         Eleanor clutched Sarah's bloodstained doll, her hands trembling.
@@ -120,7 +121,7 @@ class TestNarrativeWithRelationshipContext:
         found_indicators = sum(1 for ind in relationship_indicators if ind.lower() in narrative.lower())
         assert found_indicators >= 2, "Relationship context not reflected in narrative"
 
-    async def test_conflict_relationship_reflected(self):
+    async def test_conflict_relationship_reflected(self) -> None:
         """Test that conflicting relationships create tension."""
         narrative = """
         Eleanor glared at Thomas. Despite their shared goal to save the camp,
@@ -138,9 +139,9 @@ class TestNarrativeWithRelationshipContext:
 class TestNarrativeWithEventContext:
     """Test narrative quality with event context."""
 
-    async def test_event_referenced_in_narrative(self):
+    async def test_event_referenced_in_narrative(self) -> None:
         """Test that events from graph are referenced in narrative."""
-        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
+        with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "e": {
@@ -163,9 +164,9 @@ class TestNarrativeWithEventContext:
             found_keywords = sum(1 for kw in event_keywords if kw.lower() in narrative.lower())
             assert found_keywords >= 3, "Event context not reflected in narrative"
 
-    async def test_event_sequence_preserved(self):
+    async def test_event_sequence_preserved(self) -> None:
         """Test that event sequence from graph is preserved in narrative."""
-        events = [
+        events: list[dict[str, object]] = [
             {"name": "Waking", "sequence": 1},
             {"name": "Discovery", "sequence": 2},
             {"name": "Alert", "sequence": 3},
@@ -192,9 +193,9 @@ class TestNarrativeWithEventContext:
 class TestNarrativeWithLocationContext:
     """Test narrative quality with location context."""
 
-    async def test_location_description_consistent(self):
+    async def test_location_description_consistent(self) -> None:
         """Test that location descriptions are consistent with graph."""
-        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
+        with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "loc": {
@@ -215,7 +216,7 @@ class TestNarrativeWithLocationContext:
             found_keywords = sum(1 for kw in location_keywords if kw.lower() in narrative.lower())
             assert found_keywords >= 2, "Location context not reflected in narrative"
 
-    async def test_location_atmosphere_maintained(self):
+    async def test_location_atmosphere_maintained(self) -> None:
         """Test that location atmosphere is maintained throughout scene."""
         narrative_segments = [
             "The misty swamp stretched before them, dark and foreboding.",
@@ -234,9 +235,9 @@ class TestNarrativeWithLocationContext:
 class TestNarrativeWithItemContext:
     """Test narrative quality with item context."""
 
-    async def test_item_appears_in_narrative(self):
+    async def test_item_appears_in_narrative(self) -> None:
         """Test that items from graph appear in narrative."""
-        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
+        with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "i": {
@@ -258,7 +259,7 @@ class TestNarrativeWithItemContext:
             found_keywords = sum(1 for kw in item_keywords if kw.lower() in narrative.lower())
             assert found_keywords >= 2, "Item context not reflected in narrative"
 
-    async def test_item_significance_conveyed(self):
+    async def test_item_significance_conveyed(self) -> None:
         """Test that item significance is conveyed in narrative."""
         narrative = """
         The rusted musket had been James's only companion through years of war.
@@ -276,7 +277,7 @@ class TestNarrativeWithItemContext:
 class TestNarrativeConsistencyWithGraph:
     """Test overall narrative consistency with graph context."""
 
-    async def test_no_contradictions_with_graph(self, mock_character_with_context):
+    async def test_no_contradictions_with_graph(self, mock_character_with_context: CharacterProfile) -> None:
         """Test that narrative doesn't contradict graph facts."""
         character = mock_character_with_context
 
@@ -295,7 +296,7 @@ class TestNarrativeConsistencyWithGraph:
 
         assert len(contradictions) == 2
 
-    async def test_character_status_reflected(self, mock_character_with_context):
+    async def test_character_status_reflected(self, mock_character_with_context: CharacterProfile) -> None:
         """Test that character status from graph is reflected."""
         character = mock_character_with_context
 
@@ -309,9 +310,9 @@ class TestNarrativeConsistencyWithGraph:
             found = sum(1 for ind in active_indicators if ind.lower() in narrative.lower())
             assert found >= 2, "Active status not reflected in narrative"
 
-    async def test_provisional_entities_not_featured(self):
+    async def test_provisional_entities_not_featured(self) -> None:
         """Test that provisional entities are not prominently featured."""
-        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
+        with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "c": {

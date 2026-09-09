@@ -1,0 +1,13 @@
+{
+  "content_bucket_sibling_escape": {
+    "outside_content_root": true,
+    "returned_path": ".saga/content_sibling/sample_v1.txt"
+  },
+  "strict_read_outside_project": true,
+  "delete_outside_project": true,
+  "same_version_invalidates_prior_ref": "ContentIntegrityError",
+  "frozen_ref_inplace_union_mutates": true,
+  "sanitized_title_collision_overwrites_config": true,
+  "noncanonical_file_counted_as_complete": 1,
+  "export_non_frontmatter_prose_removed": true
+}

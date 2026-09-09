@@ -24,10 +24,13 @@ from core.parsers.character_sheet_parser import CharacterSheetParser
 from core.parsers.global_outline_parser import GlobalOutlineParser
 from core.parsers.narrative_enrichment_parser import NarrativeEnrichmentParser
 from models.kg_models import Chapter, CharacterProfile
+from tests.fakes.service_context import patch_service
+
+pytestmark = pytest.mark.usefixtures("owned_graph_cache")
 
 
 @pytest.fixture
-def stage1_character_sheets():
+def stage1_character_sheets() -> dict[str, object]:
     """Sample character sheets for Stage 1."""
     return {
         "Eleanor Whitaker": {
@@ -53,7 +56,7 @@ def stage1_character_sheets():
 
 
 @pytest.fixture
-def stage2_global_outline():
+def stage2_global_outline() -> dict[str, object]:
     """Sample global outline for Stage 2."""
     return {
         "act_count": 3,
@@ -101,7 +104,7 @@ def stage2_global_outline():
 
 
 @pytest.fixture
-def stage3_act_outline():
+def stage3_act_outline() -> dict[str, object]:
     """Sample act outline for Stage 3."""
     return {
         "acts": [
@@ -126,7 +129,7 @@ def stage3_act_outline():
 
 
 @pytest.fixture
-def stage4_chapter_outline():
+def stage4_chapter_outline() -> dict[str, object]:
     """Sample chapter outline for Stage 4."""
     return {
         "chapter_1": {
@@ -145,7 +148,7 @@ def stage4_chapter_outline():
 
 
 @pytest.fixture
-def stage5_narrative_text():
+def stage5_narrative_text() -> str:
     """Sample narrative text for Stage 5."""
     return """
     Chapter 1: The Vanishing
@@ -161,7 +164,7 @@ def stage5_narrative_text():
 class TestFullPipelineIntegration:
     """Integration tests for the full Stage 1-5 pipeline."""
 
-    async def test_stage1_character_initialization(self, stage1_character_sheets):
+    async def test_stage1_character_initialization(self, stage1_character_sheets: dict[str, object]) -> None:
         """Test Stage 1: Character Initialization."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(stage1_character_sheets, f)
@@ -171,8 +174,8 @@ class TestFullPipelineIntegration:
             parser = CharacterSheetParser(character_sheets_path=temp_file)
 
             with (
-                patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
-                patch("core.db_manager.neo4j_manager.execute_cypher_batch", new_callable=AsyncMock) as mock_batch,
+                patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write,
+                patch_service('database.execute_cypher_batch', new_callable=AsyncMock) as mock_batch,
             ):
                 mock_write.return_value = []
                 mock_batch.return_value = None
@@ -198,7 +201,8 @@ class TestFullPipelineIntegration:
             if os.path.exists(temp_file):
                 os.unlink(temp_file)
 
-    async def test_stage2_global_outline(self, stage2_global_outline):
+    @pytest.mark.usefixtures("offline_graph_reads")
+    async def test_stage2_global_outline(self, stage2_global_outline: dict[str, object]) -> None:
         """Test Stage 2: Global Outline."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(stage2_global_outline, f)
@@ -207,7 +211,13 @@ class TestFullPipelineIntegration:
         try:
             parser = GlobalOutlineParser(global_outline_path=temp_file)
 
-            with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
+            with (
+                patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write,
+                patch_service('language_model.async_call_llm', new_callable=AsyncMock, return_value=(json.dumps([
+                    {"name": "Blackwater Creek", "category": "location", "description": "Misty swamp where creature resides"},
+                    {"name": "Bloodstained doll", "category": "object", "description": "Sarah's doll"},
+                ]), {})),
+            ):
                 mock_write.return_value = []
 
                 success, message = await parser.parse_and_persist()
@@ -230,7 +240,7 @@ class TestFullPipelineIntegration:
             if os.path.exists(temp_file):
                 os.unlink(temp_file)
 
-    async def test_stage3_act_outline(self, stage3_act_outline):
+    async def test_stage3_act_outline(self, stage3_act_outline: dict[str, object]) -> None:
         """Test Stage 3: Act Outline."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(stage3_act_outline, f)
@@ -239,7 +249,7 @@ class TestFullPipelineIntegration:
         try:
             parser = ActOutlineParser(act_outline_path=temp_file)
 
-            def read_side_effect(query, params=None):
+            def read_side_effect(query: str, params: object = None) -> list[dict[str, str]]:
                 if "Character" in query:
                     return [{"name": "Eleanor Whitaker"}]
                 return []
@@ -247,9 +257,9 @@ class TestFullPipelineIntegration:
             llm_character_response = json.dumps([{"name": "Eleanor Whitaker", "role": "protagonist"}])
 
             with (
-                patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
-                patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
-                patch("core.parsers.act_outline_parser.llm_service.async_call_llm", new_callable=AsyncMock) as mock_llm,
+                patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write,
+                patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_read,
+                patch_service('language_model.async_call_llm', new_callable=AsyncMock) as mock_llm,
             ):
                 mock_write.return_value = []
                 mock_read.side_effect = read_side_effect
@@ -273,7 +283,7 @@ class TestFullPipelineIntegration:
             if os.path.exists(temp_file):
                 os.unlink(temp_file)
 
-    async def test_stage4_chapter_outline(self, stage4_chapter_outline):
+    async def test_stage4_chapter_outline(self, stage4_chapter_outline: dict[str, object]) -> None:
         """Test Stage 4: Chapter Outline."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(stage4_chapter_outline, f)
@@ -283,8 +293,8 @@ class TestFullPipelineIntegration:
             parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
 
             with (
-                patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
-                patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
+                patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write,
+                patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_read,
                 patch("data_access.character_queries.get_all_character_names", new_callable=AsyncMock) as mock_chars,
             ):
                 mock_write.return_value = []
@@ -308,7 +318,7 @@ class TestFullPipelineIntegration:
             if os.path.exists(temp_file):
                 os.unlink(temp_file)
 
-    async def test_stage5_narrative_enrichment(self, stage5_narrative_text):
+    async def test_stage5_narrative_enrichment(self, stage5_narrative_text: str) -> None:
         """Test Stage 5: Narrative Enrichment."""
         parser = NarrativeEnrichmentParser(
             narrative_text=stage5_narrative_text,
@@ -316,8 +326,8 @@ class TestFullPipelineIntegration:
         )
 
         with (
-            patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
-            patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
+            patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write,
+            patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_read,
             patch("data_access.character_queries.get_character_profiles", new_callable=AsyncMock) as mock_chars,
             patch("data_access.chapter_queries.get_chapter_data_from_db", new_callable=AsyncMock) as mock_chapter,
         ):
@@ -354,12 +364,12 @@ class TestFullPipelineIntegration:
 
     async def test_full_pipeline_sequential(
         self,
-        stage1_character_sheets,
-        stage2_global_outline,
-        stage3_act_outline,
-        stage4_chapter_outline,
-        stage5_narrative_text,
-    ):
+        stage1_character_sheets: dict[str, object],
+        stage2_global_outline: dict[str, object],
+        stage3_act_outline: dict[str, object],
+        stage4_chapter_outline: dict[str, object],
+        stage5_narrative_text: str,
+    ) -> None:
         """Test full pipeline Stages 1-5 sequentially."""
         stage1_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         stage2_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
@@ -376,7 +386,7 @@ class TestFullPipelineIntegration:
             json.dump(stage4_chapter_outline, stage4_file)
             stage4_file.flush()
 
-            def read_side_effect(query, params=None):
+            def read_side_effect(query: str, params: object = None) -> list[dict[str, str]]:
                 if "Character" in query and "name" in query:
                     return [{"name": "Eleanor Whitaker"}, {"name": "Sarah Whitaker"}]
                 return []
@@ -384,13 +394,13 @@ class TestFullPipelineIntegration:
             llm_character_response = json.dumps([{"name": "Eleanor Whitaker", "role": "protagonist"}])
 
             with (
-                patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
-                patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
-                patch("core.db_manager.neo4j_manager.execute_cypher_batch", new_callable=AsyncMock) as mock_batch,
+                patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write,
+                patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_read,
+                patch_service('database.execute_cypher_batch', new_callable=AsyncMock) as mock_batch,
                 patch("data_access.character_queries.get_character_profiles", new_callable=AsyncMock) as mock_chars,
                 patch("data_access.character_queries.get_all_character_names", new_callable=AsyncMock) as mock_char_names,
                 patch("data_access.chapter_queries.get_chapter_data_from_db", new_callable=AsyncMock) as mock_chapter,
-                patch("core.parsers.act_outline_parser.llm_service.async_call_llm", new_callable=AsyncMock) as mock_llm,
+                patch_service('language_model.async_call_llm', new_callable=AsyncMock) as mock_llm,
             ):
                 mock_write.return_value = []
                 mock_read.side_effect = read_side_effect

@@ -1,0 +1,8 @@
+{
+  "network escape explicitly blocked": 26,
+  "truncation expectation mismatch": 1,
+  "8-second audit timeout (root cause needs trace)": 5,
+  "moved/global service seam mismatch": 4,
+  "assertion requires focused triage": 4,
+  "spaCy model absent in isolated environment": 3
+}

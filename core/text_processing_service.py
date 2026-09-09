@@ -103,9 +103,8 @@ class TokenizerService:
         else:
             # Fallback to character-based estimation
             self._stats["fallback_used"] += 1
-            char_count = len(text)
-            token_estimate = int(char_count / config.FALLBACK_CHARS_PER_TOKEN)
-            logger.warning(f"count_tokens: Failed to get tokenizer for '{model_name}'. " f"Falling back to character-based estimate: {char_count} chars -> ~{token_estimate} tokens.")
+            token_estimate = len(text.encode("utf-8"))
+            logger.warning("Token encoding unavailable; using conservative UTF-8 byte budget", model=model_name)
             return token_estimate
 
     def truncate_text_by_tokens(
@@ -130,60 +129,29 @@ class TokenizerService:
             When `tiktoken` encoding is unavailable, this uses a character-based fallback
             approximation.
         """
-        if not text:
+        if type(max_tokens) is not int or max_tokens < 0:
+            raise ValueError("Text token budget must be a nonnegative integer")
+        if not text or max_tokens == 0:
             return ""
-
         encoder = self.get_tokenizer(model_name)
 
-        if not encoder:
-            # Fallback to character-based truncation
-            self._stats["fallback_used"] += 1
-            max_chars = int(max_tokens * config.FALLBACK_CHARS_PER_TOKEN)
-            logger.warning(f"truncate_text_by_tokens: Failed to get tokenizer for '{model_name}'. " f"Falling back to character-based truncation: {max_tokens} tokens -> ~{max_chars} chars.")
-            if len(text) > max_chars:
-                effective_max_chars = max_chars - len(truncation_marker)
-                if effective_max_chars < 0:
-                    effective_max_chars = 0
-                return text[:effective_max_chars] + truncation_marker
+        def measure(value: str) -> int:
+            return len(encoder.encode(value, allowed_special="all")) if encoder else len(value.encode("utf-8"))
+
+        if measure(text) <= max_tokens:
             return text
-
-        tokens = encoder.encode(text, allowed_special="all")
-        if len(tokens) <= max_tokens:
-            return text
-
-        # Calculate tokens needed for truncation marker
-        marker_tokens_len = 0
-        if truncation_marker:
-            marker_tokens_len = len(encoder.encode(truncation_marker, allowed_special="all"))
-
-        content_tokens_to_keep = max_tokens - marker_tokens_len
-        effective_truncation_marker = truncation_marker
-
-        if content_tokens_to_keep < 0:
-            logger.debug(f"Truncation marker ('{truncation_marker}' -> {marker_tokens_len} tokens) " f"is longer than max_tokens ({max_tokens}). Using empty marker.")
-            content_tokens_to_keep = max_tokens
-            effective_truncation_marker = ""
-
-        truncated_content_tokens = tokens[:content_tokens_to_keep]
-
-        # Ensure we keep at least one token if possible
-        if not truncated_content_tokens and max_tokens > 0 and tokens:
-            logger.debug("Truncated content to 0 tokens due to marker length. " "Attempting to keep 1 token of content.")
-            truncated_content_tokens = tokens[:1]
-            effective_truncation_marker = ""
-
-        try:
-            decoded_text = encoder.decode(truncated_content_tokens)
-            return decoded_text + effective_truncation_marker
-        except Exception as e:
-            logger.error(
-                f"Error decoding truncated tokens for model '{model_name}': {e}. " f"Falling back to simpler char-based truncation.",
-                exc_info=True,
-            )
-            # Fallback to character-based truncation
-            avg_chars_per_token = len(text) / len(tokens) if len(tokens) > 0 else config.FALLBACK_CHARS_PER_TOKEN
-            estimated_char_limit_for_content = int(content_tokens_to_keep * avg_chars_per_token)
-            return text[:estimated_char_limit_for_content] + effective_truncation_marker
+        marker = truncation_marker if measure(truncation_marker) < max_tokens else ""
+        lower, upper = 0, len(text)
+        retained = marker
+        while lower <= upper:
+            middle = (lower + upper) // 2
+            candidate = text[:middle] + marker
+            if measure(candidate) <= max_tokens:
+                retained = candidate
+                lower = middle + 1
+            else:
+                upper = middle - 1
+        return retained
 
     def get_statistics(self) -> dict[str, Any]:
         """Get tokenizer service statistics."""

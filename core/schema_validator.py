@@ -37,11 +37,7 @@ from typing import Any
 
 import structlog
 
-from config import (
-    ENFORCE_SCHEMA_VALIDATION,
-    LOG_SCHEMA_VIOLATIONS,
-    NORMALIZE_COMMON_VARIANTS,
-)
+import config
 from models.kg_constants import (
     LABEL_NORMALIZATION_MAP,
     SUGGESTED_CATEGORIES,
@@ -55,10 +51,17 @@ logger = structlog.get_logger(__name__)
 class SchemaValidationService:
     """Validate and normalize entity labels and categories."""
 
-    def __init__(self) -> None:
-        self.enabled = ENFORCE_SCHEMA_VALIDATION
-        self.normalize_variants = NORMALIZE_COMMON_VARIANTS
-        self.log_violations = LOG_SCHEMA_VIOLATIONS
+    @property
+    def enabled(self) -> bool:
+        return config.ENFORCE_SCHEMA_VALIDATION
+
+    @property
+    def normalize_variants(self) -> bool:
+        return config.NORMALIZE_COMMON_VARIANTS
+
+    @property
+    def log_violations(self) -> bool:
+        return config.LOG_SCHEMA_VIOLATIONS
 
     def validate_entity_type(self, type_name: str) -> tuple[bool, str, str | None]:
         """Validate and (optionally) normalize an entity type label.
@@ -300,7 +303,7 @@ def validate_node_labels(labels: list[str]) -> list[str]:
 
         # Apply schema validation
         is_valid, _, err = schema_validator.validate_entity_type(label)
-        if not is_valid and ENFORCE_SCHEMA_VALIDATION:
+        if not is_valid and config.ENFORCE_SCHEMA_VALIDATION:
             errors.append(f"Invalid label '{label}': {err}")
 
         elif not label[0].isupper():

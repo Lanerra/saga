@@ -19,7 +19,7 @@ from typing import Any
 import structlog
 
 import config
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 
 logger = structlog.get_logger(__name__)
 
@@ -231,7 +231,7 @@ class RichDisplayManager:
         elapsed_seconds = time.time() - start_time
         # Get request count from the refactored service statistics
         try:
-            stats = llm_service.get_combined_statistics()
+            stats = get_services().language_model.get_combined_statistics()
             request_count = stats.get("completion_service", {}).get("completions_requested", 0)
             requests_per_minute = request_count / (elapsed_seconds / 60) if elapsed_seconds > 0 else 0.0
         except (AttributeError, KeyError):

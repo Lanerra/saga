@@ -9,8 +9,8 @@ from typing import Any
 
 import structlog
 
-from core.db_manager import neo4j_manager
 from core.exceptions import DatabaseError
+from core.service_context import get_services
 
 logger = structlog.get_logger(__name__)
 
@@ -58,7 +58,7 @@ async def get_scene_events(
             "chapter_number": chapter_number,
             "scene_index": scene_index,
         }
-        records = await neo4j_manager.execute_read_query(query, params)
+        records = await get_services().database.execute_read_query(query, params)
 
         logger.debug(
             "get_scene_events: fetched events",
@@ -136,8 +136,8 @@ async def get_act_events(
 
     try:
         params = {"act_number": act_number}
-        major_records = await neo4j_manager.execute_read_query(major_query)
-        act_records = await neo4j_manager.execute_read_query(act_query, params)
+        major_records = await get_services().database.execute_read_query(major_query)
+        act_records = await get_services().database.execute_read_query(act_query, params)
 
         major_points = major_records[0].get("major_points", []) if major_records else []
         act_events = act_records[0].get("act_events", []) if act_records else []
@@ -207,7 +207,7 @@ async def get_character_relationships_for_scene(
             "character_names": character_names,
             "chapter_limit": chapter_limit,
         }
-        records = await neo4j_manager.execute_read_query(query, params)
+        records = await get_services().database.execute_read_query(query, params)
 
         logger.debug(
             "get_character_relationships_for_scene: fetched relationships",
@@ -269,7 +269,7 @@ async def get_character_items(
             "character_names": character_names,
             "chapter_limit": chapter_limit,
         }
-        records = await neo4j_manager.execute_read_query(query, params)
+        records = await get_services().database.execute_read_query(query, params)
 
         logger.debug(
             "get_character_items: fetched items",
@@ -322,7 +322,7 @@ async def get_scene_items(
             "chapter_number": chapter_number,
             "scene_index": scene_index,
         }
-        records = await neo4j_manager.execute_read_query(query, params)
+        records = await get_services().database.execute_read_query(query, params)
 
         logger.debug(
             "get_scene_items: fetched items",

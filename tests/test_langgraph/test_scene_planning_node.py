@@ -1,14 +1,17 @@
 # tests/test_langgraph/test_scene_planning_node.py
 import json
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from core.langgraph.nodes.scene_planning_node import plan_scenes
+from core.langgraph.state import NarrativeState
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def base_state():
+def base_state() -> NarrativeState:
     return {
         "project_dir": "/tmp/test-project",
         "title": "Test Novel",
@@ -20,7 +23,7 @@ def base_state():
 
 
 @pytest.fixture
-def mock_content_manager():
+def mock_content_manager() -> Iterator[MagicMock]:
     with patch("core.langgraph.nodes.scene_planning_node.ContentManager") as mock:
         instance = MagicMock()
         instance.get_latest_version.return_value = 0
@@ -29,7 +32,7 @@ def mock_content_manager():
 
 
 @pytest.fixture
-def mock_get_chapter_outlines():
+def mock_get_chapter_outlines() -> Iterator[MagicMock]:
     with patch("core.langgraph.nodes.scene_planning_node.get_chapter_outlines") as mock:
         mock.return_value = {
             1: {
@@ -41,28 +44,28 @@ def mock_get_chapter_outlines():
 
 
 @pytest.fixture
-def mock_save_chapter_plan():
+def mock_save_chapter_plan() -> Iterator[MagicMock]:
     with patch("core.langgraph.nodes.scene_planning_node.save_chapter_plan") as mock:
         mock.return_value = {"path": "mock/path/chapter_plan.json", "size_bytes": 123, "version": 1}
         yield mock
 
 
 @pytest.fixture
-def mock_llm_service():
-    with patch("core.langgraph.nodes.scene_planning_node.llm_service") as mock:
+def mock_llm_service() -> Iterator[MagicMock]:
+    with patch_service('language_model') as mock:
         mock.async_call_llm = AsyncMock(return_value=("[]", {}))
         yield mock
 
 
 @pytest.fixture
-def mock_character_sync():
+def mock_character_sync() -> Iterator[dict[str, AsyncMock]]:
     with patch("core.langgraph.nodes.scene_planning_node.get_all_character_names") as mock_get_names, patch("core.langgraph.nodes.scene_planning_node.sync_characters") as mock_sync:
         mock_get_names.return_value = []
         mock_sync.return_value = True
         yield {"get_names": mock_get_names, "sync": mock_sync}
 
 
-def _valid_scene_list():
+def _valid_scene_list() -> list[dict[str, object]]:
     return [
         {
             "title": "Scene 1",
@@ -79,13 +82,13 @@ def _valid_scene_list():
 
 @pytest.mark.asyncio
 async def test_plan_scenes_parses_valid_json_list(
-    base_state,
-    mock_content_manager,
-    mock_get_chapter_outlines,
-    mock_save_chapter_plan,
-    mock_llm_service,
-    mock_character_sync,
-):
+    base_state: NarrativeState,
+    mock_content_manager: MagicMock,
+    mock_get_chapter_outlines: MagicMock,
+    mock_save_chapter_plan: MagicMock,
+    mock_llm_service: MagicMock,
+    mock_character_sync: dict[str, AsyncMock],
+) -> None:
     scenes = _valid_scene_list()
     mock_llm_service.async_call_llm = AsyncMock(return_value=(json.dumps(scenes), {}))
 
@@ -94,18 +97,19 @@ async def test_plan_scenes_parses_valid_json_list(
     assert result["current_node"] == "plan_scenes"
     assert result["last_error"] is None if "last_error" in result else True
     assert result["chapter_plan_scene_count"] == len(scenes)
+    assert result["chapter_plan_ref"] is not None
     assert result["chapter_plan_ref"]["path"] == "mock/path/chapter_plan.json"
 
 
 @pytest.mark.asyncio
 async def test_plan_scenes_parses_strict_json_array(
-    base_state,
-    mock_content_manager,
-    mock_get_chapter_outlines,
-    mock_save_chapter_plan,
-    mock_llm_service,
-    mock_character_sync,
-):
+    base_state: NarrativeState,
+    mock_content_manager: MagicMock,
+    mock_get_chapter_outlines: MagicMock,
+    mock_save_chapter_plan: MagicMock,
+    mock_llm_service: MagicMock,
+    mock_character_sync: dict[str, AsyncMock],
+) -> None:
     scenes = _valid_scene_list()
     response = json.dumps(scenes)
     mock_llm_service.async_call_llm = AsyncMock(return_value=(response, {}))
@@ -117,13 +121,13 @@ async def test_plan_scenes_parses_strict_json_array(
 
 @pytest.mark.asyncio
 async def test_plan_scenes_rejects_json_with_surrounding_text(
-    base_state,
-    mock_content_manager,
-    mock_get_chapter_outlines,
-    mock_save_chapter_plan,
-    mock_llm_service,
-    mock_character_sync,
-):
+    base_state: NarrativeState,
+    mock_content_manager: MagicMock,
+    mock_get_chapter_outlines: MagicMock,
+    mock_save_chapter_plan: MagicMock,
+    mock_llm_service: MagicMock,
+    mock_character_sync: dict[str, AsyncMock],
+) -> None:
     scenes = _valid_scene_list()
     response = "Here is the plan:\n\n" + json.dumps(scenes) + "\n\nHope this helps."
     mock_llm_service.async_call_llm = AsyncMock(return_value=(response, {}))
@@ -131,18 +135,19 @@ async def test_plan_scenes_rejects_json_with_surrounding_text(
     result = await plan_scenes(base_state)
 
     assert "last_error" in result
+    assert result["last_error"] is not None
     assert "Scene plan contract violation" in result["last_error"]
 
 
 @pytest.mark.asyncio
 async def test_plan_scenes_invalid_json_returns_clear_error(
-    base_state,
-    mock_content_manager,
-    mock_get_chapter_outlines,
-    mock_save_chapter_plan,
-    mock_llm_service,
-    mock_character_sync,
-):
+    base_state: NarrativeState,
+    mock_content_manager: MagicMock,
+    mock_get_chapter_outlines: MagicMock,
+    mock_save_chapter_plan: MagicMock,
+    mock_llm_service: MagicMock,
+    mock_character_sync: dict[str, AsyncMock],
+) -> None:
     # Not JSON
     mock_llm_service.async_call_llm = AsyncMock(return_value=("not json at all", {}))
 
@@ -150,4 +155,5 @@ async def test_plan_scenes_invalid_json_returns_clear_error(
 
     assert result["current_node"] == "plan_scenes"
     assert "last_error" in result
+    assert result["last_error"] is not None
     assert "Expected: JSON array of scene objects" in result["last_error"]

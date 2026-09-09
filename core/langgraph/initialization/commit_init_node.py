@@ -14,7 +14,6 @@ from typing import Any
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
     ContentManager,
     get_character_sheets,
@@ -22,7 +21,7 @@ from core.langgraph.content_manager import (
     require_project_dir,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -33,6 +32,23 @@ logger = structlog.get_logger(__name__)
 
 
 async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeState:
+    """Prepare the complete immutable import; graph acceptance belongs to run_parsers."""
+    from core.langgraph.initialization.staged_import import InitializationImport
+
+    try:
+        plan = await InitializationImport(require_project_dir(state)).prepare(state)
+        return {
+            "current_node": "commit_initialization", "last_error": None,
+            "initialization_step": "initialization_prepared", "initialization_id": plan.identity,
+        }
+    except Exception as error:
+        return {
+            "current_node": "commit_initialization", "last_error": f"Initialization admission failed: {error}",
+            "initialization_step": "commit_failed", "has_fatal_error": True, "error_node": "commit_initialization",
+        }
+
+
+async def _legacy_commit_initialization_to_graph(state: NarrativeState) -> NarrativeState:
     """Convert initialization artifacts to Neo4j models and persist them.
 
     Args:
@@ -120,7 +136,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
             )
 
             if statements:
-                await neo4j_manager.execute_cypher_batch(statements)
+                await get_services().database.execute_cypher_batch(statements)
 
                 # P0-1: Cache invalidation after Neo4j writes
                 # Local import avoids eager import side effects / circular deps.
@@ -285,7 +301,7 @@ async def _extract_structured_character_data(name: str, description: str, model_
     model = model_name or config.NARRATIVE_MODEL
 
     for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
-        response, _ = await llm_service.async_call_llm(
+        response, _ = await get_services().language_model.async_call_llm(
             model_name=model,
             prompt=prompt,
             temperature=0.3,
@@ -449,7 +465,7 @@ async def _extract_world_items_from_outline(global_outline: dict, setting: str, 
     model = model_name or config.NARRATIVE_MODEL
 
     for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
-        response, _ = await llm_service.async_call_llm(
+        response, _ = await get_services().language_model.async_call_llm(
             model_name=model,
             prompt=prompt,
             temperature=0.5,
@@ -554,7 +570,7 @@ async def _build_outline_relationship_statements(
     """
     import hashlib
 
-    apoc_available = await neo4j_manager.is_apoc_available()
+    apoc_available = await get_services().database.is_apoc_available()
     assert apoc_available, "APOC procedures required for outline relationship persistence"
 
     statements: list[tuple[str, dict]] = []

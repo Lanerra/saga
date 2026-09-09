@@ -22,6 +22,7 @@ VALID_BOOTSTRAP_DATA = {
     "protagonist_name": "Hero",
     "narrative_style": "Third Person Limited",
     "total_chapters": 12,
+    "target_word_count": 80000,
 }
 
 
@@ -167,7 +168,7 @@ class TestGenerateMetadataInvalidResponse:
             await bootstrapper.generate_metadata("Write me a fantasy novel")
 
     @patch("core.project_bootstrapper.render_prompt", return_value="rendered prompt")
-    async def test_narrative_style_mismatch_raises_value_error(
+    async def test_narrative_style_accepts_author_preference(
         self,
         _fake_render_prompt: MagicMock,
         bootstrapper: ProjectBootstrapper,
@@ -182,8 +183,8 @@ class TestGenerateMetadataInvalidResponse:
             {"prompt_tokens": 100, "completion_tokens": 50},
         )
 
-        with pytest.raises(ValueError, match="must match DEFAULT_NARRATIVE_STYLE"):
-            await bootstrapper.generate_metadata("Write me a fantasy novel")
+        result = await bootstrapper.generate_metadata("Write me a first-person fantasy novel")
+        assert result.narrative_style == "First Person"
 
 
 class TestSaveConfig:

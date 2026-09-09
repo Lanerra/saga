@@ -8,6 +8,7 @@ import pytest
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.scene_planning_node import _parse_scene_plan_json_from_llm_response, plan_scenes
 from core.langgraph.state import create_initial_state
+from tests.fakes.service_context import patch_service
 
 
 def _valid_scene_plan_json() -> str:
@@ -111,8 +112,8 @@ async def test_plan_scenes_retries_on_invalid_then_succeeds(tmp_path: Path) -> N
     valid_second_response = _valid_scene_plan_json()
 
     with (
-        patch(
-            "core.langgraph.nodes.scene_planning_node.llm_service.async_call_llm",
+        patch_service(
+            'language_model.async_call_llm',
             new_callable=AsyncMock,
         ) as mock_llm,
         patch(

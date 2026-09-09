@@ -21,7 +21,8 @@ from core.langgraph.content_manager import (
     save_chapter_plan,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.project_config import allocate_word_target
+from core.service_context import get_services
 from data_access.character_queries import get_all_character_names, sync_characters
 from models.agent_models import SceneDetail
 from models.kg_models import CharacterProfile
@@ -63,6 +64,10 @@ def _validate_scene_plan_structure(scenes: Any) -> list[str]:
 
     if not isinstance(scenes, list):
         errors.append(f"Expected a JSON array of scenes, got {type(scenes).__name__}")
+        return errors
+
+    if not scenes:
+        errors.append("Scene plan must contain at least one scene")
         return errors
 
     for i, scene in enumerate(scenes):
@@ -215,13 +220,16 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         - current_scene_index: Reset for drafting loop.
         - current_node: `"plan_scenes"`.
 
-        If the outline is missing, returns an error update and does not set
-        `has_fatal_error`.
+        Missing outlines and exhausted planning failures invalidate the plan and
+        return a fatal error update before retrieval or drafting can run.
 
     Notes:
         This node performs LLM I/O and may create provisional character stubs in
         Neo4j for any newly introduced names in the plan.
     """
+    if state.get("has_fatal_error", False) or state.get("revision_rollback_failure") is not None:
+        return {}
+
     logger.info(
         "plan_scenes: planning scenes for chapter",
         chapter=state.get("current_chapter", 1),
@@ -238,26 +246,15 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         logger.error("plan_scenes: no outline found for chapter", chapter=chapter_number)
         return {
             "last_error": f"No outline found for chapter {chapter_number}",
+            "has_fatal_error": True,
+            "error_node": "plan_scenes",
+            "chapter_plan_ref": None,
+            "chapter_plan_scene_count": 0,
+            "current_scene_index": 0,
             "current_node": "plan_scenes",
         }
 
-    # Determine number of scenes (heuristic or config)
-    # For now, we'll ask for 3-5 scenes depending on complexity, or just default to 3
-    num_scenes = 4
-
-    base_prompt = render_prompt(
-        "narrative_agent/plan_scenes.j2",
-        {
-            "novel_title": state.get("title", ""),
-            "novel_genre": state.get("genre", ""),
-            "novel_theme": state.get("theme", ""),
-            "chapter_number": chapter_number,
-            "outline": outline,
-            "num_scenes": num_scenes,
-        },
-    )
-
-    max_attempts = 3
+    max_attempts = config.settings.SCENE_PLAN_MAX_ATTEMPTS
     correction_instruction = (
         "\n\nYour last response was invalid. "
         "Return ONLY valid JSON. "
@@ -265,14 +262,35 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         'Do not wrap the array in an object like {"scenes": [...]} and do not include any extra text.'
     )
 
-    prompt = base_prompt
-
     try:
+        chapter_target = allocate_word_target(
+            state.get("target_word_count", config.TARGET_WORD_COUNT),
+            state.get("total_chapters", config.TOTAL_CHAPTERS),
+            chapter_number,
+        )
+        requested_scenes = config.TARGET_SCENES_MIN
+        if type(requested_scenes) is not int or requested_scenes < 1:
+            raise ValueError("Requested scene count must be a positive integer")
+        number_of_scenes = min(requested_scenes, chapter_target)
+        base_prompt = render_prompt(
+            "narrative_agent/plan_scenes.j2",
+            {
+                "novel_title": state.get("title", ""),
+                "novel_genre": state.get("genre", ""),
+                "novel_theme": state.get("theme", ""),
+                "narrative_style": state.get("narrative_style", config.DEFAULT_NARRATIVE_STYLE),
+                "chapter_target_word_count": chapter_target,
+                "chapter_number": chapter_number,
+                "outline": outline,
+                "num_scenes": number_of_scenes,
+            },
+        )
+        prompt = base_prompt
         scenes_untyped: list[dict[str, Any]] = []
         parsed_successfully = False
 
         for attempt in range(1, max_attempts + 1):
-            response, _ = await llm_service.async_call_llm(
+            response, _ = await get_services().language_model.async_call_llm(
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=0.7,
@@ -298,6 +316,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         if not parsed_successfully:
             raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} no valid scene plan produced after retries.")
 
+        allocate_word_target(chapter_target, len(scenes_untyped), 1)
         scenes = cast(list[SceneDetail], scenes_untyped)
 
         logger.info("plan_scenes: successfully planned scenes", count=len(scenes))
@@ -334,5 +353,10 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         logger.error("plan_scenes: error planning scenes", error=str(e))
         return {
             "last_error": ("Error planning scenes: " + str(e) + " | Expected: JSON array of scene objects with exactly these keys: " + ", ".join(_SCENE_REQUIRED_KEYS)),
+            "has_fatal_error": True,
+            "error_node": "plan_scenes",
+            "chapter_plan_ref": None,
+            "chapter_plan_scene_count": 0,
+            "current_scene_index": 0,
             "current_node": "plan_scenes",
         }

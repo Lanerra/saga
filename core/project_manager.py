@@ -6,7 +6,9 @@ import re
 from pathlib import Path
 
 import config
+from core.langgraph.export import accepted_chapter_numbers
 from core.project_config import NarrativeProjectConfig
+from utils.file_io import ContainedFiles
 
 
 class ProjectManager:
@@ -35,14 +37,14 @@ class ProjectManager:
 
     @classmethod
     def save_config(class_type, project_config: NarrativeProjectConfig, *, review: bool) -> Path:
+        config_payload = NarrativeProjectConfig.model_validate(project_config.model_dump()).model_dump()
         project_directory = class_type.project_directory_from_title(project_config.title)
-        project_directory.mkdir(parents=True, exist_ok=True)
+        project_directory.mkdir(exist_ok=False)
+        files = ContainedFiles(project_directory, durable=True)
         (project_directory / "checkpoints").mkdir(exist_ok=True)
 
         file_name = "config.candidate.json" if review else "config.json"
-        config_path = project_directory / file_name
-        config_payload = project_config.model_dump()
-        config_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
+        files.write_bytes(file_name, json.dumps(config_payload, indent=2).encode("utf-8"), create_only=True)
         return project_directory
 
     @classmethod
@@ -71,7 +73,11 @@ class ProjectManager:
         if final_path.exists():
             raise FileExistsError(f"Final config already exists in {project_directory}")
 
-        candidate_path.rename(final_path)
+        files = ContainedFiles(project_directory, durable=True)
+        payload = files.read_bytes("config.candidate.json")
+        NarrativeProjectConfig.model_validate_json(payload)
+        files.write_bytes("config.json", payload, create_only=True)
+        files.delete("config.candidate.json")
 
     @classmethod
     def find_candidate_project(class_type) -> Path | None:
@@ -89,7 +95,8 @@ class ProjectManager:
         if not candidates:
             return None
 
-        candidates.sort(key=lambda path: (path / "config.candidate.json").stat().st_mtime, reverse=True)
+        if len(candidates) > 1:
+            raise ValueError("Multiple candidate projects; select --project-dir explicitly")
         return candidates[0]
 
     @classmethod
@@ -98,8 +105,7 @@ class ProjectManager:
             return None
 
         project_directories = [path for path in class_type.projects_root.iterdir() if path.is_dir()]
-        project_directories.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-
+        candidates = []
         for project_directory in project_directories:
             config_path = project_directory / "config.json"
             if not config_path.exists():
@@ -108,17 +114,20 @@ class ProjectManager:
             project_config = class_type.load_config(project_directory)
             completed_chapters = class_type.count_completed_chapters(project_directory)
             if completed_chapters < project_config.total_chapters:
-                return project_directory
+                candidates.append(project_directory)
 
-        return None
+        if len(candidates) > 1:
+            raise ValueError("Multiple unfinished projects; select --project-dir explicitly")
+        return candidates[0] if candidates else None
 
     @classmethod
     def count_completed_chapters(class_type, project_directory: Path) -> int:
-        chapters_directory = project_directory / "chapters"
-        if not chapters_directory.exists():
+        if not project_directory.exists():
             return 0
-
-        return len(list(chapters_directory.glob("chapter_*.md")))
+        numbers = accepted_chapter_numbers(project_directory)
+        if numbers != list(range(1, len(numbers) + 1)):
+            raise ValueError("Accepted chapter sequence is not contiguous")
+        return len(numbers)
 
     @classmethod
     def create_default_project(class_type) -> Path:

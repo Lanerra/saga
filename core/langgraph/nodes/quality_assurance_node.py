@@ -18,6 +18,7 @@ from typing import Any, cast
 import structlog
 
 import config
+from core.langgraph.quality_policy import CheckEvidence, policy_for, quality_source, retain_maintenance
 from core.langgraph.state import NarrativeState
 from data_access.kg_queries import (
     consolidate_similar_relationships,
@@ -27,6 +28,23 @@ from data_access.kg_queries import (
 from models.kg_constants import CONTRADICTORY_TRAIT_PAIRS
 
 logger = structlog.get_logger(__name__)
+
+
+async def assess_graph_quality(state: NarrativeState) -> dict[str, Any]:
+    """Read-only prepublication check; graph repair remains advisory maintenance."""
+    policy = policy_for(state)
+    source = quality_source(state)
+    details: dict[str, Any] = {"issues_found": 0, "contradictory_traits": [], "last_qa_chapter": state.get("last_qa_chapter", 0)}
+    if not policy.graph_quality_enabled or not policy.contradictory_traits_enabled:
+        return CheckEvidence(source=source, status="skipped", reason="disabled", details=details).model_dump()
+    if policy.graph_quality == "advisory" and state["current_chapter"] - state.get("last_qa_chapter", 0) < policy.graph_quality_frequency:
+        return CheckEvidence(source=source, status="skipped", reason="cadence", details=details).model_dump()
+    try:
+        findings = await find_contradictory_trait_characters(CONTRADICTORY_TRAIT_PAIRS)
+    except Exception as error:
+        return CheckEvidence(source=source, status="failed", reason=str(error), details=details).model_dump()
+    details.update(contradictory_traits=findings, issues_found=len(findings))
+    return CheckEvidence(source=source, status="completed", reason="findings" if findings else "", details=details).model_dump()
 
 
 async def check_quality(state: NarrativeState) -> NarrativeState:
@@ -171,9 +189,9 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     total_qa_issues = cast(int, state.get("total_qa_issues", 0))
     total_qa_fixes = cast(int, state.get("total_qa_fixes", 0))
 
+    retain_maintenance(state, "graph_quality", qa_results)
     return {
         "current_node": "check_quality",
-        "last_error": None,
         "last_qa_chapter": current_chapter,
         "qa_results": qa_results,
         "qa_history": qa_history,

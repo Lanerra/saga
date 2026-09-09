@@ -1,0 +1,314 @@
+{
+  "head": "4ce8870388b54e19ead91c86c10273e0fdd32e61",
+  "branch": "refactor/kg-schema",
+  "syntax_errors": [],
+  "production_python": {
+    "files": 118,
+    "lines": 39091,
+    "bytes": 1459590,
+    "broad_except": 182
+  },
+  "tests": {
+    "files": 133,
+    "lines": 34123,
+    "bytes": 1304034,
+    "broad_except": 1
+  },
+  "prompt": {
+    "files": 31,
+    "lines": 1147,
+    "bytes": 44064,
+    "broad_except": 0
+  },
+  "by_directory": {
+    "config": {
+      "files": 5,
+      "lines": 1168
+    },
+    "core": {
+      "files": 76,
+      "lines": 26065
+    },
+    "data_access": {
+      "files": 10,
+      "lines": 4784
+    },
+    "models": {
+      "files": 7,
+      "lines": 2165
+    },
+    "orchestration": {
+      "files": 2,
+      "lines": 822
+    },
+    "processing": {
+      "files": 3,
+      "lines": 724
+    },
+    "prompts": {
+      "files": 34,
+      "lines": 2304
+    },
+    "ui": {
+      "files": 2,
+      "lines": 250
+    },
+    "utils": {
+      "files": 5,
+      "lines": 1311
+    },
+    "tests": {
+      "files": 133,
+      "lines": 34123
+    }
+  },
+  "largest_production": [
+    {
+      "path": "data_access/kg_queries.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 59049,
+      "lines": 1436,
+      "sha256": "aae4f1d71d02a9b199b701a8f10aae0d242404214e94280e6d54b79fd46ce508",
+      "purpose": "",
+      "functions": 21,
+      "classes": 0,
+      "broad_except": 4
+    },
+    {
+      "path": "core/langgraph/content_manager.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 49543,
+      "lines": 1315,
+      "sha256": "6fdd905de3093d3bf934b421fe717ad03a1496ee6921ea90ac308cea52ebae76",
+      "purpose": "Manage externalized workflow content stored on disk.",
+      "functions": 66,
+      "classes": 3,
+      "broad_except": 0
+    },
+    {
+      "path": "core/parsers/chapter_outline_parser.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 46126,
+      "lines": 1168,
+      "sha256": "510c5274c149cf06fabbac80a7afce24cdb2ee1a4d9e9d95257cdd293d2ed2f7",
+      "purpose": "Parse chapter outlines and create Stage 4 knowledge graph entities.",
+      "functions": 24,
+      "classes": 1,
+      "broad_except": 7
+    },
+    {
+      "path": "core/parsers/act_outline_parser.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 43488,
+      "lines": 1081,
+      "sha256": "382d78d1b7d9f9164408b2e38a225bee154a32f59991cba967ae035e359458e8",
+      "purpose": "Parse act outlines and create Stage 3 knowledge graph entities.",
+      "functions": 21,
+      "classes": 1,
+      "broad_except": 9
+    },
+    {
+      "path": "core/langgraph/nodes/commit_node.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 42264,
+      "lines": 1064,
+      "sha256": "b308df53a8e08e2454f38d2026dfd1f7da89c75924d0989f4ae7f22d187118c5",
+      "purpose": "Commit extracted entities and relationships to Neo4j.",
+      "functions": 7,
+      "classes": 0,
+      "broad_except": 7
+    },
+    {
+      "path": "prompts/prompt_data_getters.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 43510,
+      "lines": 1048,
+      "sha256": "2b9aa75430ee58a760bd8070e29af9c005626b9c76aba2b9cbb15a7c6d5cf086",
+      "purpose": "Prepare structured context snippets for prompt templates.",
+      "functions": 19,
+      "classes": 0,
+      "broad_except": 2
+    },
+    {
+      "path": "core/graph_healing_service.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 42712,
+      "lines": 1040,
+      "sha256": "8dd5ec3ad70bd91f14e0074582a2d2f0b578decb3acd0ffe2e00c575fefcf2f2",
+      "purpose": "Heal and maintain SAGA's Neo4j knowledge graph.",
+      "functions": 14,
+      "classes": 1,
+      "broad_except": 3
+    },
+    {
+      "path": "models/kg_models.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 35647,
+      "lines": 1016,
+      "sha256": "98e3aa0edb156e779d2b08cb1eec3b396226e0236209d693fb038f7db51d80cc",
+      "purpose": "Define core knowledge-graph data models used across SAGA.",
+      "functions": 26,
+      "classes": 9,
+      "broad_except": 0
+    },
+    {
+      "path": "core/llm_interface_refactored.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 37119,
+      "lines": 906,
+      "sha256": "b9b08a53a4ce99b81ca0ae9145f561f2b27e78603a73c6375ecdfab105590f2e",
+      "purpose": "Provide the primary LLM client interface for SAGA.",
+      "functions": 25,
+      "classes": 3,
+      "broad_except": 9
+    },
+    {
+      "path": "orchestration/langgraph_orchestrator.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 35912,
+      "lines": 820,
+      "sha256": "df9e09b963bb679a32081f722e2badeb8dacde1d3cc936dc09fff000ef0c02f4",
+      "purpose": "Orchestrate LangGraph-based SAGA narrative generation.",
+      "functions": 13,
+      "classes": 1,
+      "broad_except": 6
+    },
+    {
+      "path": "core/parsers/global_outline_parser.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 30591,
+      "lines": 789,
+      "sha256": "727f9e7a0ce341238ec8bf7b1ea61f818962ec689b27c35e52e831c65018c491",
+      "purpose": "Parse global outline and create Stage 2 knowledge graph entities.",
+      "functions": 17,
+      "classes": 1,
+      "broad_except": 7
+    },
+    {
+      "path": "core/db_manager.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 36934,
+      "lines": 782,
+      "sha256": "2df242558faba5a40a180e0444ba183de33a9c258ecbd9451241e5cd3af561b2",
+      "purpose": "Manage Neo4j connectivity and execute Cypher safely.",
+      "functions": 29,
+      "classes": 1,
+      "broad_except": 18
+    },
+    {
+      "path": "core/langgraph/nodes/scene_extraction.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 24450,
+      "lines": 728,
+      "sha256": "7057fc2b5508977edbf7ee38f0fd985b21c96b0b87873b84e90084390ffdf8de",
+      "purpose": "Extract entities from individual scenes instead of full chapters.",
+      "functions": 6,
+      "classes": 0,
+      "broad_except": 5
+    },
+    {
+      "path": "core/langgraph/subgraphs/validation.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 26027,
+      "lines": 707,
+      "sha256": "7215332ba53874e66dcdfbf7b6ac2a9b3a6bf303e32931fa07a4a09616a1d848",
+      "purpose": "Build the validation subgraph for SAGA's LangGraph workflow.",
+      "functions": 11,
+      "classes": 0,
+      "broad_except": 3
+    },
+    {
+      "path": "core/langgraph/initialization/commit_init_node.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 23777,
+      "lines": 688,
+      "sha256": "429c16c374dad924031131d7b36cc485a5016a3fd374bdafadff4024ab098b98",
+      "purpose": "Commit initialization artifacts to Neo4j.",
+      "functions": 10,
+      "classes": 0,
+      "broad_except": 2
+    },
+    {
+      "path": "data_access/character_queries.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 24816,
+      "lines": 665,
+      "sha256": "87036c53c2e4b045e16ced15cdaa7c16902c8150d9799f2518f09100223171e4",
+      "purpose": "",
+      "functions": 12,
+      "classes": 0,
+      "broad_except": 0
+    },
+    {
+      "path": "core/relationship_validation.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 25419,
+      "lines": 656,
+      "sha256": "d132663f474e942598fb129bf75341a0de94670af05b18aad90dd971eeb237dd",
+      "purpose": "Validate relationship semantics for the SAGA workflow.",
+      "functions": 10,
+      "classes": 2,
+      "broad_except": 0
+    },
+    {
+      "path": "config/settings.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 24041,
+      "lines": 648,
+      "sha256": "e6d253a2870b9a0ca90a2b6d4ce66a6e0ed8b3cee0a45373825f9235211f5bf1",
+      "purpose": "Define runtime configuration for SAGA.",
+      "functions": 4,
+      "classes": 5,
+      "broad_except": 0
+    },
+    {
+      "path": "core/langgraph/workflow.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 20570,
+      "lines": 641,
+      "sha256": "f2029cb52b058af6d8401ee3e5459a036b49e45f261233bc30cd02a7481d8882",
+      "purpose": "Build LangGraph workflows for SAGA narrative generation.",
+      "functions": 13,
+      "classes": 0,
+      "broad_except": 0
+    },
+    {
+      "path": "core/relationship_normalization_service.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 24167,
+      "lines": 622,
+      "sha256": "c2003fa6d78fd9d80886dbdb3f7eed84560764a5bec6930bff2ffb808b16ca1f",
+      "purpose": "Normalize extracted relationship types against an evolving vocabulary.",
+      "functions": 13,
+      "classes": 1,
+      "broad_except": 2
+    }
+  ],
+  "status_counts": {
+    "M ": 1,
+    " M": 283,
+    " D": 2,
+    "??": 21
+  },
+  "tracked_files": 289
+}

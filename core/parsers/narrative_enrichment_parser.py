@@ -17,9 +17,10 @@ import re
 
 import numpy as np
 import structlog
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 import config
+from core.embedding_contract import embedding_identity, validate_embedding
 from core.entity_embedding_service import (
     compute_entity_embedding_text,
     compute_entity_embedding_text_hash,
@@ -38,7 +39,7 @@ from models.kg_models import CharacterProfile
 logger = structlog.get_logger(__name__)
 
 
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 
 
 class PhysicalDescriptionExtractionResult(BaseModel):
@@ -54,11 +55,20 @@ class PhysicalDescriptionExtractionResult(BaseModel):
 class ChapterEmbeddingExtractionResult(BaseModel):
     """Result of chapter embedding extraction from narrative text."""
 
+    model_config = ConfigDict(strict=True)
+
     chapter_number: int
     embedding_vector: list[float]
+    embedding_model: str
+    embedding_identity: str
     confidence: float = 0.8
     source_text: str = ""
     extraction_method: str = "embedding_service"
+
+    def validated_vector(self) -> np.ndarray:
+        if self.embedding_identity != embedding_identity():
+            raise ValueError("Chapter enrichment embedding identity mismatch")
+        return validate_embedding(self.embedding_vector, model=self.embedding_model)
 
 
 class NarrativeEnrichmentParser:
@@ -290,12 +300,15 @@ class NarrativeEnrichmentParser:
             _ = compute_entity_embedding_text_hash(embedding_text)
 
             # Generate the embedding vector
+            configuration = config.snapshot_settings()
             embedding_vector = await self._generate_embedding_vector(embedding_text)
 
             if embedding_vector:
                 result = ChapterEmbeddingExtractionResult(
                     chapter_number=self.chapter_number,
-                    embedding_vector=embedding_vector,
+                    embedding_vector=validate_embedding(embedding_vector, model=configuration.EMBEDDING_MODEL, configuration=configuration).tolist(),
+                    embedding_model=configuration.EMBEDDING_MODEL,
+                    embedding_identity=embedding_identity(configuration),
                     confidence=0.95,
                     source_text=embedding_text,
                     extraction_method="embedding_service",
@@ -319,16 +332,16 @@ class NarrativeEnrichmentParser:
             List of floats representing the embedding vector, or None if generation fails
         """
         try:
-            embedding = await llm_service.async_get_embedding(text)
+            embedding = await get_services().language_model.async_get_embedding(text)
 
             if embedding is not None and len(embedding) > 0:
-                return embedding.tolist() if isinstance(embedding, np.ndarray) else list(embedding)
+                return validate_embedding(embedding, model=config.EMBEDDING_MODEL).tolist()
             else:
-                logger.warning(f"Empty embedding vector generated for text: {text[:100]}")
+                logger.warning("Empty embedding vector generated", text_length=len(text))
                 return None
 
         except Exception as e:
-            logger.error(f"Error generating embedding vector: {str(e)}", exc_info=True)
+            logger.error("Error generating embedding vector", error_type=type(e).__name__)
             return None
 
     async def validate_character_enrichment(
@@ -439,6 +452,7 @@ class NarrativeEnrichmentParser:
 
             # Create a mapping of character names to their profiles
             character_map = {char.name: char for char in characters}
+            changed_characters: dict[str, CharacterProfile] = {}
 
             # Update each character with the new physical description
             for result in extraction_results:
@@ -446,7 +460,7 @@ class NarrativeEnrichmentParser:
 
                 if character_name not in character_map:
                     logger.warning(f"Character {character_name} not found in database")
-                    continue
+                    return False
 
                 # Validate the enrichment before applying
                 is_valid = await self.validate_character_enrichment(character_name, result.extracted_description)
@@ -456,7 +470,7 @@ class NarrativeEnrichmentParser:
                         f"Validation failed for physical description of {character_name}. Skipping update.",
                         extra={"character": character_name},
                     )
-                    continue
+                    return False
 
                 # Update the character profile
                 character = character_map[character_name]
@@ -465,13 +479,15 @@ class NarrativeEnrichmentParser:
                 if character.physical_description != result.extracted_description:
                     character.physical_description = result.extracted_description
                     character.updated_ts = None  # Will be set by Neo4j
+                    changed_characters[character_name] = character
 
                     logger.info(
                         f"Updating physical description for {character_name}",
                         extra={"character": character_name, "description": result.extracted_description[:50]},
                     )
 
-            await sync_characters(list(character_map.values()), self.chapter_number)
+            if changed_characters:
+                await sync_characters(list(changed_characters.values()), self.chapter_number, physical_description_only=True)
 
             logger.info(
                 f"Successfully updated {len(extraction_results)} character physical descriptions",
@@ -509,7 +525,8 @@ class NarrativeEnrichmentParser:
                 # Sync the embedding to the database using save_chapter_data_to_db
                 await save_chapter_data_to_db(
                     chapter_number=chapter_number,
-                    embedding_array=np.array(embedding_vector, dtype=np.float32),
+                    embedding_array=result.validated_vector(),
+                    embedding_model=result.embedding_model,
                 )
 
                 logger.info(

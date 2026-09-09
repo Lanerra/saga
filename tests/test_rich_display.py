@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import time
 from collections.abc import Generator
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rich.console import Console
 
+from tests.fakes.service_context import patch_service
 from ui.rich_display import RichDisplayManager
 
 
@@ -56,40 +57,40 @@ class TestGetSharedConsole:
 
 
 class TestUpdateStatusText:
-    @patch("ui.rich_display.llm_service")
+    @patch_service('language_model')
     @patch("config.ENABLE_RICH_PROGRESS", True)
     @patch("ui.rich_display.RICH_AVAILABLE", True)
-    def test_update_novel_title(self, fake_llm_service: object) -> None:
+    def test_update_novel_title(self, fake_llm_service: MagicMock) -> None:
         fake_llm_service.get_combined_statistics.return_value = {"completion_service": {"completions_requested": 0}}
         manager = RichDisplayManager()
         manager.run_start_time = time.time()
         manager.update(novel_title="The Great Story")
         assert manager.status_text_novel_title.plain == "Novel: The Great Story"
 
-    @patch("ui.rich_display.llm_service")
+    @patch_service('language_model')
     @patch("config.ENABLE_RICH_PROGRESS", True)
     @patch("ui.rich_display.RICH_AVAILABLE", True)
-    def test_update_chapter_number(self, fake_llm_service: object) -> None:
+    def test_update_chapter_number(self, fake_llm_service: MagicMock) -> None:
         fake_llm_service.get_combined_statistics.return_value = {"completion_service": {"completions_requested": 0}}
         manager = RichDisplayManager()
         manager.run_start_time = time.time()
         manager.update(chapter_num=5)
         assert manager.status_text_current_chapter.plain == "Current Chapter: 5"
 
-    @patch("ui.rich_display.llm_service")
+    @patch_service('language_model')
     @patch("config.ENABLE_RICH_PROGRESS", True)
     @patch("ui.rich_display.RICH_AVAILABLE", True)
-    def test_update_step(self, fake_llm_service: object) -> None:
+    def test_update_step(self, fake_llm_service: MagicMock) -> None:
         fake_llm_service.get_combined_statistics.return_value = {"completion_service": {"completions_requested": 0}}
         manager = RichDisplayManager()
         manager.run_start_time = time.time()
         manager.update(step="Generating")
         assert manager.status_text_current_step.plain == "Current Step: Generating"
 
-    @patch("ui.rich_display.llm_service")
+    @patch_service('language_model')
     @patch("config.ENABLE_RICH_PROGRESS", True)
     @patch("ui.rich_display.RICH_AVAILABLE", True)
-    def test_elapsed_time_formatted_as_hhmmss(self, fake_llm_service: object) -> None:
+    def test_elapsed_time_formatted_as_hhmmss(self, fake_llm_service: MagicMock) -> None:
         fake_llm_service.get_combined_statistics.return_value = {"completion_service": {"completions_requested": 0}}
         manager = RichDisplayManager()
         # 3723 seconds = 1 hour, 2 minutes, 3 seconds

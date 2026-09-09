@@ -17,11 +17,10 @@ from typing import Any
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import ContentManager, require_project_dir
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
 from core.schema_validator import schema_validator
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
 from utils.text_processing import validate_and_filter_traits
@@ -48,7 +47,7 @@ async def _get_existing_traits() -> list[str]:
         ORDER BY trait_name
         LIMIT 100
         """
-        results = await neo4j_manager.execute_read_query(query)
+        results = await get_services().database.execute_read_query(query)
         if results:
             traits = [r["trait_name"] for r in results if r.get("trait_name")]
             logger.info(
@@ -343,7 +342,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
 
     for attempt_index, temperature in enumerate(temperatures, start=1):
         try:
-            response, _ = await llm_service.async_call_llm(
+            response, _ = await get_services().language_model.async_call_llm(
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=temperature,
@@ -495,7 +494,7 @@ async def _generate_character_sheet(
 
     for attempt_index, temperature in enumerate(temperatures, start=1):
         try:
-            response, usage = await llm_service.async_call_llm(
+            response, usage = await get_services().language_model.async_call_llm(
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=temperature,

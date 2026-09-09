@@ -49,9 +49,9 @@ async def generate_all_chapter_outlines(state: NarrativeState) -> NarrativeState
         Can be disabled via GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT config parameter
         to fall back to on-demand generation.
     """
-    from config.settings import settings
+    import config
 
-    if not settings.GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT:
+    if not config.settings.GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT:
         logger.info("generate_all_chapter_outlines: skipping (disabled by config), " "will generate on-demand")
         return {
             "current_node": "all_chapter_outlines",
@@ -86,11 +86,18 @@ async def generate_all_chapter_outlines(state: NarrativeState) -> NarrativeState
         )
 
         if not chapter_outline:
-            logger.warning(
-                "generate_all_chapter_outlines: failed to generate outline, continuing",
-                chapter=chapter_number,
-            )
-            continue
+            return {
+                "last_error": f"Missing required chapter outline: {chapter_number}",
+                "current_node": "all_chapter_outlines", "has_fatal_error": True,
+                "initialization_step": "all_chapter_outlines_failed",
+            }
+
+        if chapter_outline.get("chapter_number") != chapter_number or chapter_outline.get("act_number") != act_number:
+            return {
+                "last_error": f"Chapter outline identity mismatch: {chapter_number}",
+                "current_node": "all_chapter_outlines", "has_fatal_error": True,
+                "initialization_step": "all_chapter_outlines_failed",
+            }
 
         chapter_outline["generated_at"] = "initialization"
         chapter_outline["version"] = 0

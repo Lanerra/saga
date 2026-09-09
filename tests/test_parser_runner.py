@@ -12,7 +12,7 @@ def _make_runner() -> ParserRunner:
     with patch("core.langgraph.content_manager.ContentManager") as FakeContentManager:
         instance = FakeContentManager.return_value
         instance._get_content_path.return_value = Path("/fake/path")
-        runner = ParserRunner(Path("/fake/project"))
+        runner = ParserRunner(Path("synthetic-unprepared-project"))
     return runner
 
 
@@ -42,14 +42,14 @@ class TestParserRunnerInputValidation:
 
 class TestRunParser:
     @patch("core.parser_runner.CharacterSheetParser")
-    async def test_run_parser_character_sheets_calls_correct_class(self, FakeCharacterSheetParser: MagicMock) -> None:
+    async def test_individual_character_writer_is_blocked(self, FakeCharacterSheetParser: MagicMock) -> None:
         fake_parser = _make_fake_parser()
         FakeCharacterSheetParser.return_value = fake_parser
         runner = _make_runner()
 
         await runner.run_parser("character_sheets")
 
-        fake_parser.parse_and_persist.assert_awaited_once()
+        fake_parser.parse_and_persist.assert_not_awaited()
 
     @patch("core.parser_runner.CharacterSheetParser")
     async def test_parser_success_returns_true_and_message(self, FakeCharacterSheetParser: MagicMock) -> None:
@@ -59,7 +59,8 @@ class TestRunParser:
 
         result = await runner.run_parser("character_sheets")
 
-        assert result == (True, "All characters parsed")
+        assert result == (False, "Individual parser writes are blocked; prepare and accept one complete initialization import")
+        fake_parser.parse_and_persist.assert_not_awaited()
 
     @patch("core.parser_runner.CharacterSheetParser")
     async def test_parser_exception_returns_false_and_error_message(self, FakeCharacterSheetParser: MagicMock) -> None:
@@ -70,7 +71,8 @@ class TestRunParser:
 
         result = await runner.run_parser("character_sheets")
 
-        assert result == (False, "Neo4j connection lost")
+        assert result == (False, "Individual parser writes are blocked; prepare and accept one complete initialization import")
+        failing_parser.parse_and_persist.assert_not_awaited()
 
 
 class TestRunAllParsers:
@@ -78,7 +80,7 @@ class TestRunAllParsers:
     @patch("core.parser_runner.ActOutlineParser")
     @patch("core.parser_runner.GlobalOutlineParser")
     @patch("core.parser_runner.CharacterSheetParser")
-    async def test_runs_all_four_parsers_in_correct_order(
+    async def test_no_independent_parser_runs_before_admission(
         self,
         FakeCharacterSheetParser: MagicMock,
         FakeGlobalOutlineParser: MagicMock,
@@ -106,12 +108,7 @@ class TestRunAllParsers:
         runner = _make_runner()
         await runner.run_all_parsers()
 
-        assert call_order == [
-            "character_sheets",
-            "global_outline",
-            "act_outlines",
-            "chapter_outlines",
-        ]
+        assert call_order == []
 
     @patch("core.parser_runner.ChapterOutlineParser")
     @patch("core.parser_runner.ActOutlineParser")
@@ -137,18 +134,15 @@ class TestRunAllParsers:
         runner = _make_runner()
         results = await runner.run_all_parsers()
 
-        assert results == {
-            "character_sheets": (True, "characters ok"),
-            "global_outline": (True, "global ok"),
-            "act_outlines": (True, "acts ok"),
-            "chapter_outlines": (True, "chapters ok"),
-        }
+        assert results == {"initialization": (False, "Initialization import failed: No frozen initialization selected; legacy filename replay is blocked")}
+        for fake_class in (FakeCharacterSheetParser, FakeGlobalOutlineParser, FakeActOutlineParser, FakeChapterOutlineParser):
+            fake_class.assert_not_called()
 
     @patch("core.parser_runner.ChapterOutlineParser")
     @patch("core.parser_runner.ActOutlineParser")
     @patch("core.parser_runner.GlobalOutlineParser")
     @patch("core.parser_runner.CharacterSheetParser")
-    async def test_continues_running_remaining_parsers_after_one_fails(
+    async def test_admission_failure_never_runs_dependent_writers(
         self,
         FakeCharacterSheetParser: MagicMock,
         FakeGlobalOutlineParser: MagicMock,
@@ -168,8 +162,6 @@ class TestRunAllParsers:
         runner = _make_runner()
         results = await runner.run_all_parsers()
 
-        assert len(results) == 4
-        assert results["character_sheets"] == (True, "characters ok")
-        assert results["global_outline"] == (False, "global outline missing")
-        assert results["act_outlines"] == (True, "acts ok")
-        assert results["chapter_outlines"] == (True, "chapters ok")
+        assert results == {"initialization": (False, "Initialization import failed: No frozen initialization selected; legacy filename replay is blocked")}
+        for fake_class in (FakeCharacterSheetParser, FakeGlobalOutlineParser, FakeActOutlineParser, FakeChapterOutlineParser):
+            fake_class.assert_not_called()

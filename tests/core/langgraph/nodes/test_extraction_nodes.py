@@ -12,8 +12,17 @@ from core.langgraph.content_manager import (
     save_extracted_relationships,
 )
 from core.langgraph.nodes.extraction_nodes import consolidate_extraction
+from core.langgraph.state import NarrativeState
 
-EXAMPLE_ENTITIES = {
+
+class SerializedExtractionState(NarrativeState, total=False):
+    """Serialized fixture payloads accepted by the historical inline read path."""
+
+    extracted_entities: dict[str, list[dict[str, object]]]
+    extracted_relationships: list[dict[str, object]]
+
+
+EXAMPLE_ENTITIES: dict[str, list[dict[str, object]]] = {
     "characters": [
         {
             "name": "Alice",
@@ -32,7 +41,7 @@ EXAMPLE_ENTITIES = {
     ],
 }
 
-EXAMPLE_RELATIONSHIPS = [
+EXAMPLE_RELATIONSHIPS: list[dict[str, object]] = [
     {
         "source_name": "Alice",
         "target_name": "Crystal Tower",
@@ -54,7 +63,7 @@ class TestConsolidateExtractionPreExternalized:
         entities_ref = save_extracted_entities(content_manager, EXAMPLE_ENTITIES, chapter=1, version=1)
         relationships_ref = save_extracted_relationships(content_manager, EXAMPLE_RELATIONSHIPS, chapter=1, version=1)
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "extracted_entities_ref": entities_ref,
@@ -77,7 +86,7 @@ class TestConsolidateExtractionPreExternalized:
         entities_path = tmp_path / entities_ref["path"]
         entities_path.unlink()
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "extracted_entities_ref": entities_ref,
@@ -88,6 +97,7 @@ class TestConsolidateExtractionPreExternalized:
 
         assert result["has_fatal_error"] is True
         assert result["error_node"] == "consolidate_extraction"
+        assert result["last_error"] is not None
         assert "not found" in result["last_error"]
 
     @pytest.mark.asyncio
@@ -100,7 +110,7 @@ class TestConsolidateExtractionPreExternalized:
         relationships_path = tmp_path / relationships_ref["path"]
         relationships_path.unlink()
 
-        state = {
+        state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "extracted_entities_ref": entities_ref,
@@ -111,6 +121,7 @@ class TestConsolidateExtractionPreExternalized:
 
         assert result["has_fatal_error"] is True
         assert result["error_node"] == "consolidate_extraction"
+        assert result["last_error"] is not None
         assert "not found" in result["last_error"]
 
 
@@ -119,7 +130,7 @@ class TestConsolidateExtractionBackwardCompatibility:
 
     @pytest.mark.asyncio
     async def test_externalizes_in_memory_data(self, tmp_path: Path) -> None:
-        state = {
+        state: SerializedExtractionState = {
             "project_dir": str(tmp_path),
             "current_chapter": 2,
             "extracted_entities_ref": None,
@@ -148,7 +159,7 @@ class TestConsolidateExtractionBackwardCompatibility:
 
     @pytest.mark.asyncio
     async def test_externalizes_empty_data(self, tmp_path: Path) -> None:
-        state = {
+        state: SerializedExtractionState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
             "extracted_entities_ref": None,

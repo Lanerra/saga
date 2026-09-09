@@ -18,6 +18,10 @@ from core.langgraph.nodes.quality_assurance_node import check_quality
 from core.langgraph.state import NarrativeState
 
 
+class ExtendedQualityState(NarrativeState, total=False):
+    some_existing_key: str
+
+
 @pytest.mark.asyncio
 async def test_check_quality_appends_parseable_iso8601_timestamp(
     sample_initial_state: NarrativeState,
@@ -30,13 +34,11 @@ async def test_check_quality_appends_parseable_iso8601_timestamp(
     than exact value, to keep the test deterministic.
     """
     # Ensure QA runs for this test (avoid frequency gating).
-    monkeypatch.setattr(config.settings, "ENABLE_QA_CHECKS", True)
-    monkeypatch.setattr(config.settings, "QA_CHECK_FREQUENCY", 1)
-
-    # Enable all sub-checks, but patch the I/O functions so the test remains hermetic.
-    monkeypatch.setattr(config.settings, "QA_CHECK_CONTRADICTORY_TRAITS", True)
-    monkeypatch.setattr(config.settings, "QA_DEDUPLICATE_RELATIONSHIPS", True)
-    monkeypatch.setattr(config.settings, "QA_CONSOLIDATE_RELATIONSHIPS", True)
+    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={
+        "ENABLE_QA_CHECKS": True, "QA_CHECK_FREQUENCY": 1,
+        "QA_CHECK_CONTRADICTORY_TRAITS": True, "QA_DEDUPLICATE_RELATIONSHIPS": True,
+        "QA_CONSOLIDATE_RELATIONSHIPS": True,
+    }))
 
     monkeypatch.setattr(
         "core.langgraph.nodes.quality_assurance_node.find_contradictory_trait_characters",
@@ -79,9 +81,9 @@ async def test_check_quality_returns_partial_update_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When QA is disabled, the node should return only current_node."""
-    monkeypatch.setattr(config.settings, "ENABLE_QA_CHECKS", False)
+    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_QA_CHECKS": False}))
 
-    state: NarrativeState = {"some_existing_key": "value"}
+    state: ExtendedQualityState = {"some_existing_key": "value"}
 
     result = await check_quality(state)
 

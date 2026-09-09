@@ -1,0 +1,12 @@
+core/langgraph/nodes/scene_extraction_parsing.py:41: error: List comprehension has incompatible type List[tuple[Any, dict[Any, Any]]]; expected List[dict[str, Any]]  [misc]
+core/langgraph/nodes/scene_extraction.py:223: error: "str" has no attribute "get"  [attr-defined]
+core/langgraph/nodes/scene_extraction.py:227: error: "str" has no attribute "get"  [attr-defined]
+core/langgraph/nodes/scene_extraction.py:228: error: "str" has no attribute "get"  [attr-defined]
+core/langgraph/nodes/scene_extraction.py:229: error: "str" has no attribute "get"  [attr-defined]
+core/langgraph/nodes/commit_validation.py:104: error: Name "ExtractedEntity" is not defined  [name-defined]
+data_access/kg_queries.py:28: error: Need type annotation for "_upgrade_logged" (hint: "_upgrade_logged: set[<type>] = ...")  [var-annotated]
+data_access/kg_queries.py:306: error: Argument 3 to "_infer_specific_node_type" has incompatible type "Any | None"; expected "str"  [arg-type]
+data_access/kg_queries.py:418: error: Argument 3 to "_infer_specific_node_type" has incompatible type "Any | None"; expected "str"  [arg-type]
+core/langgraph/nodes/commit_node.py:599: error: Name "CharacterProfile" is not defined  [name-defined]
+core/langgraph/nodes/commit_node.py:600: error: Name "WorldItem" is not defined  [name-defined]
+Found 11 errors in 5 files (checked 114 source files)

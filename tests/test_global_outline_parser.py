@@ -4,15 +4,17 @@
 import json
 import os
 import tempfile
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
 
 from core.parsers.global_outline_parser import GlobalOutlineParser, MajorPlotPoint
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def sample_global_outline():
+def sample_global_outline() -> dict[str, object]:
     """Sample valid global outline JSON."""
     return {
         "act_count": 3,
@@ -60,7 +62,7 @@ def sample_global_outline():
 
 
 @pytest.fixture
-def mock_global_outline_file(sample_global_outline):
+def mock_global_outline_file(sample_global_outline: dict[str, object]) -> Iterator[str]:
     """Create a temporary global outline file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(sample_global_outline, f)
@@ -74,7 +76,7 @@ def mock_global_outline_file(sample_global_outline):
 
 
 @pytest.mark.asyncio
-async def test_parse_global_outline_success(mock_global_outline_file):
+async def test_parse_global_outline_success(mock_global_outline_file: str) -> None:
     """Test successful parsing of global outline."""
     parser = GlobalOutlineParser(global_outline_path=mock_global_outline_file)
 
@@ -88,7 +90,7 @@ async def test_parse_global_outline_success(mock_global_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_parse_global_outline_file_not_found():
+async def test_parse_global_outline_file_not_found() -> None:
     """Test error handling when file is not found."""
     parser = GlobalOutlineParser(global_outline_path="/nonexistent/path.json")
 
@@ -97,7 +99,7 @@ async def test_parse_global_outline_file_not_found():
 
 
 @pytest.mark.asyncio
-async def test_parse_global_outline_invalid_json():
+async def test_parse_global_outline_invalid_json() -> None:
     """Test error handling when JSON is invalid."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write("invalid json {{{")
@@ -113,7 +115,7 @@ async def test_parse_global_outline_invalid_json():
             os.unlink(temp_path)
 
 
-def test_parse_major_plot_points(sample_global_outline):
+def test_parse_major_plot_points(sample_global_outline: dict[str, object]) -> None:
     """Test parsing of major plot points."""
     parser = GlobalOutlineParser()
 
@@ -127,7 +129,7 @@ def test_parse_major_plot_points(sample_global_outline):
     assert sequence_orders == [1, 2, 3, 4]
 
 
-def test_parse_major_plot_points_missing_data():
+def test_parse_major_plot_points_missing_data() -> None:
     """Test error handling when major plot points are missing."""
     parser = GlobalOutlineParser()
     incomplete_data = {
@@ -141,7 +143,7 @@ def test_parse_major_plot_points_missing_data():
 
 
 @pytest.mark.asyncio
-async def test_parse_locations(sample_global_outline):
+async def test_parse_locations(sample_global_outline: dict[str, object]) -> None:
     """Test parsing of locations from narrative text using LLM extraction."""
     parser = GlobalOutlineParser()
 
@@ -176,7 +178,7 @@ async def test_parse_locations(sample_global_outline):
 
 
 @pytest.mark.asyncio
-async def test_parse_items(sample_global_outline):
+async def test_parse_items(sample_global_outline: dict[str, object]) -> None:
     """Test parsing of items from narrative text using LLM extraction."""
     parser = GlobalOutlineParser()
 
@@ -209,7 +211,7 @@ async def test_parse_items(sample_global_outline):
         assert items[0].name == "Bloodstained doll"
 
 
-def test_parse_character_arcs(sample_global_outline):
+def test_parse_character_arcs(sample_global_outline: dict[str, object]) -> None:
     """Test parsing of character arcs."""
     parser = GlobalOutlineParser()
     character_arcs = parser._parse_character_arcs(sample_global_outline)
@@ -221,17 +223,17 @@ def test_parse_character_arcs(sample_global_outline):
     assert len(character_arcs["Hero"]["arc_key_moments"]) == 2
 
 
-def test_parse_character_arcs_empty():
+def test_parse_character_arcs_empty() -> None:
     """Test parsing of character arcs when none exist."""
     parser = GlobalOutlineParser()
-    empty_data = {}
+    empty_data: dict[str, object] = {}
 
     character_arcs = parser._parse_character_arcs(empty_data)
 
     assert len(character_arcs) == 0
 
 
-def test_generate_event_id():
+def test_generate_event_id() -> None:
     """Test event ID generation."""
     parser = GlobalOutlineParser()
 
@@ -244,7 +246,7 @@ def test_generate_event_id():
 
 
 @pytest.mark.asyncio
-async def test_create_major_plot_point_nodes_success():
+async def test_create_major_plot_point_nodes_success() -> None:
     """Test successful creation of MajorPlotPoint nodes."""
     parser = GlobalOutlineParser()
 
@@ -259,7 +261,7 @@ async def test_create_major_plot_point_nodes_success():
     ]
 
     # Mock the database manager
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query:
+    with patch_service('database.execute_write_query') as mock_query:
         mock_query.return_value = None
 
         result = await parser.create_major_plot_point_nodes(plot_points)
@@ -269,7 +271,7 @@ async def test_create_major_plot_point_nodes_success():
 
 
 @pytest.mark.asyncio
-async def test_create_major_plot_point_nodes_failure():
+async def test_create_major_plot_point_nodes_failure() -> None:
     """Test error handling in MajorPlotPoint node creation."""
     parser = GlobalOutlineParser()
 
@@ -283,7 +285,7 @@ async def test_create_major_plot_point_nodes_failure():
     ]
 
     # Mock the database manager to raise an exception
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query:
+    with patch_service('database.execute_write_query') as mock_query:
         mock_query.side_effect = Exception("Database error")
 
         result = await parser.create_major_plot_point_nodes(plot_points)
@@ -292,7 +294,7 @@ async def test_create_major_plot_point_nodes_failure():
 
 
 @pytest.mark.asyncio
-async def test_enrich_character_arcs_success():
+async def test_enrich_character_arcs_success() -> None:
     """Test successful enrichment of character arcs."""
     parser = GlobalOutlineParser()
 
@@ -306,7 +308,7 @@ async def test_enrich_character_arcs_success():
     }
 
     # Mock the database manager
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query:
+    with patch_service('database.execute_write_query') as mock_query:
         mock_query.return_value = None
 
         result = await parser.enrich_character_arcs(character_arcs)
@@ -316,7 +318,7 @@ async def test_enrich_character_arcs_success():
 
 
 @pytest.mark.asyncio
-async def test_enrich_character_arcs_failure():
+async def test_enrich_character_arcs_failure() -> None:
     """Test error handling in character arc enrichment."""
     parser = GlobalOutlineParser()
 
@@ -329,7 +331,7 @@ async def test_enrich_character_arcs_failure():
     }
 
     # Mock the database manager to raise an exception
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query:
+    with patch_service('database.execute_write_query') as mock_query:
         mock_query.side_effect = Exception("Database error")
 
         result = await parser.enrich_character_arcs(character_arcs)
@@ -338,12 +340,13 @@ async def test_enrich_character_arcs_failure():
 
 
 @pytest.mark.asyncio
-async def test_parse_and_persist_success(mock_global_outline_file):
+@pytest.mark.usefixtures("offline_graph_reads")
+async def test_parse_and_persist_success(mock_global_outline_file: str) -> None:
     """Test successful parse and persist operation."""
     parser = GlobalOutlineParser(global_outline_path=mock_global_outline_file)
 
     # Mock all the database operations and LLM extraction
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query, patch.object(parser, "_extract_world_items_from_outline") as mock_extract:
+    with patch_service('database.execute_write_query') as mock_query, patch.object(parser, "_extract_world_items_from_outline") as mock_extract:
         mock_query.return_value = None
         mock_extract.return_value = []
 
@@ -354,12 +357,12 @@ async def test_parse_and_persist_success(mock_global_outline_file):
 
 
 @pytest.mark.asyncio
-async def test_parse_and_persist_failure(mock_global_outline_file):
+async def test_parse_and_persist_failure(mock_global_outline_file: str) -> None:
     """Test error handling in parse and persist operation."""
     parser = GlobalOutlineParser(global_outline_path=mock_global_outline_file)
 
     # Mock the database manager to raise an exception and LLM extraction
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query, patch.object(parser, "_extract_world_items_from_outline") as mock_extract:
+    with patch_service('database.execute_write_query') as mock_query, patch.object(parser, "_extract_world_items_from_outline") as mock_extract:
         mock_query.side_effect = Exception("Database error")
         mock_extract.return_value = []
 
