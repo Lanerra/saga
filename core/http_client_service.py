@@ -103,10 +103,29 @@ class _PartsChoice(_ProviderModel):
     logprobs: None = None
 
 
+class _PromptTokensDetails(_ProviderModel):
+    cached_tokens: int = Field(ge=0)
+
+
+class _LlamaCppTimings(_ProviderModel):
+    cache_n: int = Field(ge=0)
+    prompt_n: int = Field(ge=0)
+    prompt_ms: float = Field(ge=0, allow_inf_nan=False)
+    prompt_per_token_ms: float = Field(ge=0, allow_inf_nan=False)
+    prompt_per_second: float = Field(ge=0, allow_inf_nan=False)
+    predicted_n: int = Field(ge=0)
+    predicted_ms: float = Field(ge=0, allow_inf_nan=False)
+    predicted_per_token_ms: float = Field(ge=0, allow_inf_nan=False)
+    predicted_per_second: float = Field(ge=0, allow_inf_nan=False)
+    draft_n: int = Field(ge=0)
+    draft_n_accepted: int = Field(ge=0)
+
+
 class _Usage(_ProviderModel):
     prompt_tokens: int = Field(ge=0)
     completion_tokens: int = Field(ge=0)
     total_tokens: int = Field(ge=0)
+    prompt_tokens_details: _PromptTokensDetails | None = None
 
 
 class _CompletionMetadata(_ProviderModel):
@@ -115,6 +134,7 @@ class _CompletionMetadata(_ProviderModel):
     created: int = Field(default=0, ge=0)
     model: str | None = None
     usage: _Usage | None = None
+    timings: _LlamaCppTimings | None = None
     system_fingerprint: str | None = None
     service_tier: Literal["auto", "default", "flex", "scale", "priority"] | None = None
 

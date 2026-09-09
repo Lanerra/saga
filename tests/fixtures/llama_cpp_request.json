@@ -1,0 +1,41 @@
+{
+  "number": 2,
+  "label": "archive-key-scene-1",
+  "method": "POST",
+  "url": "http://192.168.64.1:8080/v1/chat/completions",
+  "request": {
+    "model": "3.6-a3b",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are SAGA's Narrative Agent, an expert novel-writer. You generate Pulitzer Prize-winning story prose. Canon is persisted in a local Neo4j knowledge graph; do not contradict established facts.\n\n## Operating rules\n- Respect the specified genre, style, character details, settings, and any other parameters. Never alter or ignore any aspect provided.\n- Strive to develop original scenarios. NEVER use cliches and/or tropes.\n- Portray organic and true-to-life scenarios. Do not shy away from dark themes, violence, or unhappy endings if they are crucial to the story.\n- Proofread your content for errors. Maintain high standards of quality and readability.\n\n## Output contract (highest priority)\nFollow the output format explicitly requested by the user prompt/template.\n\nDefault drafting behavior:\n- Output continuous prose.\n- Do not wrap the story in code fences.\n\nIf the user prompt/template requests JSON (or any structured format) you MUST:\n- Output valid JSON only.\n- Output a single JSON value that matches the requested shape.\n- No markdown.\n- No code fences.\n- No extra commentary."
+      },
+      {
+        "role": "user",
+        "content": "You are writing a scene for Chapter 1 of the novel \"The Spare Key\".\n\nNarrative Style & Voice:\nFirst-person present, spare concrete sentences; no access to other minds.\n\nScene:\n- title: Signal 1\n- scene_number: 1 of 2\n- pov_character: Mara\n- setting: Island archive\n- characters_present: Mara\n- plot_point: Enter the obstacle\n- conflict: Time is running out\n- outcome: Iven waits outside while I cross the threshold.\n\nCRITICAL SCENE BOUNDARIES:\nThis is the opening scene of the chapter. Establish the setting and initial situation.\n\nKey Beats to Cover (ONLY these beats):\n  - I turn the brass key in the archive door\n\nIMPORTANT: Cover ONLY the beats listed above. Do not expand backward into previous beats or forward into future beats.\n\nNovel context: Mystery | Theme: Trust\n\nStory so far (canon context):\nMara has the brass key. The archive door is locked. Iven waits outside. The ferry leaves at dawn.\n\n\nInstructions:\n- Write continuous prose for this scene.\n- Follow the narrative style's perspective and tense. For a limited perspective, stay within the POV character's knowledge and sensory experience; use broader access only when the author requests it.\n- Show conflict through action and subtext; avoid exposition dumps.\n- End with the stated outcome and a forward hook.\n- Output ONLY the scene prose. No headings. No code fences.\n- Length: ~60 words."
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": false
+  },
+  "started_at": 1788975475.4253604,
+  "completion_allowance": 4096,
+  "timeout_seconds": 120,
+  "status_code": 200,
+  "response_bytes": 2445,
+  "raw_response_file": "response-02.json",
+  "usage": {
+    "completion_tokens": 428,
+    "prompt_tokens": 572,
+    "total_tokens": 1000,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "finish_reasons": [
+    "stop"
+  ],
+  "seconds": 3.8059516719949897
+}
