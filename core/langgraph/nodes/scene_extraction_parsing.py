@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+import config
 from models.kg_constants import RELATIONSHIP_TYPES
 
 
@@ -40,7 +41,7 @@ class SceneRelationships(BaseModel):
     @classmethod
     def response_format(cls) -> dict[str, Any]:
         return {"type": "json_schema", "json_schema": {
-            "name": "extract_scene_relationships", "strict": True, "schema": cls.model_json_schema(),
+            "name": "extract_scene_relationships", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": cls.model_json_schema(),
         }}
 
 

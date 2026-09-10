@@ -133,7 +133,7 @@ class EntityCatalog(FrozenPayload):
             schema = record({"featured_items": array({"item_id": choices("Item"), "role": role})})
         else:
             raise ValueError(f"Unknown catalog producer contract: {name}")
-        return {"type": "json_schema", "json_schema": {"name": name, "strict": True, "schema": schema}}
+        return {"type": "json_schema", "json_schema": {"name": name, "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": schema}}
 
 
 class RelationshipArtifact(FrozenPayload):

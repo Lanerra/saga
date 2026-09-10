@@ -146,7 +146,7 @@ async def test_recorded_completion_and_draft_path(route: str, defect: str | None
         assert json.loads(outgoing.content) == RECORDED_REQUEST
         return httpx.Response(200, content=wire_bytes, headers={"Content-Type": "application/json"})
 
-    effective = EffectiveSettings(_env_file=None, OPENAI_API_BASE="https://recorded.invalid/v1", OPENAI_API_KEY="completion-canary", EMBEDDING_API_KEY="embedding-canary", MAX_GENERATION_TOKENS=4096, LLM_TOP_P=0.95, LLM_RETRY_ATTEMPTS=1, HTTPX_TIMEOUT=120)
+    effective = EffectiveSettings(_env_file=None, OPENAI_API_BASE="https://recorded.invalid/v1", OPENAI_API_KEY="completion-canary", EMBEDDING_API_KEY="embedding-canary", MAX_GENERATION_TOKENS=4096, TEMPERATURE_OVERRIDE=None, LLM_TOP_P=0.95, LLM_RETRY_ATTEMPTS=1, HTTPX_TIMEOUT=120)
     transport = HTTPClientService(configuration=effective, client=httpx.AsyncClient(transport=httpx.MockTransport(replay)))
     service = create_llm_service(transport)
     database = FakeNeo4jManager()

@@ -58,7 +58,8 @@ async def test_scene_schema_reaches_every_wire_attempt(monkeypatch: pytest.Monke
         contract = bodies[0]["response_format"]
         assert all(body["response_format"] == contract for body in bodies)
         assert contract["type"] == "json_schema"
-        assert contract["json_schema"]["strict"] is True
+        assert contract["json_schema"]["strict"] is False
+        assert all(body["temperature"] == 1.0 for body in bodies)
         schema = contract["json_schema"]["schema"]
         assert schema["required"] == ["kg_triples"]
         assert schema["additionalProperties"] is False

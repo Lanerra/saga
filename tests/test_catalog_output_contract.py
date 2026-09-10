@@ -36,7 +36,8 @@ async def test_relationship_contract_reaches_serialized_adapter(tmp_path: Path, 
         await extract_outline_relationships(state)
         contract = bodies[0]['response_format']
         assert contract['type'] == 'json_schema'
-        assert contract['json_schema']['strict'] is True
+        assert contract['json_schema']['strict'] is False
+        assert bodies[0]['temperature'] == 1.0
         schema = contract['json_schema']['schema']
         assert schema['required'] == ['kg_triples']
         assert schema['additionalProperties'] is False
@@ -156,7 +157,7 @@ async def test_character_relationship_contract_precedes_retention(tmp_path: Path
     else:
         assert result is not None and result['relationships'] == raw['relationships']
     contract = calls[0]['response_format']['json_schema']
-    assert contract['strict'] is True
+    assert contract['strict'] is False
     schema = contract['schema']
     assert schema['properties']['name']['enum'] == ['Ada']
     relations = schema['properties']['relationships']

@@ -44,7 +44,7 @@ def _character_sheet_contract(character_name: str, other_characters: list[str]) 
         "skills": {"type": "array", "items": {"type": "string"}},
         "relationships": {"type": "object", "properties": {name: relationship for name in other_characters if name != character_name}, "required": [], "additionalProperties": False},
     })
-    return {"type": "json_schema", "json_schema": {"name": "character_sheet", "strict": True, "schema": {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}}}
+    return {"type": "json_schema", "json_schema": {"name": "character_sheet", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}}}
 
 
 def _admit_character_sheet(response: str, contract: dict[str, Any]) -> dict[str, Any]:

@@ -238,7 +238,8 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_KG_EXTRACTION: float = 0.1
     TEMPERATURE_SUMMARY: float = 0.3
     # Global Temperature Override
-    TEMPERATURE_OVERRIDE: float | None = None
+    TEMPERATURE_OVERRIDE: float | None = 1.0
+    STRUCTURED_OUTPUT_STRICT: bool = Field(default=False, description="Provider JSON-schema strict flag; local schema and catalog admission remain strict")
 
     FILL_IN: str = ""
 
