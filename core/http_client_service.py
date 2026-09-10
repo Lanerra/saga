@@ -336,6 +336,45 @@ class EmbeddingHTTPClient:
             raise ValueError("Invalid embedding provider response schema") from None
 
 
+class RequestContextBudgetError(ValueError):
+    """A valid request cannot fit its configured context window."""
+
+
+def prepare_completion_payload(
+    configuration: EffectiveSettings,
+    model: str,
+    messages: list[dict[str, str]],
+    temperature: float,
+    max_tokens: int,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Serialize and admit one request before I/O; also used by context builders."""
+    allowed_options = {"top_p", "frequency_penalty", "presence_penalty", "stop", "seed", "response_format", "tools", "tool_choice"}
+    if kwargs.keys() - allowed_options:
+        raise ValueError("Unsupported completion options cannot override the request contract")
+    if type(max_tokens) is not int or max_tokens <= 0:
+        raise ValueError("Completion budget must be a positive integer")
+    if not messages or any(set(message) != {"role", "content"} or message["role"] not in {"system", "user", "assistant"} or not isinstance(message["content"], str) for message in messages):
+        raise ValueError("Completion messages require text and an explicit role")
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "top_p": configuration.LLM_TOP_P,
+        "max_tokens": max_tokens,
+        "stream": False,
+        **kwargs,
+    }
+    # Configured encoding budget, not a claim about native chat templates.
+    encoder = tiktoken.get_encoding(configuration.TIKTOKEN_DEFAULT_ENCODING)
+    serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    request_tokens = len(encoder.encode(serialized, disallowed_special=()))
+    framing_tokens = len(messages) * configuration.REQUEST_MESSAGE_OVERHEAD_TOKENS + configuration.REQUEST_REPLY_OVERHEAD_TOKENS
+    if request_tokens + framing_tokens + max_tokens > configuration.MAX_CONTEXT_TOKENS:
+        raise RequestContextBudgetError("Serialized request plus framing and completion exceeds context budget")
+    return json.loads(serialized)
+
+
 class CompletionHTTPClient:
     """Call the chat completion API using a shared HTTP client."""
 
@@ -370,33 +409,8 @@ class CompletionHTTPClient:
         Raises:
             httpx.HTTPError: If the HTTP request fails.
         """
-        allowed_options = {"top_p", "frequency_penalty", "presence_penalty", "stop", "seed", "response_format", "tools", "tool_choice"}
-        if kwargs.keys() - allowed_options:
-            raise ValueError("Unsupported completion options cannot override the request contract")
-        if type(max_tokens) is not int or max_tokens <= 0:
-            raise ValueError("Completion budget must be a positive integer")
-        if not messages or any(set(message) != {"role", "content"} or message["role"] not in {"system", "user", "assistant"} or not isinstance(message["content"], str) for message in messages):
-            raise ValueError("Completion messages require text and an explicit role")
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "top_p": self._http_client.configuration.LLM_TOP_P,
-            "max_tokens": max_tokens,
-            "stream": False,
-            **kwargs,
-        }
-
-        # This is a configured encoding budget, not a claim about native chat templates.
-        configuration = self._http_client.configuration
-        encoder = tiktoken.get_encoding(configuration.TIKTOKEN_DEFAULT_ENCODING)
-        serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
-        request_tokens = len(encoder.encode(serialized, disallowed_special=()))
-        framing_tokens = len(messages) * configuration.REQUEST_MESSAGE_OVERHEAD_TOKENS + configuration.REQUEST_REPLY_OVERHEAD_TOKENS
-        if request_tokens + framing_tokens + max_tokens > configuration.MAX_CONTEXT_TOKENS:
-            raise ValueError("Serialized request plus framing and completion exceeds context budget")
         # Detach mutable caller structures before semaphore waiting or retrying.
-        payload = json.loads(serialized)
+        payload = prepare_completion_payload(self._http_client.configuration, model, messages, temperature, max_tokens, **kwargs)
 
         headers = {
             "Authorization": f"Bearer {self._http_client.configuration.OPENAI_API_KEY.get_secret_value()}",

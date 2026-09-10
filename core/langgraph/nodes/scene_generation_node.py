@@ -9,6 +9,7 @@ and advances the `current_scene_index` for the drafting loop.
 import structlog
 
 import config
+from core.http_client_service import RequestContextBudgetError, prepare_completion_payload
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_plan,
@@ -101,28 +102,52 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             chapter_number,
         )
         scene_target = allocate_word_target(chapter_target, len(chapter_plan), scene_index + 1)
-        prompt = render_prompt(
-            "narrative_agent/draft_scene.j2",
-            {
-                "chapter_number": chapter_number,
-                "novel_title": state.get("title", ""),
-                "novel_genre": state.get("genre", ""),
-                "novel_theme": state.get("theme", ""),
-                "narrative_style": state.get("narrative_style", config.DEFAULT_NARRATIVE_STYLE),
-                "total_scenes": len(chapter_plan),
-                "previous_scenes": previous_scenes,
-                "scene": current_scene,
-                "hybrid_context": hybrid_context,
-                "revision_guidance": revision_guidance_text,
-                "target_word_count": scene_target,
-            },
-        )
+        prompt_data = {
+            "chapter_number": chapter_number,
+            "novel_title": state.get("title", ""),
+            "novel_genre": state.get("genre", ""),
+            "novel_theme": state.get("theme", ""),
+            "narrative_style": state.get("narrative_style", config.DEFAULT_NARRATIVE_STYLE),
+            "total_scenes": len(chapter_plan),
+            "previous_scenes": previous_scenes,
+            "scene": current_scene,
+            "hybrid_context": hybrid_context,
+            "revision_guidance": revision_guidance_text,
+            "target_word_count": scene_target,
+        }
+        model_name = state.get("narrative_model", config.NARRATIVE_MODEL)
+        system_prompt = get_system_prompt("narrative_agent")
+
+        def admitted_prompt(context: str) -> str:
+            candidate = render_prompt("narrative_agent/draft_scene.j2", {**prompt_data, "hybrid_context": context})
+            messages = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + [{"role": "user", "content": candidate}]
+            prepare_completion_payload(get_services().configuration, model_name, messages, 0.7, config.MAX_GENERATION_TOKENS)
+            return candidate
+
+        try:
+            prompt = admitted_prompt(hybrid_context)
+        except RequestContextBudgetError:
+            # Only auxiliary context may be shortened. Required scene instructions,
+            # revision guidance and completion allowance remain intact; if those
+            # alone cannot fit, propagate the error without a provider request.
+            marker = "\n... (context truncated for request budget)"
+            prompt = admitted_prompt(marker)
+            low, high = 0, len(hybrid_context)
+            while low + 1 < high:
+                middle = (low + high) // 2
+                try:
+                    candidate = admitted_prompt(hybrid_context[:middle] + marker)
+                except RequestContextBudgetError:
+                    high = middle
+                else:
+                    low, prompt = middle, candidate
+            logger.warning("draft_scene: auxiliary context truncated for request budget", original_chars=len(hybrid_context), retained_chars=low)
         draft_text, _ = await get_services().language_model.async_call_llm(
-            model_name=state.get("narrative_model", config.NARRATIVE_MODEL),
+            model_name=model_name,
             prompt=prompt,
             temperature=0.7,
             max_tokens=config.MAX_GENERATION_TOKENS,
-            system_prompt=get_system_prompt("narrative_agent"),
+            system_prompt=system_prompt,
             spacy_cleanup=True,
         )
 
