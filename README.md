@@ -43,9 +43,12 @@ have been exercised offline. The `quick` entrypoint smoke covers failure propaga
 not a successful novel. Narrative and embedding service/model selection is resolved;
 catalog/protocol checks do not prove full authoring. B28's bounded real-service
 workflow qualification is actionable and remains a separate execution gate.
-Literal fresh UV setup, the online spaCy URL install and `docker-compose up -d`
-remain unverified command variants. Working campaign-runtime/local-wheel/standalone
-alternatives qualify a functional candidate, not every release-installation command.
+Fresh hash-locked UV setup and the online spaCy 3.8.0 URL installation have been
+exercised in the canonical `.venv-runtime`, including dependency and statistical-load
+checks. The disposable standalone engine/APOC and configured 1,024-dimensional
+embedding path also have real read-back/reuse evidence. These do not prove completed
+live authoring. The optional Docker example is historical and unverified on this host;
+the supported tested engine setup here is the standalone alternative below.
 Do not infer that all commands below passed or that the repository is release-ready.
 
 ## Screenshots
@@ -84,11 +87,11 @@ The copy command preserves an existing `.env`; never replace credentials on retr
 
 Use a fresh destination for environment creation. Do not replace or delete an existing
 `.venv` while its recoverability is unresolved. The repair campaign uses its own
-runtime rather than either repository environment; only its runtime owner installs packages.
-The literal three UV setup commands above have not been exercised in the documented
-fresh `.venv-runtime` destination. Prior campaign provisioning used a `3.12` selector
-resolved to 3.12.13 and a separate absolute destination/offline hash-locked sync.
-That evidence does not certify a fresh execution of these exact variants.
+runtime for frozen historical receipts. The finish coordinator also exercised the
+three UV commands in a new canonical `.venv-runtime`; the original `.venv` remains
+untouched. Interpreter assets and package caches were isolated from the original
+environment. Run from this checkout so imports do not resolve to an older editable
+installation. Environment setup alone does not qualify real-model authoring.
 
 `requirements.txt` is the direct-pin resolver input, not the supported installation
 command. `requirements.lock` pins and SHA-256-verifies the full Linux Python 3.12
@@ -134,9 +137,9 @@ resource, not covered by the library lock's hashes; syncing only `requirements.l
 removes the optional model package. Do not run model download commands automatically
 at application startup or in unit fixtures. `SPACY_MODEL` selects a deliberately
 installed alternative; the small model does not provide the large model's vectors.
-The local-wheel alternative and real pipeline load have execution evidence; the
-literal online URL installation above does not. A retained wheel's transfer checksum
-is not independent upstream authentication.
+The online URL installation, local-wheel alternative and real pipeline load have
+execution evidence. A retained wheel's transfer checksum is not independent upstream
+authentication.
 
 ### Runtime verification
 
@@ -197,11 +200,10 @@ characters, not an existing credential). From the fresh directory:
 timeout --signal=TERM --kill-after=40s 1800s "${NEO4J_HOME:?}/bin/neo4j" console
 ```
 
-The expanded admin command and console startup/configuration have prior disposable
-execution evidence. These exact variable-based shell commands and the `timeout`
-wrapper have not been executed as written; they remain unverified variants, not a
-new installation proof. The foreground console is bounded to 30 minutes; timeout
-expiry is not successful authoring. Allow clean shutdown and verify the selected
+These variable-based shell commands and the literal `1800s` timeout wrapper have
+disposable startup, authenticated APOC and port-closure evidence. The smoke terminates
+the engine explicitly after readiness; its wrapper exit 124 records teardown, not
+successful authoring or exhaustion of the 30-minute allowance. Allow clean shutdown and verify the selected
 port closes before calling teardown complete. Never stop another engine or remove
 storage to resolve a collision. Do not use this trial recipe for an existing story.
 
@@ -219,8 +221,11 @@ it has no persistent `/data` volume and publishes ports without a loopback-only 
 Do not use it for real stories as-is, remove an existing container, or run it against
 an occupied service port. Operator-reviewed persistent storage, local-only binding,
 credentials and a restore-tested backup are prerequisites for real authoring.
-The following command requires a separately installed `docker-compose` executable
-and has not been exercised by this repair worker:
+Historical optional recipe: the following command requires a separately installed
+`docker-compose` executable and has not been exercised on this host. It is not the
+supported setup path for this host; use the tested standalone distribution above.
+The Compose file remains available for operators with an appropriately isolated
+Docker environment; no Docker installation or daemon change is required for SAGA:
 
 ```bash
 docker-compose up -d
