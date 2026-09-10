@@ -1,6 +1,6 @@
 Catalog possessions: select exact Character and Item IDs from these candidates.
-Characters: {{ known_characters | tojson }}
-Items: {{ known_items | tojson }}
+Characters: {{ known_characters | compact_json }}
+Items: {{ known_items | compact_json }}
 Outline: {{ outline_text }}
 Return only JSON with exactly {"possessions": [{"character_id": "<selected Character id>", "item_id": "<selected Item id>"}]}.
 Only assert ownership supported by the outline. Names are context, never keys. No invented IDs or extra fields. If none, return {"possessions": []}.

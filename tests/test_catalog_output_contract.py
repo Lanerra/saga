@@ -10,6 +10,7 @@ import pytest
 from core.http_client_service import HTTPClientService
 from core.langgraph.initialization.catalog import select_catalog
 from core.langgraph.initialization.outline_relationships_node import extract_outline_relationships
+from core.langgraph.initialization.snapshot import encoded
 from core.langgraph.initialization.staged_import import InitializationImport
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import create_llm_service
@@ -44,6 +45,7 @@ async def test_relationship_contract_reaches_serialized_adapter(tmp_path: Path, 
         assert set(rows['items']['required']) == set(properties)
         assert rows['items']['additionalProperties'] is False
         catalog = select_catalog(state)
+        assert encoded(catalog.model_candidates('Character', 'Location', 'Item', 'Event')) in bodies[0]['messages'][-1]['content']
         assert properties['source_id']['enum'] == [entity.identity for entity in catalog.entities if entity.label in {'Character', 'Location', 'Item', 'Event'}]
         assert properties['target_id'] == properties['source_id']
         assert properties['source_label']['enum'] == ['Character', 'Location', 'Item', 'Event']
@@ -84,6 +86,7 @@ async def test_every_catalog_selector_has_typed_choices(tmp_path: Path, monkeypa
         assert row['additionalProperties'] is False
         assert set(row['required']) == set(row['properties'])
         for field, label in fields.items():
+            assert encoded(catalog.model_candidates(label)) in call['prompt']
             choices = row['properties'][field]['enum']
             assert choices == [entity.identity for entity in catalog.entities if entity.label == label] + ([None] if field == 'location_id' else [])
         if 'role' in row['properties']:

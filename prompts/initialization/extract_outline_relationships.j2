@@ -1,53 +1,19 @@
-You are a specialized relationship extraction agent for an autonomous novel writing system.
-Your task is to extract SEMANTIC RELATIONSHIPS between entities mentioned in the story outline.
+Extract at most 20 significant semantic relationships explicitly mentioned or strongly implied by this outline and its selected entity catalog. Focus on the story world, character origins, and initial state.
 
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 Setting: {{ setting }}
 
-CANONICAL RELATIONSHIP TYPES (ONLY THESE ARE ACCEPTABLE):
-{% for rel_type in canonical_relationship_types %}
-- {{ rel_type }}
-{% endfor %}
+Use only the relationship_type choices in the supplied JSON schema.
 
-Extraction rules:
-- Extract ONLY the most significant relationships explicitly mentioned or strongly implied in the outline (≤ 20).
-- Direction matters: subject acts on object.
-- Predicates MUST be UPPERCASE_WITH_UNDERSCORES and MUST be one of the CANONICAL RELATIONSHIP TYPES listed above.
-- Focus on relationships that establish the story world, character origins, and initial state.
+SELECTED ENTITY CATALOG (exact IDs and labels; names and descriptions are context):
+{{ catalog | compact_json }}
 
-SELECTED ENTITY CATALOG (IDs are authoritative; names/descriptions are context):
-{{ catalog | tojson }}
+Copy source_id, source_label, target_id and target_label literally from matching catalog entries. Only Character, Location, Item and Event entries are selectable. Never invent IDs, substitute display names, or infer aliases from spelling similarity. For duplicate/long event names, use descriptions, event_type and sequence metadata to disambiguate. Direction matters: the source acts on the target. Use only allowed UPPERCASE_WITH_UNDERSCORES predicates.
 
-ENTITY REQUIREMENTS:
-- Select source_id and target_id EXACTLY from the catalog and copy their respective source_label and target_label.
-- Only Character, Location, Item and Event entries are selectable. Never invent an ID or use a display name as an ID.
-- Events can have duplicate or long names. Use descriptions, event_type and sequence metadata to select the intended ID.
-- Do not infer an alias solely from spelling similarity. Extract only assertions supported by the outline and catalog.
-- Do NOT extract relationships where the object is:
-  * A possessive construct (X's [attribute])
-  * An abstract concept (fear, knowledge, power, meaning, escape)
-  * An action/state as noun (communication, protection, survival)
-  * A generic descriptor without identity (the group, the entity)
+Exclude objects that are possessive attributes, abstract concepts, actions/states used as nouns, or generic descriptors without identity.
+Prioritize origins (ORIGINATES_FROM), authority (RULES, OWNS_LOCATION), character-item links (OWNS, SEEKS, GUARDS), event locations (OCCURS_AT), spatial links (CONTAINS_LOCATION, BORDERS), and item locations (CONTAINS_ITEM).
 
-RELATIONSHIP TYPES TO PRIORITIZE FOR OUTLINES:
-- Character origins: ORIGINATES_FROM (Character → Location)
-- Character authority: RULES, OWNS_LOCATION (Character → Location)
-- Character-Item connections: OWNS, SEEKS, GUARDS (Character → Item)
-- Event locations: OCCURS_AT (Event → Location)
-- Spatial relationships: CONTAINS_LOCATION, BORDERS (Location → Location)
-- Item locations: CONTAINS_ITEM (Location → Item)
-
-Output contract:
-- Return ONLY valid JSON; no markdown; no code fences; no commentary.
-- Return a single JSON object only (no extra wrapper keys).
-- Top-level JSON object with exactly this wrapper key: "kg_triples"
-  - "kg_triples" is a JSON array
-- Each element has exactly these string fields:
-  - "source_id", "source_label", "target_id", "target_label", "relationship_type", "description"
-- relationship_type is the canonical predicate; description retains the source assertion in full.
-- Do NOT return a bare list like [...]. The wrapper object is required.
-- Do NOT use alternative wrapper keys (forbidden examples: "relationships", "triples").
-- If no significant relationships are present, return: {"kg_triples": []}
+Return only JSON matching the supplied schema: one object with exactly "kg_triples", an array of up to 20 objects. Each row has exactly six string fields: source_id, source_label, target_id, target_label, relationship_type, description. Preserve the source assertion in full in description. No commentary, Markdown, fences, alternate wrappers or extra fields. If no significant relationships exist, return {"kg_triples": []}.
 
 Outline text:
 {{ outline_text }}

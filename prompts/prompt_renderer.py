@@ -23,6 +23,7 @@ System prompt loading:
 - A missing or unreadable system prompt file raises ``FileNotFoundError``.
 """
 
+import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,14 @@ _env = Environment(
     trim_blocks=True,
     lstrip_blocks=True,
 )
+
+
+def compact_json(value: Any) -> str:
+    """Serialize model context without HTML escaping or JSON layout overhead."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+
+
+_env.filters["compact_json"] = compact_json
 
 
 def render_prompt(template_name: str, context: dict[str, Any]) -> str:
