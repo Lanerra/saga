@@ -19,7 +19,7 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 logger = structlog.get_logger(__name__)
 
 PREVIOUS_SCENES_TOKEN_BUDGET = config.MAX_GENERATION_TOKENS
-SUMMARY_MAX_TOKENS = config.MAX_GENERATION_TOKENS
+SUMMARY_MAX_TOKENS = config.MAX_SUMMARY_TOKENS
 SEMANTIC_CONTEXT_TOKEN_BUDGET = config.MAX_GENERATION_TOKENS
 
 
@@ -203,7 +203,7 @@ async def _summarize_scene_text(
         scene_text: Full scene text to summarize.
         scene_title: Scene title for context.
         extraction_model: Model to use for summarization.
-        max_tokens: Target max tokens for summary.
+        max_tokens: Retained context budget for the truncation fallback, not reasoning.
 
     Returns:
         Summary text.
@@ -221,7 +221,7 @@ async def _summarize_scene_text(
             model_name=extraction_model,
             prompt=prompt,
             temperature=config.TEMPERATURE_SUMMARY,
-            max_tokens=max_tokens,
+            max_tokens=config.MAX_SUMMARY_TOKENS,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("knowledge_agent"),

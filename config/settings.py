@@ -271,9 +271,9 @@ class SagaSettings(BaseSettings):
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
     # Generation Parameters
-    # Token budgets (defaults are generous)
-    MAX_CONTEXT_TOKENS: int = Field(default=32768, gt=0)
-    MAX_GENERATION_TOKENS: int = Field(default=16384, gt=0)
+    # Total context includes the prompt, schema, framing, reasoning and answer.
+    MAX_CONTEXT_TOKENS: int = Field(default=131072, gt=0)
+    MAX_GENERATION_TOKENS: int = Field(default=65536, gt=0)
     REQUEST_MESSAGE_OVERHEAD_TOKENS: int = Field(default=8, ge=0)
     REQUEST_REPLY_OVERHEAD_TOKENS: int = Field(default=3, ge=0)
     CONTEXT_CHAPTER_COUNT: int = 2
@@ -287,7 +287,7 @@ class SagaSettings(BaseSettings):
     TOKENIZER_CACHE_SIZE: int = 10
 
     # Agentic Planning & Prompt Context Snippets
-    MAX_PLANNING_TOKENS: int = 16384
+    MAX_PLANNING_TOKENS: int = Field(default=65536, gt=0)
     TARGET_SCENES_MIN: int = 4
     TARGET_SCENES_MAX: int = 6
 
@@ -301,9 +301,9 @@ class SagaSettings(BaseSettings):
     PLOT_STAGNATION_MIN_RELATIONSHIPS: int = 1
     TARGET_WORD_COUNT: int = 80000
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
-    MAX_SUMMARY_TOKENS: int = 16384
-    MAX_KG_TRIPLE_TOKENS: int = 16384
-    MAX_PREPOP_KG_TOKENS: int = 16384
+    MAX_SUMMARY_TOKENS: int = Field(default=65536, gt=0)
+    MAX_KG_TRIPLE_TOKENS: int = Field(default=65536, gt=0)
+    MAX_PREPOP_KG_TOKENS: int = Field(default=65536, gt=0)
 
     # Quality Assurance Configuration
     ENABLE_QA_CHECKS: bool = True

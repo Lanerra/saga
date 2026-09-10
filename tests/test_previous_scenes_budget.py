@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 import tiktoken
 
+import config
 from core import text_processing_service
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes import context_scene_retrieval
@@ -121,7 +122,7 @@ async def test_oversized_heading_does_not_displace_usable_scene(build: Callable[
 async def test_summary_overrun_and_marker_are_measured(build: Callable[..., Any], encoder: tiktoken.Encoding, summary_calls: list[dict[str, Any]]) -> None:
     result = await build(["long " * 20000], ["Arrival"], 180)
     assert len(summary_calls) == 1
-    assert 0 < summary_calls[0]["max_tokens"] <= 180
+    assert summary_calls[0]["max_tokens"] == config.MAX_SUMMARY_TOKENS
     assert result is not None
     assert result.startswith(SECTION + "\n--- Arrival (Summary) ---\n")
     assert "[...]" in result
