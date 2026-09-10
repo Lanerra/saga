@@ -9,6 +9,40 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from models.kg_constants import RELATIONSHIP_TYPES
+
+
+class SceneRelationship(BaseModel):
+    """Name-based relationship evidence, not outline catalog identifiers."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    subject: str = Field(pattern=r"\S")
+    predicate: str = Field(json_schema_extra={"enum": [name for name in sorted(RELATIONSHIP_TYPES)]})
+    object_entity: str = Field(pattern=r"\S")
+    description: str
+
+    @field_validator("predicate")
+    @classmethod
+    def canonical_predicate(cls, value: str) -> str:
+        if value not in RELATIONSHIP_TYPES:
+            raise ValueError("Scene relationship predicate must be canonical")
+        return value
+
+
+class SceneRelationships(BaseModel):
+    """Complete scene relationship response; invalid rows are never dropped."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kg_triples: list[SceneRelationship] = Field(max_length=15)
+
+    @classmethod
+    def response_format(cls) -> dict[str, Any]:
+        return {"type": "json_schema", "json_schema": {
+            "name": "extract_scene_relationships", "strict": True, "schema": cls.model_json_schema(),
+        }}
+
 
 def _require_named_updates(value: Any, field: str) -> list[tuple[str, dict[str, Any]]]:
     """Reject malformed entries rather than silently accepting a partial mapping."""
@@ -87,18 +121,7 @@ def parse_kg_triples(
     Returns:
         List of triple dicts from a complete kg_triples array.
     """
-    kg_triples_list = data.get("kg_triples")
-    if not isinstance(kg_triples_list, list):
-        raise ValueError("kg_triples must be an array")
-    for triple in kg_triples_list:
-        if not isinstance(triple, dict):
-            raise ValueError("kg_triples entries must be objects")
-        for key in ("subject", "predicate", "object_entity"):
-            if not isinstance(triple.get(key), str) or not triple[key].strip():
-                raise ValueError(f"kg_triples.{key} must be a nonblank string")
-        if "description" in triple and not isinstance(triple["description"], str):
-            raise ValueError("kg_triples.description must be a string")
-    return kg_triples_list
+    return [row.model_dump() for row in SceneRelationships.model_validate(data).kg_triples]
 
 
 def normalize_triple_entities(triple: dict[str, Any]) -> tuple[str, str, str, str]:

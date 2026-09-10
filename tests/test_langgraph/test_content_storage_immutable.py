@@ -139,6 +139,8 @@ async def test_relationship_storage_uses_its_own_version_counter(tmp_path: Path,
     state = cast(NarrativeState, {"project_dir": str(tmp_path), "current_chapter": 1, "scene_drafts_ref": manager.save_list_of_texts(["Synthetic room."], "scenes", "chapter_1")})
 
     async def answer(**keywords: Any) -> tuple[dict[str, Any], None]:
+        if "response_format" in keywords:
+            return {"kg_triples": []}, None
         return {"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm_json_object", answer)

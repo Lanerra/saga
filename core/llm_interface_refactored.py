@@ -43,6 +43,15 @@ from core.text_processing_service import TextProcessingService, truncate_text_by
 logger = structlog.get_logger(__name__)
 
 
+def _unique_json_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 class EmbeddingService:
     """Generate and cache embedding vectors for text."""
 
@@ -536,6 +545,7 @@ class RefactoredLLMService:
         system_prompt: str | None = None,
         strict: bool = True,
         max_attempts: int | None = None,
+        reject_duplicate_keys: bool = False,
         **kwargs: Any,
     ) -> tuple[dict[str, Any], dict[str, int] | None]:
         """Call the LLM and parse the response as a JSON object.
@@ -550,6 +560,7 @@ class RefactoredLLMService:
             system_prompt: Optional system prompt injected as a system message.
             strict: Whether to raise a typed exception on completion failure.
             max_attempts: Maximum number of attempts to obtain valid JSON.
+            reject_duplicate_keys: Reject ambiguous object keys before application admission.
             **kwargs: Provider-specific completion parameters forwarded to the HTTP client.
 
         Returns:
@@ -580,7 +591,7 @@ class RefactoredLLMService:
             )
 
             try:
-                data = json.loads(text)
+                data = json.loads(text, object_pairs_hook=_unique_json_pairs if reject_duplicate_keys else None)
             except json.JSONDecodeError as decode_error:
                 last_decode_error = decode_error
 

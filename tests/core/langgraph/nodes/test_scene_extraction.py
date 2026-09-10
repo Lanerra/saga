@@ -187,6 +187,8 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
     state["current_chapter"] = 1
 
     async def mock_llm(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], None]:
+        if "response_format" in kwargs:
+            return {"kg_triples": []}, None
         return {"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None
 
     with patch_service(
@@ -198,6 +200,7 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
     # Data is now externalized immediately, so only refs should be in result
     assert "extracted_entities_ref" in result
     assert "extracted_relationships_ref" in result
+    assert result["extraction_status"] == "complete"
     assert result["current_node"] == "extract_from_scenes"
     _assert_no_pydantic_models(result)
     _assert_json_serializable(result)
@@ -291,7 +294,12 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
         ),
         patch_service(
             'language_model.async_call_llm_json_object',
-            return_value=({"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None),
+            side_effect=[
+                ({"character_updates": {}}, None),
+                ({"world_updates": {"Location": {}}}, None),
+                ({"world_updates": {"Event": {}}}, None),
+                ({"kg_triples": []}, None),
+            ],
         ),
     ):
         result = await extract_from_scenes(state)

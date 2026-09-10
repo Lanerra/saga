@@ -39,11 +39,11 @@ Output contract:
 Examples demonstrating valid relationships:
 {"kg_triples":[
   {"subject":"Elara","predicate":"LOCATED_AT","object_entity":"Sunken Library","description":"Elara is currently at the Sunken Library."},
-  {"subject":"Marcus","predicate":"ALLY_OF","object_entity":"Elara","description":"Marcus considers Elara a trusted ally."},
+  {"subject":"Marcus","predicate":"ALLIES_WITH","object_entity":"Elara","description":"Marcus considers Elara a trusted ally."},
   {"subject":"Marcus","predicate":"WIELDS","object_entity":"Enchanted Blade","description":"Marcus wields an enchanted blade."}
 ]}
 
-Remember: If the chapter text describes "Alice is with Bob", this is NOT a LOCATED_AT relationship. Consider ALLY_OF, ACCOMPANIES, or similar social relationships instead.
+Remember: If the chapter text describes "Alice is with Bob", this is NOT a LOCATED_AT relationship. Use ALLIES_WITH only if the text supports an alliance, or another listed canonical social relationship supported by the text. Mere co-presence does not establish a social relationship.
 
 Chapter text:
 {{ chapter_text }}

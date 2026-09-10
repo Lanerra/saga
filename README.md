@@ -51,6 +51,15 @@ live authoring. The optional Docker example is historical and unverified on this
 the supported tested engine setup here is the standalone alternative below.
 Do not infer that all commands below passed or that the repository is release-ready.
 
+Scene relationship extraction uses a provider JSON schema for the name-based
+`subject`, `predicate`, `object_entity`, `description` contract (at most 15 rows),
+not the outline catalog's stable-ID contract. Application admission independently
+rejects duplicate JSON keys, missing/extra fields and noncanonical predicates.
+This contract is scoped to relationship extraction, not free-prose drafting.
+A reachable endpoint or supported schema is not proof of a usable answer: empty
+final content must not be replaced by reasoning text, and incomplete extraction
+does not establish chapter acceptance, export or completed-project reopen.
+
 ## Screenshots
 
 Progress window (Rich CLI):

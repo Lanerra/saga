@@ -24,6 +24,7 @@ from core.langgraph.chapter_lifecycle import extraction_binding
 from core.langgraph.content_manager import ContentManager, get_scene_drafts, require_project_dir
 from core.langgraph.nodes.scene_extraction_normalization import consolidate_scene_extractions
 from core.langgraph.nodes.scene_extraction_parsing import (
+    SceneRelationships,
     normalize_dict_items,
     normalize_triple_entities,
     parse_character_updates,
@@ -512,6 +513,9 @@ async def _extract_relationships_from_scene(
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
             max_attempts=2,
+            auto_clean_response=False,
+            reject_duplicate_keys=True,
+            response_format=SceneRelationships.response_format(),
         )
 
         parsed = parse_kg_triples(data, scene_index, chapter_number)

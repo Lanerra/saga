@@ -38,6 +38,8 @@ async def test_scene_extraction_subgraph_runs_extraction_and_consolidation(tmp_p
     state["current_chapter"] = 1
 
     async def mock_llm(*args: object, **kwargs: object) -> tuple[dict[str, object], None]:
+        if "response_format" in kwargs:
+            return {"kg_triples": []}, None
         return {"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None
 
     with patch_service(
@@ -48,6 +50,7 @@ async def test_scene_extraction_subgraph_runs_extraction_and_consolidation(tmp_p
 
     assert "extracted_entities_ref" in result
     assert "extracted_relationships_ref" in result
+    assert result["extraction_status"] == "complete"
 
 
 EXTRACTION_TYPES = ("characters", "locations", "events", "relationships")
@@ -143,7 +146,10 @@ async def test_failed_slot_blocks_publication(
     ]
     failed = outcomes[failed_scene * 4 + failed_type]
     assert failed["chapter_number"] == 1
-    assert failed["error_type"] == ("LLMServiceError" if failure == "model_error" else "ValueError")
+    expected_error = "LLMServiceError" if failure == "model_error" else "ValueError"
+    if failed_type == 3 and failure in {"missing", "malformed", "invalid_item"}:
+        expected_error = "ValidationError"
+    assert failed["error_type"] == expected_error
     assert failed["error"]
     assert failed["error"] in result["last_error"]
     expected_calls = list(range(8))

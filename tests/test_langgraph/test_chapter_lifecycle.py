@@ -415,6 +415,8 @@ async def test_real_extraction_assembly_binds_commit(lifecycle_example: tuple[Na
 
     async def provider(*args: Any, **kwargs: Any) -> tuple[str, dict[str, Any]]:
         calls.append("extraction")
+        if "response_format" in kwargs:
+            return '{"kg_triples": []}', {}
         return '{"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}', {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
