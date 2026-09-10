@@ -75,7 +75,7 @@ def mock_llm_service() -> Iterator[MagicMock]:
                         "motivations": "Save the kingdom",
                         "background": "Born in a village",
                         "skills": ["swordfighting"],
-                        "relationships": {"Mentor": "Wise guide"},
+                        "relationships": {"Mentor": {"type": "TRUSTS", "description": "Wise guide"}},
                         "internal_conflict": "Self-doubt",
                     }
                 ),
@@ -370,6 +370,10 @@ async def test_generate_character_sheet_success(base_state: NarrativeState, mock
 @pytest.mark.asyncio
 async def test_generate_character_sheet_non_protagonist(base_state: NarrativeState, mock_llm_service: MagicMock, mock_schema_validator: MagicMock) -> None:
     """Verify sheet generation for non-protagonist character."""
+    response, usage = mock_llm_service.async_call_llm.return_value
+    sheet = json.loads(response)
+    sheet.update(name="Mentor", traits=[], relationships={})
+    mock_llm_service.async_call_llm.return_value = json.dumps(sheet), usage
     with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
@@ -421,20 +425,16 @@ async def test_generate_character_sheets_success(
 ) -> None:
     """Verify successful generation of all character sheets."""
     char_list_response = json.dumps(["Hero", "Mentor", "Villain"])
-    char_sheet_response = json.dumps(
-        {
-            "name": "Test",
-            "description": "Test character",
-            "traits": ["brave"],
-        }
-    )
+    response, _ = mock_llm_service.async_call_llm.return_value
+    sheet = json.loads(response)
+    sheet.update(traits=["brave"], relationships={})
 
     mock_llm_service.async_call_llm = AsyncMock(
         side_effect=[
             (char_list_response, {}),
-            (char_sheet_response, {}),
-            (char_sheet_response, {}),
-            (char_sheet_response, {}),
+            (json.dumps(dict(sheet, name="Hero")), {}),
+            (json.dumps(dict(sheet, name="Mentor")), {}),
+            (json.dumps(dict(sheet, name="Villain")), {}),
         ]
     )
 

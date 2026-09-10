@@ -9,6 +9,7 @@ import pytest
 
 from core.http_client_service import HTTPClientService
 from core.langgraph.initialization.catalog import select_catalog
+from core.langgraph.initialization.character_sheets_node import _admit_character_sheet, _character_sheet_contract, _generate_character_sheet, generate_character_sheets
 from core.langgraph.initialization.outline_relationships_node import extract_outline_relationships
 from core.langgraph.initialization.snapshot import encoded
 from core.langgraph.initialization.staged_import import InitializationImport
@@ -136,3 +137,62 @@ def test_model_candidates_compact_only_storage_metadata(tmp_path: Path) -> None:
             if original.get(field):
                 assert candidate[field] == original[field]
     assert catalog.model_dump_json() == before
+
+
+@pytest.mark.parametrize('predicate', ['AFFECTS', 'TRUSTS'])
+async def test_character_relationship_contract_precedes_retention(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, predicate: str) -> None:
+    state = example_state(tmp_path)
+    raw = {'name': 'Ada', 'description': 'An explorer', 'traits': ['brave'], 'status': 'Active', 'motivations': 'Discover', 'background': 'Harbor', 'skills': ['navigation'], 'relationships': {'Bea': {'type': predicate, 'description': 'Synthetic assertion'}}, 'internal_conflict': 'Duty'}
+    calls: list[dict[str, Any]] = []
+
+    async def respond(**arguments: Any) -> tuple[str, dict[str, Any]]:
+        calls.append(arguments)
+        return json.dumps(raw), {}
+
+    monkeypatch.setattr(get_services().language_model, 'async_call_llm', respond)
+    result = await _generate_character_sheet(state, 'Ada', ['Ada', 'Bea'])
+    if predicate == 'AFFECTS':
+        assert result is None
+    else:
+        assert result is not None and result['relationships'] == raw['relationships']
+    contract = calls[0]['response_format']['json_schema']
+    assert contract['strict'] is True
+    schema = contract['schema']
+    assert schema['properties']['name']['enum'] == ['Ada']
+    relations = schema['properties']['relationships']
+    assert set(relations['properties']) == {'Bea'}
+    assert relations['additionalProperties'] is False
+    assert 'AFFECTS' not in relations['properties']['Bea']['properties']['type']['enum']
+    assert calls[0]['auto_clean_response'] is False
+
+
+@pytest.mark.parametrize('change', [
+    {'name': 'Other'}, {'traits': ['two words']}, {'skills': [1]}, {'unknown': True},
+    {'relationships': {'Other': {'type': 'TRUSTS', 'description': 'test'}}},
+    {'relationships': {'Bea': {'type': 'TRUSTS', 'description': 1}}},
+])
+def test_character_sheet_rejects_contract_violations(change: dict[str, Any]) -> None:
+    raw = {'name': 'Ada', 'description': 'test', 'traits': ['Brave'], 'status': 'Active', 'motivations': '', 'background': '', 'skills': [], 'relationships': {}, 'internal_conflict': ''}
+    contract = _character_sheet_contract('Ada', ['Bea'])
+    assert _admit_character_sheet(json.dumps(raw), contract)['traits'] == ['Brave']
+    with pytest.raises(ValueError):
+        _admit_character_sheet(json.dumps(raw | change), contract)
+    with pytest.raises(ValueError):
+        _admit_character_sheet(json.dumps(raw)[:-1] + ',"name":"Ada"}', contract)
+
+
+async def test_character_collection_cannot_drop_failed_sheet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = example_state(tmp_path)
+    state['genre'] = 'Adventure'
+    state['protagonist_name'] = 'Ada'
+    async def respond(**arguments: Any) -> tuple[str, dict[str, Any]]:
+        if 'response_format' not in arguments:
+            return '["Ada","Bea","Cora"]', {}
+        name = arguments['response_format']['json_schema']['schema']['properties']['name']['enum'][0]
+        if name != 'Ada':
+            return '', {}
+        return json.dumps({'name': 'Ada', 'description': 'test', 'traits': [], 'status': 'Active', 'motivations': '', 'background': '', 'skills': [], 'relationships': {}, 'internal_conflict': ''}), {}
+    monkeypatch.setattr(get_services().language_model, 'async_call_llm', respond)
+    result = await generate_character_sheets(state)
+    assert result['last_error']
+    assert 'character_sheets_ref' not in result
