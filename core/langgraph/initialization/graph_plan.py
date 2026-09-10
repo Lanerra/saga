@@ -118,6 +118,7 @@ async def produce_plan(snapshot: InitializationSnapshot) -> InitializationGraphP
             model_name=config.NARRATIVE_MODEL, prompt=prompt, temperature=0.3,
             max_tokens=config.MAX_GENERATION_TOKENS, allow_fallback=False,
             auto_clean_response=False, system_prompt=get_system_prompt("knowledge_agent"),
+            response_format=catalog.response_format(template.rsplit("/", 1)[1].removesuffix(".j2")),
         )
         result = strict_json(response)
         evidence.append(ProducerEvidence(model=config.NARRATIVE_MODEL, template=template, prompt_checksum=digest(prompt), response=response))
@@ -160,8 +161,8 @@ async def produce_plan(snapshot: InitializationSnapshot) -> InitializationGraphP
 
     if items:
         possessions = await extract("initialization/catalog_possessions.j2", {
-            "outline_text": encoded(global_source), "known_characters": catalog.candidates("Character"),
-            "known_items": catalog.candidates("Item"),
+            "outline_text": encoded(global_source), "known_characters": catalog.model_candidates("Character"),
+            "known_items": catalog.model_candidates("Item"),
         })
         require(isinstance(possessions, dict) and set(possessions) == {"possessions"} and isinstance(possessions["possessions"], list), "Malformed possessions extraction")
         for possession in possessions["possessions"]:
@@ -176,7 +177,7 @@ async def produce_plan(snapshot: InitializationSnapshot) -> InitializationGraphP
             if following.act_number == event.act_number and following.sequence_in_act > event.sequence_in_act:
                 edge(event.id, following.id, "HAPPENS_BEFORE", {})
         context = {"event_id": event.id, "event_name": event.name, "event_description": event.description, "event_cause": event.cause, "event_effect": event.effect}
-        involved = await extract("initialization/catalog_event_characters.j2", {**context, "known_characters": catalog.candidates("Character")})
+        involved = await extract("initialization/catalog_event_characters.j2", {**context, "known_characters": catalog.model_candidates("Character")})
         require(isinstance(involved, list), "Character extraction must be an explicit array")
         for involvement in involved:
             require(isinstance(involvement, dict) and set(involvement) == {"character_id", "role"}, "Malformed character involvement")
@@ -184,12 +185,12 @@ async def produce_plan(snapshot: InitializationSnapshot) -> InitializationGraphP
             # Neo4j represents the producer's explicit unknown role by an absent property.
             edge(event.id, catalog.endpoint(involvement["character_id"], "Character"), "INVOLVES", {} if involvement["role"] is None else {"role": involvement["role"]})
         if locations:
-            place = await extract("initialization/catalog_event_location.j2", {**context, "known_locations": catalog.candidates("Location")})
+            place = await extract("initialization/catalog_event_location.j2", {**context, "known_locations": catalog.model_candidates("Location")})
             require(isinstance(place, dict) and set(place) == {"location_id"}, "Malformed location extraction")
             if place["location_id"] is not None:
                 edge(event.id, catalog.endpoint(place["location_id"], "Location"), "OCCURS_AT", {})
         if items:
-            featured = await extract("initialization/catalog_event_items.j2", {**context, "known_items": catalog.candidates("Item")})
+            featured = await extract("initialization/catalog_event_items.j2", {**context, "known_items": catalog.model_candidates("Item")})
             require(isinstance(featured, dict) and set(featured) == {"featured_items"} and isinstance(featured["featured_items"], list), "Malformed item extraction")
             for featured_item in featured["featured_items"]:
                 require(isinstance(featured_item, dict) and set(featured_item) == {"item_id", "role"}, "Malformed featured item")

@@ -35,16 +35,18 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
         "protagonist": state.get("protagonist_name", ""), "setting": state.get("setting", ""),
         "outline_text": encoded({name: catalog.inputs.source(name) for name in ("global_outline", "act_outlines", "chapter_outlines")}),
         "canonical_relationship_types": sorted(RELATIONSHIP_TYPES),
-        "catalog": catalog.candidates("Character", "Location", "Item", "Event"),
+        "catalog": catalog.model_candidates("Character", "Location", "Item", "Event"),
     })
     async def produce() -> RelationshipArtifact:
         response, _ = await get_services().language_model.async_call_llm(
             model_name=config.NARRATIVE_MODEL, prompt=prompt, temperature=0.5,
             max_tokens=config.MAX_GENERATION_TOKENS, allow_fallback=False,
             auto_clean_response=False, system_prompt=get_system_prompt("knowledge_agent"),
+            response_format=catalog.response_format("extract_outline_relationships"),
         )
         data = strict_json(response)
         require(isinstance(data, dict) and set(data) == {"kg_triples"} and isinstance(data["kg_triples"], list), "Expected exactly a kg_triples array")
+        require(len(data["kg_triples"]) <= 20, "Outline relationship extraction exceeds 20 assertions")
         artifact = RelationshipArtifact(
             project_id=catalog.inputs.project_id, catalog_identity=catalog.identity,
             relationships=tuple(CatalogRelationship.model_validate(item) for item in data["kg_triples"]),

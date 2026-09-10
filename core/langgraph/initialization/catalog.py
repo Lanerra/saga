@@ -26,6 +26,7 @@ from core.parsers.act_outline_parser import ActOutlineParser
 from core.parsers.chapter_outline_parser import ChapterOutlineParser
 from core.parsers.global_outline_parser import GlobalOutlineParser
 from core.service_context import get_services
+from models.kg_constants import RELATIONSHIP_TYPES
 from models.kg_models import ActKeyEvent, Chapter, CharacterProfile, MajorPlotPoint, Scene, SceneEvent, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import generate_entity_id
@@ -88,6 +89,51 @@ class EntityCatalog(FrozenPayload):
 
     def candidates(self, *labels: str) -> list[dict[str, Any]]:
         return [{"id": entity.identity, "label": entity.label, **json.loads(entity.payload)} for entity in self.entities if entity.label in labels]
+
+    def model_candidates(self, *labels: str) -> list[dict[str, Any]]:
+        """Keep semantic fields and exact IDs without empty values or storage bookkeeping."""
+        storage_fields = {"created_ts", "updated_ts", "created_chapter", "last_updated_chapter", "is_provisional", "embedding_vector", "embedding_model", "entity_embedding_vector", "entity_embedding_model"}
+        return [
+            {key: value for key, value in candidate.items() if key not in storage_fields and value not in (None, "", [], {})}
+            for candidate in self.candidates(*labels)
+        ]
+
+    def response_format(self, name: str) -> dict[str, Any]:
+        """Constrain producer syntax and literal choices; application admission remains authoritative."""
+        def choices(*labels: str, nullable: bool = False) -> dict[str, Any]:
+            identifiers: list[str | None] = [entity.identity for entity in self.entities if entity.label in labels]
+            if nullable:
+                identifiers.append(None)
+            require(bool(identifiers), "Selector requires catalog candidates")
+            return {"type": ["string", "null"] if nullable else "string", "enum": identifiers}
+
+        def record(properties: dict[str, Any]) -> dict[str, Any]:
+            return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+        def array(properties: dict[str, Any]) -> dict[str, Any]:
+            return {"type": "array", "items": record(properties)}
+
+        role = {"type": ["string", "null"]}
+        if name == "extract_outline_relationships":
+            labels = ["Character", "Location", "Item", "Event"]
+            rows = array({
+                "source_id": choices(*labels), "source_label": {"type": "string", "enum": labels},
+                "target_id": choices(*labels), "target_label": {"type": "string", "enum": labels},
+                "relationship_type": {"type": "string", "enum": sorted(RELATIONSHIP_TYPES)}, "description": {"type": "string"},
+            })
+            rows["maxItems"] = 20
+            schema = record({"kg_triples": rows})
+        elif name == "catalog_possessions":
+            schema = record({"possessions": array({"character_id": choices("Character"), "item_id": choices("Item")})})
+        elif name == "catalog_event_characters":
+            schema = array({"character_id": choices("Character"), "role": role})
+        elif name == "catalog_event_location":
+            schema = record({"location_id": choices("Location", nullable=True)})
+        elif name == "catalog_event_items":
+            schema = record({"featured_items": array({"item_id": choices("Item"), "role": role})})
+        else:
+            raise ValueError(f"Unknown catalog producer contract: {name}")
+        return {"type": "json_schema", "json_schema": {"name": name, "strict": True, "schema": schema}}
 
 
 class RelationshipArtifact(FrozenPayload):
