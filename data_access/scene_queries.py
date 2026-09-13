@@ -254,14 +254,14 @@ async def get_character_items(
     query = """
     MATCH (c:Character)-[r:POSSESSES]->(i:Item)
     WHERE c.name IN $character_names
-      AND r.acquired_chapter <= $chapter_limit
+      AND r.chapter_added <= $chapter_limit
     RETURN
         c.name as character_name,
         i.name as item_name,
         i.description as item_description,
         i.category as item_category,
-        r.acquired_chapter as acquired_chapter
-    ORDER BY r.acquired_chapter
+        r.chapter_added as acquired_chapter
+    ORDER BY r.chapter_added
     """
 
     try:

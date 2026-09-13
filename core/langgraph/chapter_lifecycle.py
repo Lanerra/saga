@@ -17,12 +17,14 @@ from core.langgraph.quality_policy import acceptance_decision, announce_acceptan
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
 from data_access.chapter_queries import build_chapter_upsert_statement
+from data_access.cypher_builders.graph_compensation import apply_compensation, capture_graph, encode_compensation
 from utils.file_io import ContainedFiles
 
 ATTEMPT_QUERY = """
 MATCH (attempt:ChapterAttempt {project_id: $project_id, chapter_number: $chapter_number})
 RETURN attempt.id AS id, attempt.manifest AS manifest, attempt.phase AS phase,
-       attempt.acceptance AS acceptance
+       attempt.acceptance AS acceptance, attempt.compensation AS compensation,
+       attempt.compensation_sha256 AS compensation_sha256
 """
 CREATE_ATTEMPT = """
 CREATE (attempt:ChapterAttempt {id: $attempt_id, project_id: $project_id,
@@ -34,6 +36,10 @@ SET chapter.attempt_id = $attempt_id, chapter.graph_project_id = $project_id
 UPDATE_ATTEMPT = """
 MATCH (attempt:ChapterAttempt {id: $attempt_id})
 SET attempt.phase = $phase, attempt.acceptance = $acceptance
+"""
+STORE_COMPENSATION = """
+MATCH (attempt:ChapterAttempt {id: $attempt_id, project_id: $project_id})
+SET attempt.compensation = $compensation, attempt.compensation_sha256 = $compensation_sha256
 """
 CHAPTER_QUERY = "MATCH (chapter:Chapter {number: $chapter_number}) RETURN chapter.generation_status AS status, chapter.attempt_id AS attempt_id"
 ARTIFACT_FIELDS = ("draft_ref", "scene_drafts_ref", "extracted_entities_ref", "extracted_relationships_ref")
@@ -271,6 +277,8 @@ class ChapterLifecycle:
         return receipt
 
     async def commit(self, statements: list[tuple[str, dict[str, Any]]]) -> None:
+        if self.files.exists(self.phase_path("compensation_required")):
+            raise ValueError("Rejected attempt cannot replay commit")
         self.observe("commit_started")
 
         def apply(transaction: Transaction) -> None:
@@ -282,9 +290,12 @@ class ChapterLifecycle:
             chapters = list(transaction.run(CHAPTER_QUERY, self.parameters()))
             if any(chapter["status"] == "finalized" or chapter["attempt_id"] is not None for chapter in chapters):
                 raise ValueError("Existing chapter requires explicit lifecycle reconciliation")
+            before = capture_graph(transaction)
             for query, parameters in statements:
                 transaction.run(query, parameters).consume()
             transaction.run(CREATE_ATTEMPT, self.parameters()).consume()
+            compensation = encode_compensation(before, capture_graph(transaction))
+            transaction.run(STORE_COMPENSATION, {**self.parameters(), "compensation": compensation, "compensation_sha256": digest(compensation.encode("utf-8"))}).consume()
 
         await self.graph_receipt()
         await get_services().database.execute_in_transaction(apply)
@@ -293,11 +304,11 @@ class ChapterLifecycle:
             raise ValueError("Graph commit readback missing")
         self.observe("committed")
 
-    async def compensate(self, statements: list[tuple[str, dict[str, Any]]]) -> None:
+    async def compensate(self) -> None:
+        self.observe("compensation_required")
         row = await self.graph_receipt()
         if row is None or row["phase"] not in {"committed", "compensated"}:
             raise ValueError("Only a committed rejected attempt may be compensated")
-        self.observe("compensation_required")
 
         def apply(transaction: Transaction) -> None:
             current = self._validate_rows([dict(record) for record in transaction.run(ATTEMPT_QUERY, self.parameters())])
@@ -305,8 +316,10 @@ class ChapterLifecycle:
                 raise ValueError("Compensation phase mismatch")
             if current["phase"] == "compensated":
                 return
-            for query, parameters in statements:
-                transaction.run(query, parameters).consume()
+            compensation = current.get("compensation")
+            if not isinstance(compensation, str) or digest(compensation.encode("utf-8")) != current.get("compensation_sha256"):
+                raise ValueError("Missing or corrupt durable compensation journal; explicit reconciliation required")
+            apply_compensation(transaction, compensation)
             transaction.run(UPDATE_ATTEMPT, {**self.parameters(), "phase": "compensated", "acceptance": None}).consume()
 
         if row["phase"] != "compensated":

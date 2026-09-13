@@ -18,10 +18,12 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
-from typing import Any
+from typing import Annotated, Any
 
 import numpy as np
 import structlog
+from pydantic import Field, TypeAdapter
+from pydantic import ValidationError as SchemaValidationError
 
 import config
 from core.embedding_contract import embedding_identity, validate_embedding
@@ -32,6 +34,15 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 logger = structlog.get_logger(__name__)
 
 _ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE = "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
+
+_CONFIDENCE: TypeAdapter[float] = TypeAdapter(Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)])
+
+
+def _validated_confidence(value: Any) -> float:
+    try:
+        return _CONFIDENCE.validate_python(value)
+    except SchemaValidationError as error:
+        raise ValidationError("Healing confidence must be a finite number between zero and one") from error
 
 
 class GraphHealingService:
@@ -281,6 +292,9 @@ class GraphHealingService:
                 )
                 continue
 
+            if not isinstance(enriched, dict):
+                raise ValidationError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE)
+            _validated_confidence(enriched.get("confidence"))
             logger.info(
                 "Enrichment generated from context",
                 name=node["name"],
@@ -303,7 +317,7 @@ class GraphHealingService:
             )
             return False
 
-        enrichment_confidence = float(enriched.get("confidence", 0) or 0)
+        enrichment_confidence = _validated_confidence(enriched.get("confidence"))
         if enrichment_confidence < 0.6:
             logger.debug(
                 "apply_enrichment: enrichment confidence below apply threshold",
@@ -338,7 +352,7 @@ class GraphHealingService:
                 n.enriched_at = datetime(),
                 n.enrichment_confidence = $confidence
         """
-        params["confidence"] = enriched.get("confidence", 0.7)
+        params["confidence"] = enrichment_confidence
 
         await get_services().database.execute_write_query(query, params)
         return True
@@ -367,6 +381,7 @@ class GraphHealingService:
 
     async def graduate_node(self, element_id: str, confidence: float) -> bool:
         """Mark a provisional node as graduated in Neo4j."""
+        confidence = _validated_confidence(confidence)
         query = """
             MATCH (n)
             WHERE elementId(n) = $element_id
@@ -760,21 +775,16 @@ class GraphHealingService:
             return False
 
     async def cleanup_orphaned_nodes(self, current_chapter: int) -> dict[str, Any]:
-        """Delete provisional nodes that are both orphaned and stale.
+        """Report stale orphan candidates without inferring deletion ownership.
 
-        Args:
-            current_chapter: Current chapter number used to compute the orphan cutoff window.
-
-        Returns:
-            Summary dict including counts for `nodes_checked` and `nodes_removed`.
-
-        Notes:
-            This cleanup intentionally targets only provisional nodes with no relationships
-            to avoid removing entities that have participated in the graph.
+        Initialization, imports and accepted entities can be isolated and provisional.
+        Only chapter compensation's durable before/after journal authorizes automatic
+        removal; unjournaled candidates require explicit reconciliation.
         """
         results = {
             "nodes_removed": 0,
             "nodes_checked": 0,
+            "nodes_requiring_reconciliation": 0,
         }
 
         # Find orphaned provisional nodes (no relationships, old enough)
@@ -798,34 +808,8 @@ class GraphHealingService:
         if not orphaned_nodes:
             return results
 
-        element_ids = [node["element_id"] for node in orphaned_nodes]
-        batch_delete_query = """
-            MATCH (n)
-            WHERE elementId(n) IN $element_ids
-            AND NOT (n)-[]-()
-            DELETE n
-            RETURN count(n) AS deleted_count
-        """
-        try:
-            delete_results = await get_services().database.execute_write_query(batch_delete_query, {"element_ids": element_ids})
-            deleted_count = delete_results[0]["deleted_count"] if delete_results else 0
-            results["nodes_removed"] = deleted_count
-
-            for node in orphaned_nodes:
-                logger.info(
-                    "Removed orphaned provisional node",
-                    name=node["name"],
-                    type=node["type"],
-                    created_chapter=node["created_chapter"],
-                    current_chapter=current_chapter,
-                )
-        except Exception as e:
-            logger.warning(
-                "Failed to batch-remove orphaned nodes",
-                count=len(element_ids),
-                error=str(e),
-            )
-
+        results["nodes_requiring_reconciliation"] = len(orphaned_nodes)
+        logger.warning("Unowned orphan candidates preserved for reconciliation", count=len(orphaned_nodes), current_chapter=current_chapter)
         return results
 
     async def heal_graph(self, current_chapter: int, model: str) -> dict[str, Any]:
@@ -926,6 +910,7 @@ class GraphHealingService:
                     enriched = await self.enrich_node_from_context(node, model)
                     applied = await self.apply_enrichment(node["element_id"], enriched)
                 except Exception as enrichment_error:
+                    results["warnings"].append(f"enrich failed ({type(enrichment_error).__name__}): {enrichment_error}")
                     logger.warning(
                         "Enrichment failed for node, skipping",
                         name=node.get("name"),
@@ -1015,10 +1000,19 @@ class GraphHealingService:
                             "auto_approved": True,
                         }
                     )
+                else:
+                    results["warnings"].append("merge failed or could not be verified; inspect merge diagnostics")
 
         # Step 3: Clean up truly orphaned nodes
-        cleanup_results = await self.cleanup_orphaned_nodes(current_chapter)
+        try:
+            cleanup_results = await self.cleanup_orphaned_nodes(current_chapter)
+        except Exception as cleanup_error:
+            results["warnings"].append(f"cleanup failed ({type(cleanup_error).__name__}): {cleanup_error}")
+            cleanup_results = {"nodes_removed": 0, "nodes_checked": 0}
         results["nodes_removed"] = cleanup_results["nodes_removed"]
+        if cleanup_results.get("nodes_requiring_reconciliation", 0):
+            results["warnings"].append("cleanup preserved unowned orphan candidates requiring reconciliation")
+        results["status"] = "partial" if results["warnings"] else "completed"
 
         if cleanup_results["nodes_removed"] > 0:
             results["actions"].append(

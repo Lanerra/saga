@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 def canonical_entity_cypher(variable: str, label: str, name: str, identifier: str, chapter: str, *, scope: str = "") -> str:
-    """Resolve an allowlisted endpoint by supplied ID, otherwise unambiguous normalized name.
+    """Resolve an allowlisted endpoint by supplied ID, otherwise unambiguous exact name.
 
     Arguments are internal Cypher expressions, never interpolated user values.
     The owned database manager remains the project boundary.
@@ -41,14 +41,14 @@ def canonical_entity_cypher(variable: str, label: str, name: str, identifier: st
         OPTIONAL MATCH (candidate)
         WHERE entity_label IN labels(candidate)
           AND CASE WHEN supplied_id IS NOT NULL THEN candidate.id = supplied_id
-                   ELSE toLower(trim(candidate.name)) = toLower(trim(entity_name)) END
+                   ELSE candidate.name = entity_name END
         WITH entity_label, entity_name, supplied_id, collect(candidate) AS candidates
         CALL apoc.util.validate(size(candidates) > 1, 'Ambiguous canonical entity', [])
         WITH entity_label, entity_name, supplied_id, head(candidates) AS found
         CALL apoc.util.validate(found IS NOT NULL AND (found.id IS NULL OR found.id = ''),
                                 'Canonical entity has no stable ID', [])
         WITH entity_label, entity_name,
-             coalesce(supplied_id, found.id, apoc.util.sha256([entity_label, toLower(trim(entity_name))])) AS entity_id
+             coalesce(supplied_id, found.id, apoc.util.sha256(['saga:exact-name:v1', entity_label, entity_name])) AS entity_id
         CALL apoc.merge.node([entity_label], {{id: entity_id}},
             {{name: entity_name, created_chapter: {chapter}, is_provisional: true,
               created_ts: timestamp(), updated_ts: timestamp()}},
@@ -462,8 +462,6 @@ class NativeCypherBuilder:
                 where_clauses.append("w.chapter_last_updated <= $max_chapter")
                 params["min_chapter"] = filters["chapter_range"][0]
                 params["max_chapter"] = filters["chapter_range"][1]
-
-        where_line = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
         # Canonical labeling contract:
         # - World item nodes are labeled with canonical world labels only

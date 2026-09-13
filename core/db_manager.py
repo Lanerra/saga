@@ -11,6 +11,7 @@ Notes:
 """
 
 import asyncio
+from collections.abc import Callable
 from threading import Lock
 from typing import Any
 from uuid import uuid4
@@ -26,7 +27,7 @@ from core.exceptions import (
     DatabaseTransactionError,
     handle_database_error,
 )
-from core.graph_ownership import OWNER_CONSTRAINT, OWNER_QUERY, GraphOwnershipError, assert_graph_owner, claim_empty_graph, ownership_constraint_exists, validate_project_id
+from core.graph_ownership import OWNER_CONSTRAINT, OWNER_QUERY, GraphOwnershipError, assert_graph_owner, claim_empty_graph, lock_graph_owner, ownership_constraint_exists, validate_project_id
 from core.schema_readiness import verify_capabilities, verify_schema, verify_write_prerequisites
 from models.kg_constants import RELATIONSHIP_TYPES, VALID_NODE_LABELS
 
@@ -121,6 +122,24 @@ class Neo4jManagerSingleton:
         await self._ensure_connected()
         await asyncio.to_thread(self._sync_execute_read_query, "RETURN 1 AS ownership_verified")
 
+    @staticmethod
+    async def _connection_check(operation: Callable[[], Any]) -> Any:
+        """Settle a driver worker before cancellation can release its resources."""
+        pending = asyncio.create_task(asyncio.to_thread(operation))
+        try:
+            return await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            while not pending.done():
+                try:
+                    await asyncio.shield(pending)
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    break
+            if not pending.cancelled():
+                pending.exception()
+            raise
+
     async def connect(self) -> None:
         """Connect to Neo4j and verify required capabilities.
 
@@ -136,23 +155,19 @@ class Neo4jManagerSingleton:
         if self.driver:
             await self.close()
 
+        connected = False
         try:
             # Synchronous driver creation
             sync_driver = GraphDatabase.driver(config.NEO4J_URI, auth=(config.NEO4J_USER, config.NEO4J_PASSWORD))
-            # Verify connectivity in a thread to keep the async signature
-            await asyncio.to_thread(sync_driver.verify_connectivity)
             self.driver = sync_driver
-            try:
-                await asyncio.to_thread(self._sync_claim_project)
-            except Exception:
-                await self.close()
-                raise
+            await self._connection_check(sync_driver.verify_connectivity)
+            await self._connection_check(self._sync_claim_project)
             self.logger.info(f"Successfully connected to Neo4j at {config.NEO4J_URI}")
 
             # Best-effort: log server version/edition once to support diagnosing
             # Cypher deprecations and syntax differences across Neo4j versions.
             try:
-                info = await asyncio.to_thread(self._sync_fetch_neo4j_server_info)
+                info = await self._connection_check(self._sync_fetch_neo4j_server_info)
                 if info and not self._neo4j_server_info_logged:
                     self._neo4j_server_info_logged = True
                     self._neo4j_server_info = info
@@ -178,7 +193,7 @@ class Neo4jManagerSingleton:
                 )
 
             try:
-                apoc_version = await asyncio.to_thread(self._sync_probe_apoc_version)
+                apoc_version = await self._connection_check(self._sync_probe_apoc_version)
                 self._apoc_available_cache = True
                 self.logger.info(
                     "APOC procedures available",
@@ -186,7 +201,6 @@ class Neo4jManagerSingleton:
                 )
             except Exception as apoc_exc:
                 self._apoc_available_cache = False
-                await self.close()
                 raise DatabaseConnectionError(
                     "APOC procedures are required but unavailable",
                     details={
@@ -195,10 +209,10 @@ class Neo4jManagerSingleton:
                         "suggestion": "Install/enable APOC and allowlist procedures (e.g. NEO4J_dbms_security_procedures_allowlist=apoc.*)",
                     },
                 ) from apoc_exc
+            connected = True
 
         except ServiceUnavailable as e:
             self.logger.critical("Neo4j service unavailable", uri=config.NEO4J_URI, error=str(e))
-            self.driver = None
             raise DatabaseConnectionError(
                 "Neo4j database is not available",
                 details={
@@ -216,8 +230,10 @@ class Neo4jManagerSingleton:
                 error=str(e),
                 exc_info=True,
             )
-            self.driver = None
             raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+        finally:
+            if not connected:
+                await self.close()
 
     def _sync_probe_apoc_version(self) -> str:
         self._ensure_connected_sync()
@@ -280,7 +296,7 @@ class Neo4jManagerSingleton:
         """Close the Neo4j driver."""
         if self.driver:
             try:
-                await asyncio.to_thread(self.driver.close)
+                await self._connection_check(self.driver.close)
                 self.logger.info("Neo4j driver closed.")
             except Exception as e:
                 self.logger.error(f"Error while closing Neo4j driver: {e}", exc_info=True)
@@ -336,7 +352,7 @@ class Neo4jManagerSingleton:
             return session.execute_write(self._sync_execute_write_query_tx, query, parameters)
 
     def _sync_execute_write_query_tx(self, tx: ManagedTransaction, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        assert_graph_owner(tx, self.require_project_binding())
+        lock_graph_owner(tx, self.require_project_binding())
         verify_write_prerequisites(tx)
         return self._sync_execute_query_tx(tx, query, parameters)
 
@@ -350,7 +366,7 @@ class Neo4jManagerSingleton:
         with self.driver.session(database=config.NEO4J_DATABASE) as session:
             tx = session.begin_transaction()
             try:
-                assert_graph_owner(tx, self.require_project_binding())
+                lock_graph_owner(tx, self.require_project_binding())
                 verify_write_prerequisites(tx)
                 for statement_index, (query, params) in enumerate(cypher_statements_with_params):
                     self.logger.debug(f"Batch Cypher: {query} with params {params}")
@@ -478,7 +494,7 @@ class Neo4jManagerSingleton:
             with self.driver.session(database=config.NEO4J_DATABASE) as session:
                 tx = session.begin_transaction()
                 try:
-                    assert_graph_owner(tx, self.require_project_binding())
+                    lock_graph_owner(tx, self.require_project_binding())
                     verify_write_prerequisites(tx)
                     result = transaction_func(tx, *args, **kwargs)
                     assert_graph_owner(tx, self.require_project_binding())

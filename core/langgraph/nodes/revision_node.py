@@ -28,68 +28,24 @@ from core.langgraph.state_helpers import (
     clear_generation_artifacts,
 )
 from core.service_context import get_services
-from data_access.cypher_builders.native_builders import chapter_assertion_delete_statement
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
 
 
 async def _rollback_chapter_data(chapter_number: int, *, lifecycle: ChapterLifecycle | None = None) -> None:
-    """Delete entities and relationships committed for a chapter that needs revision.
-
-    This function performs a compensating transaction to rollback data committed
-    before validation determined that revision was needed.
-
-    Strategy:
-        1. Delete all relationships added in this chapter
-        2. Mark entities created in this chapter as provisional (graph healing will clean up orphans)
-        3. Delete the chapter node itself
-
-    Args:
-        chapter_number: The chapter number to rollback.
-
-    Raises:
-        Exception: Rollback failure requires reconciliation before revision.
-    """
+    """Reverse only a durable attempt's recorded graph changes, preserving plans."""
     logger.info(
         "rollback_chapter_data: removing committed data for revision",
         chapter=chapter_number,
     )
 
-    queries = [
-        chapter_assertion_delete_statement(chapter_number),
-        (
-            """
-            MATCH (e)
-            WHERE coalesce(e.created_chapter, -1) = $chapter
-            SET e.is_provisional = true
-            """,
-            {"chapter": chapter_number},
-        ),
-        (
-            """
-            MATCH (s:Scene)-[r:PART_OF]->(ch:Chapter {number: $chapter})
-            DELETE r, s
-            """,
-            {"chapter": chapter_number},
-        ),
-        (
-            """
-            MATCH (ch:Chapter {number: $chapter})
-            OPTIONAL MATCH (ch)-[r]-()
-            DELETE r, ch
-            """,
-            {"chapter": chapter_number},
-        ),
-    ]
-
     try:
         if lifecycle is None:
-            await get_services().database.execute_cypher_batch(queries)
-        else:
-            if lifecycle.chapter_number != chapter_number:
-                raise ValueError("Compensation chapter mismatch")
-            await lifecycle.compensate(queries)
+            raise ValueError("Rollback requires a durable attempt journal; legacy data needs explicit reconciliation")
+        if lifecycle.chapter_number != chapter_number:
+            raise ValueError("Compensation chapter mismatch")
+        await lifecycle.compensate()
         logger.info(
             "rollback_chapter_data: successfully rolled back chapter data",
             chapter=chapter_number,

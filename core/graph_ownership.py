@@ -2,12 +2,14 @@
 
 import fcntl
 import os
+import stat
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from neo4j import ManagedTransaction, Session, Transaction
 
 from core.exceptions import DatabaseConnectionError
+from utils.file_io import ContainedFiles
 
 OWNER_CONSTRAINT = "CREATE CONSTRAINT saga_graph_owner_unique IF NOT EXISTS FOR (owner:SagaGraphOwner) REQUIRE owner.key IS UNIQUE"
 OWNER_QUERY = "MATCH (owner:SagaGraphOwner) RETURN owner.key AS key, owner.project_id AS project_id, owner.version AS version"
@@ -39,24 +41,22 @@ def load_graph_project_id(project_directory: Path) -> str:
     Copying this file means restoring the same project, not forking a new story.
     A missing identity never authorizes adoption of a nonempty legacy database.
     """
-    identity_path = project_directory / "graph-project-id"
-    with (project_directory / "graph-project-id.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        if identity_path.exists():
-            return validate_project_id(identity_path.read_text(encoding="ascii"))
-        identity = str(uuid4())
-        temporary = project_directory / f".graph-project-id-{identity}"
-        with temporary.open("x", encoding="ascii") as output:
-            output.write(identity)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(temporary, identity_path)
-        directory = os.open(project_directory, os.O_RDONLY | os.O_DIRECTORY)
+    files = ContainedFiles(project_directory, durable=True)
+    with files._directory(Path()) as directory:
+        lock = os.open("graph-project-id.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o600, dir_fd=directory)
         try:
-            os.fsync(directory)
+            if not stat.S_ISREG(os.fstat(lock).st_mode):
+                raise ValueError("Graph identity lock must be a regular file")
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if files.exists("graph-project-id"):
+                return validate_project_id(files.read_bytes("graph-project-id").decode("ascii"))
+            identity = str(uuid4())
+            files.write_bytes("graph-project-id", identity.encode("ascii"), create_only=True)
+            if files.read_bytes("graph-project-id").decode("ascii") != identity:
+                raise ValueError("Graph identity publication readback mismatch")
+            return identity
         finally:
-            os.close(directory)
-        return identity
+            os.close(lock)
 
 
 def assert_graph_owner(transaction: ManagedTransaction | Transaction, project_id: str) -> None:
@@ -70,6 +70,17 @@ def assert_graph_owner(transaction: ManagedTransaction | Transaction, project_id
         or owners[0] != {"key": "exclusive", "project_id": project_id, "version": 1}
     ):
         raise GraphOwnershipError("Graph project ownership missing, malformed or mismatched; no legacy adoption is permitted")
+
+
+def lock_graph_owner(transaction: ManagedTransaction | Transaction, project_id: str) -> None:
+    """Serialize application writers before read-committed graph snapshots."""
+    assert_graph_owner(transaction, project_id)
+    transaction.run(
+        "MATCH (owner:SagaGraphOwner {key: 'exclusive', project_id: $project_id}) "
+        "SET owner.version = owner.version",
+        {"project_id": project_id},
+    ).consume()
+    assert_graph_owner(transaction, project_id)
 
 
 def ownership_constraint_exists(session: Session) -> bool:
