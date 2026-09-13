@@ -925,6 +925,7 @@ async def test_resume_conflict_missing_artifact_reference_raises(orchestrator: L
         return_value=MagicMock(
             values={
                 "project_id": requested_project_id,
+                "project_dir": str(tmp_path),
                 "current_chapter": 3,
                 "draft_ref": {"path": "does-not-exist.txt"},
             },
@@ -956,7 +957,7 @@ async def test_resume_conflict_neo4j_ahead_of_checkpoint_raises(orchestrator: La
 
     fake_checkpointer = MagicMock()
     fake_checkpointer.aget_state = AsyncMock(
-        return_value=MagicMock(values={"project_id": requested_project_id, "current_chapter": 3}, created_at="2020-01-01T00:00:00Z")
+        return_value=MagicMock(values={"project_id": requested_project_id, "project_dir": str(orchestrator.project_dir), "current_chapter": 3}, created_at="2020-01-01T00:00:00Z")
     )
 
     with patch(
