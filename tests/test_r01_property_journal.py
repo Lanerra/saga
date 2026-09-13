@@ -1,7 +1,6 @@
 """Graph timestamps must survive durable compensation without string coercion."""
 from typing import Any
 
-
 import pytest
 from neo4j._codec.hydration.v2.temporal import hydrate_datetime
 from neo4j.time import Date, DateTime, Duration, Time

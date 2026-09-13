@@ -20,7 +20,6 @@ from core.langgraph.state import NarrativeState
 from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
-
 logger = structlog.get_logger(__name__)
 
 

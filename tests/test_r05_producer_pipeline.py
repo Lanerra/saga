@@ -28,6 +28,7 @@ from tests.test_r05_initialization_contracts import chapter_response, global_res
 from utils.text_processing import generate_entity_id
 
 
+@pytest.mark.run_settings(GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT=True, ENABLE_ENTITY_EMBEDDING_PERSISTENCE=False)
 @pytest.mark.parametrize(("total", "act_count"), [(1, 1), (2, 2), (3, 3), (4, 3), (5, 3), (7, 3), (5, 5), (7, 5), (20, 3)])
 async def test_actual_producers_admit_complete_frozen_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, total: int, act_count: int) -> None:
     phase = "bootstrap"
@@ -95,13 +96,12 @@ async def test_actual_producers_admit_complete_frozen_plan(tmp_path: Path, monke
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", transport)
     monkeypatch.setattr(get_services().database, "execute_read_query", empty_traits)
-    monkeypatch.setattr(config, "settings", config.settings.model_copy(update={"GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT": True}))
-    monkeypatch.setattr(config, "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+
     project = await ProjectBootstrapper(get_services().language_model).generate_metadata("Synthetic harbor mystery")
     state = cast(NarrativeState, {**project.model_dump(), "project_dir": str(tmp_path), "project_id": "synthetic", "graph_project_id": load_graph_project_id(tmp_path)})
     for phase, producer in [("characters", generate_character_sheets), ("global", generate_global_outline), ("acts", generate_act_outlines), ("chapters", generate_all_chapter_outlines), ("catalog", materialize_initialization_catalog), ("relationships", extract_outline_relationships)]:
         result = await producer(state)
-        assert not result.get("last_error"), result
+        assert not result.get("last_error"), (phase, result)
         state.update(result)
     snapshot = select_snapshot(state)
     catalog = select_catalog(state)
@@ -140,8 +140,8 @@ async def test_actual_producers_admit_complete_frozen_plan(tmp_path: Path, monke
         assert sum(allocate_word_target(target, 3, number) for number in range(1, 4)) == target
 
 
+@pytest.mark.run_settings(GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT=False)
 async def test_disabled_upfront_outlines_fail_before_unsupported_admission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "settings", config.settings.model_copy(update={"GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT": False}))
     result = await generate_all_chapter_outlines({"project_dir": str(tmp_path), "total_chapters": 2})
     assert result.get("has_fatal_error") is True
     assert result["initialization_step"] == "all_chapter_outlines_failed"

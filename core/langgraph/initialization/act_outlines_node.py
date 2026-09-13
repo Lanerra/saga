@@ -9,6 +9,7 @@ global outline when present, otherwise a balanced fallback allocation is used.
 from __future__ import annotations
 
 import json
+
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -20,7 +21,6 @@ from core.langgraph.content_manager import (
     require_project_dir,
 )
 from core.langgraph.initialization.chapter_allocation import choose_act_ranges
-
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt

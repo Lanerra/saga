@@ -90,8 +90,6 @@ class InitializationImport:
 
     def projection_manifest(self, snapshot: InitializationSnapshot) -> str:
         from core.langgraph.initialization.catalog import EntityCatalog
-        from models.kg_models import WorldItem
-
         from core.langgraph.initialization.persist_files_node import (
             _create_directory_structure,
             _write_character_files,
@@ -102,6 +100,7 @@ class InitializationImport:
             _write_world_items_file,
             _write_world_rules_stub,
         )
+        from models.kg_models import WorldItem
 
         with TemporaryDirectory(prefix="projection-", dir=self.project_dir / self.root) as temporary:
             root = Path(temporary)

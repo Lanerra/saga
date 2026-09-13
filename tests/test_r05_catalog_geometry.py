@@ -13,8 +13,8 @@ from core.langgraph.initialization.chapter_outline_node import _generate_single_
 from core.langgraph.initialization.commit_init_node import _parse_world_items_extraction
 from core.langgraph.initialization.snapshot import select_inputs
 from core.service_context import get_services
-from tests.test_staged_initialization import example_state
 from tests.test_r05_initialization_contracts import chapter_response
+from tests.test_staged_initialization import example_state
 
 
 @pytest.mark.parametrize("case", ["missing_character", "changed_character", "missing_event", "wrong_scene"])
