@@ -15,9 +15,12 @@ from prompts import prompt_data_getters
 @pytest.fixture(autouse=True)
 def reset_cache() -> Iterator[None]:
     """Reset the context cache before each test."""
+    configuration_keys = {"KG_PREPOPULATION_CHAPTER_NUM", "DEFAULT_PROTAGONIST_NAME"}
+    original_configuration = {key: value for key, value in vars(config).items() if key in configuration_keys}
     prompt_data_getters.clear_context_cache()
     yield
     prompt_data_getters.clear_context_cache()
+    assert {key: value for key, value in vars(config).items() if key in configuration_keys} == original_configuration
 
 
 class TestCacheManagement:

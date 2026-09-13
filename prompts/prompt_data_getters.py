@@ -175,7 +175,8 @@ def _format_dict_for_plain_text_prompt(data: dict[str, Any], indent_level: int =
     Notes:
         Some internal bookkeeping keys are omitted (for example,
         `source_quality_chapter_*` and `updated_in_chapter_*`) to keep snippets
-        concise for prompting.
+        concise for prompting. Entity embedding vectors and their index metadata
+        are omitted at every mapping depth, without changing the source data.
     """
     lines = []
     indent = "  " * indent_level
@@ -205,7 +206,22 @@ def _format_dict_for_plain_text_prompt(data: dict[str, Any], indent_level: int =
     remaining_keys = sorted([k for k in data_keys if k not in priority_keys])
     sorted_keys.extend(remaining_keys)
 
+    # Persistence permits configured property names; retain the native exclusions
+    # for profiles carrying fields from an earlier configuration as well.
+    storage_only_keys = {
+        "entity_embedding_vector",
+        "entity_embedding_text_hash",
+        "entity_embedding_model",
+        "entity_embedding_model_identity",
+        config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+        config.ENTITY_EMBEDDING_TEXT_HASH_PROPERTY,
+        config.ENTITY_EMBEDDING_MODEL_PROPERTY,
+        f"{config.ENTITY_EMBEDDING_MODEL_PROPERTY}_identity",
+    }
+
     for key in sorted_keys:
+        if key in storage_only_keys:
+            continue
         value = data[key]
 
         if key.startswith(("source_quality_chapter_", "updated_in_chapter_", "added_in_chapter_")) and key not in ["prompt_notes"]:
