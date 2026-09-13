@@ -20,6 +20,7 @@ from core.langgraph.content_manager import (
     require_project_dir,
     save_chapter_plan,
 )
+from core.langgraph.initialization.catalog import select_catalog
 from core.langgraph.state import NarrativeState
 from core.project_config import allocate_word_target
 from core.service_context import get_services
@@ -153,6 +154,7 @@ def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, An
 async def _ensure_scene_characters_exist(
     chapter_plan: list[dict],
     chapter_number: int,
+    *, eligible_characters: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Ensure all characters referenced by the plan exist in Neo4j.
 
@@ -172,7 +174,7 @@ async def _ensure_scene_characters_exist(
     for scene in chapter_plan:
         chars = scene["characters"]
         for char in chars:
-            clean_name = normalize_entity_name(char)
+            clean_name = char if eligible_characters is not None else normalize_entity_name(char)
             if clean_name:
                 scene_characters.add(clean_name)
 
@@ -208,8 +210,11 @@ async def _ensure_scene_characters_exist(
 
     stub_profiles = []
     for char_name in new_characters:
+        if eligible_characters is not None and char_name not in eligible_characters:
+            raise ValueError("New character requires explicit upstream admission before provisional graph creation")
         stub = CharacterProfile(
             name=char_name,
+            id=eligible_characters[char_name]["id"] if eligible_characters is not None else "",
             personality_description=f"Character appearing in chapter {chapter_number}. Role and background to be developed through narrative.",
             traits=["to_be_developed"],  # Marker trait for provisional characters
             relationships={},
@@ -289,6 +294,8 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
             state.get("total_chapters", config.TOTAL_CHAPTERS),
             chapter_number,
         )
+        catalog = select_catalog(state, retained_chapter_outline=True)
+        eligible_characters = {candidate["name"]: candidate for candidate in catalog.candidates("Character")}
         requested_scenes = config.TARGET_SCENES_MIN
         if type(requested_scenes) is not int or requested_scenes < 1:
             raise ValueError("Requested scene count must be a positive integer")
@@ -307,6 +314,11 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
                 "outline": outline,
                 "num_scenes": number_of_scenes,
             },
+        )
+        base_prompt += (
+            "\n\nELIGIBLE PLANNED CHARACTER IDENTITIES (JSON): " + compact_json(list(eligible_characters.values()))
+            + "\nUse only these exact names for characters and pov_character. Do not invent or rename characters. "
+            "Novel identities require explicit upstream admission before planning; provisional graph stubs do not admit names."
         )
         base_prompt += (
             f"\n\nExact admission requirements: Return exactly {number_of_scenes} scenes. "
@@ -338,6 +350,9 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
                     raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} expected exactly {number_of_scenes} scenes, got {len(scenes_untyped)}.")
                 if [beat for scene in scenes_untyped for beat in scene["beats"]] != selected_beats:
                     raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} scene beats must form an ordered exhaustive partition of selected chapter key_beats, including duplicates.")
+                for scene in scenes_untyped:
+                    if any(name not in eligible_characters for name in [*scene["characters"], scene["pov_character"]]):
+                        raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} novel character requires explicit upstream admission before planning.")
                 parsed_successfully = True
                 break
             except ValueError as e:
@@ -359,7 +374,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
 
         logger.info("plan_scenes: successfully planned scenes", count=len(scenes))
 
-        await _ensure_scene_characters_exist(scenes_untyped, chapter_number)
+        await _ensure_scene_characters_exist(scenes_untyped, chapter_number, eligible_characters=eligible_characters)
 
         content_manager = ContentManager(require_project_dir(state))
 

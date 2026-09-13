@@ -21,7 +21,7 @@ import structlog
 import config
 from core.exceptions import LLMServiceError
 from core.langgraph.chapter_lifecycle import extraction_binding
-from core.langgraph.content_manager import ContentManager, get_scene_drafts, require_project_dir
+from core.langgraph.content_manager import ContentManager, get_chapter_plan, get_scene_drafts, require_project_dir
 from core.langgraph.initialization.catalog import EntityCatalog, select_catalog
 from core.langgraph.nodes.scene_extraction_normalization import consolidate_scene_extractions
 from core.langgraph.nodes.scene_extraction_parsing import (
@@ -35,6 +35,7 @@ from core.langgraph.nodes.scene_extraction_parsing import (
 from core.langgraph.nodes.scene_extraction_validation import (
     _validate_entity_with_spacy,
     scene_identity_candidates,
+    scene_name_authority,
 )
 from core.langgraph.state import NarrativeState, SceneExtractionOutcome, SceneExtractionType
 from core.service_context import get_services
@@ -182,7 +183,8 @@ async def _extract_characters_from_scene(
             max_attempts=2,
         )
 
-        parsed = parse_character_updates(data, scene_index, chapter_number)
+        with scene_name_authority(candidates):
+            parsed = parse_character_updates(data, scene_index, chapter_number)
 
         characters: list[dict[str, Any]] = []
         for name, info in parsed:
@@ -289,7 +291,8 @@ async def _extract_locations_from_scene(
             max_attempts=2,
         )
 
-        parsed = parse_world_updates(data, "Location", scene_index, chapter_number)
+        with scene_name_authority(candidates):
+            parsed = parse_world_updates(data, "Location", scene_index, chapter_number)
 
         locations: list[dict[str, Any]] = []
         for name, info in parsed:
@@ -393,7 +396,8 @@ async def _extract_events_from_scene(
             max_attempts=2,
         )
 
-        parsed = parse_world_updates(data, "Event", scene_index, chapter_number)
+        with scene_name_authority(candidates):
+            parsed = parse_world_updates(data, "Event", scene_index, chapter_number)
 
         events: list[dict[str, Any]] = []
         for name, info in parsed:
@@ -501,11 +505,13 @@ async def _extract_relationships_from_scene(
             response_format=SceneRelationships.response_format(candidates),
         )
 
-        parsed = parse_kg_triples(data, scene_index, chapter_number)
+        with scene_name_authority(candidates):
+            parsed = parse_kg_triples(data, scene_index, chapter_number)
 
         relationships: list[dict[str, Any]] = []
         for triple in parsed:
-            subject_text, target_text, predicate_text, description = normalize_triple_entities(triple)
+            with scene_name_authority(candidates):
+                subject_text, target_text, predicate_text, description = normalize_triple_entities(triple)
 
             subject_validated = _validate_entity_with_spacy(scene_text, subject_text, candidates)
             target_validated = _validate_entity_with_spacy(scene_text, target_text, candidates)
@@ -599,7 +605,11 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         planned_count = state.get("chapter_plan_scene_count", 0)
         if planned_count > 0 and len(scene_drafts) != planned_count:
             raise ValueError(f"Expected {planned_count} scene drafts, received {len(scene_drafts)}")
-        catalog = select_catalog(state)
+        catalog = select_catalog(state, retained_chapter_outline=True)
+        admitted_characters = {candidate["name"] for candidate in catalog.candidates("Character")}
+        for scene in get_chapter_plan(state, content_manager):
+            if any(name not in admitted_characters for name in scene["characters"]):
+                raise ValueError("Planned character requires explicit upstream admission to the initialization identity authority; provisional graph stubs are not admission")
     except Exception as e:
         error_msg = f"Failed to load scene extraction inputs: {e}"
         logger.error("extract_from_scenes: fatal error", error=error_msg)

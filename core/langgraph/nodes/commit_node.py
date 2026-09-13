@@ -797,6 +797,10 @@ async def _build_relationship_statements(
         # `char_mappings` canonicalizes character names for consistent relationship endpoints.
         source_name = char_mappings.get(rel.source_name, rel.source_name)
         target_name = char_mappings.get(rel.target_name, rel.target_name)
+        if (rel.source_id is not None and source_name != rel.source_name) or (rel.target_id is not None and target_name != rel.target_name):
+            raise ValueError("Explicit relationship identity cannot authorize a name alias")
+        if rel.chapter != chapter:
+            raise ValueError("Relationship chapter conflicts with commit chapter")
 
         # Use explicit types from relationship if available (from parsing "Type:Name" format)
         # Otherwise _make_entity_dict will fall back to entity_type_map
@@ -808,7 +812,7 @@ async def _build_relationship_statements(
                 name=source_name,
                 original_name=rel.source_name,
                 explicit_type=source_type,
-                stable_id=None,
+                stable_id=rel.source_id,
                 relationship_type=rel.relationship_type,
                 role="source",
             ),
@@ -817,7 +821,7 @@ async def _build_relationship_statements(
                 name=target_name,
                 original_name=rel.target_name,
                 explicit_type=target_type,
-                stable_id=None,
+                stable_id=rel.target_id,
                 relationship_type=rel.relationship_type,
                 role="target",
             ),
@@ -825,6 +829,8 @@ async def _build_relationship_statements(
             "description": rel.description,
             "confidence": rel.confidence,
             "chapter_added": chapter,
+            "scene_index": rel.scene_index,
+            "scene_assertions": rel.scene_assertions,
         }
 
         structured_triples.append(triple)
@@ -878,6 +884,7 @@ async def _build_relationship_statements(
                 {"name": object_name, "type": object_label, "id": object_id},
                 chapter, origin=triple.get("assertion_origin", "chapter_extraction"), provisional=is_from_flawed_draft,
                 confidence=triple.get("confidence", 1.0), description=triple.get("description", ""),
+                scene_index=triple.get("scene_index"), scene_assertions=triple.get("scene_assertions"),
             )
 
             logger.debug(

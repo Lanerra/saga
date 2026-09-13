@@ -8,7 +8,9 @@ isolated, avoiding eager spaCy model loading at import time.
 from __future__ import annotations
 
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -22,6 +24,17 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 _text_processing_service: TextProcessingService | None = None
+_authorized_scene_names: ContextVar[frozenset[str]] = ContextVar("authorized_scene_names", default=frozenset())
+
+
+@contextmanager
+def scene_name_authority(eligible_names: Collection[str]) -> Iterator[None]:
+    """Scope parser lexical admission to names selected from verified scene candidates."""
+    token = _authorized_scene_names.set(frozenset(eligible_names))
+    try:
+        yield
+    finally:
+        _authorized_scene_names.reset(token)
 
 
 def _get_text_processing_service() -> TextProcessingService:
@@ -44,6 +57,8 @@ def validate_lexical_entity_name(entity_name: str) -> str:
     """
     if not isinstance(entity_name, str) or not entity_name or entity_name != entity_name.strip():
         raise ValueError("Entity name must be an exact nonblank name")
+    if entity_name in _authorized_scene_names.get():
+        return entity_name
     words = entity_name.split()
     content = words[1:] if words[0].casefold() in {"the", "a", "an"} else words
     descriptor = " ".join(content).casefold()
@@ -71,7 +86,8 @@ def validate_named_entity(entity_name: str, eligible_names: Collection[str] = ()
     Production eligibility comes from the selected catalog, not from a relationship
     response or statistical name guessing. Missing context authorizes no names.
     """
-    validate_lexical_entity_name(entity_name)
+    if not isinstance(entity_name, str) or not entity_name or entity_name != entity_name.strip():
+        raise ValueError("Entity name must be an exact nonblank name")
     if entity_name not in eligible_names:
         raise ValueError("Entity name is not an eligible scene identity")
     return entity_name

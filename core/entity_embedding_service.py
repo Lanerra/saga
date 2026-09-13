@@ -133,7 +133,7 @@ async def build_entity_embedding_update_statements(
         OPTIONAL MATCH (candidate)
         WHERE entity.label IN labels(candidate)
           AND CASE WHEN entity.id IS NOT NULL THEN candidate.id = entity.id
-                   ELSE toLower(trim(candidate.name)) = toLower(trim(entity.name)) END
+                   ELSE candidate.name = entity.name END
         WITH entity, collect(candidate) AS candidates
     """
     query = f"""

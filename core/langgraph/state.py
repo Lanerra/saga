@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Import settings for model configuration
 import config
@@ -69,8 +69,39 @@ class ExtractedRelationship(BaseModel):
     confidence: float = 0.8
     source_type: str | None = None
     target_type: str | None = None
+    source_id: str | None = Field(default=None, strict=True)
+    target_id: str | None = Field(default=None, strict=True)
+    scene_index: int | None = Field(default=None, ge=0, strict=True)
+    scene_assertions: list[dict[str, Any]] | None = None
 
-    model_config = ConfigDict(frozen=False, validate_assignment=True)
+    @field_validator("source_id", "target_id")
+    @classmethod
+    def exact_identity(cls, value: str | None) -> str | None:
+        if value is not None and (not value or value != value.strip()):
+            raise ValueError("Explicit relationship ID must be an exact nonblank string")
+        return value
+
+    @model_validator(mode="after")
+    def validate_scene_assertions(self) -> ExtractedRelationship:
+        if self.scene_assertions is None:
+            return self
+        if not self.scene_assertions or self.scene_index is None:
+            raise ValueError("Scene assertions require a nonempty history and selected scene_index")
+        parent = self.model_dump(exclude={"scene_assertions"})
+        previous_index = -1
+        for assertion in self.scene_assertions:
+            if "scene_index" not in assertion or "description" not in assertion or "scene_assertions" in assertion:
+                raise ValueError("Scene assertion requires scene_index and description without nested history")
+            for field in ("source_id", "target_id", "source_name", "target_name", "source_type", "target_type", "relationship_type", "chapter"):
+                if field in assertion and assertion[field] != parent[field]:
+                    raise ValueError("Scene assertion conflicts with relationship identity or chapter")
+            validated = ExtractedRelationship(**{**parent, **assertion})
+            if validated.scene_index is None or not previous_index <= validated.scene_index <= self.scene_index:
+                raise ValueError("Scene assertions must be chronological and not later than the selected scene")
+            previous_index = validated.scene_index
+        return self
+
+    model_config = ConfigDict(frozen=False, validate_assignment=True, extra="forbid")
 
 
 class Contradiction(BaseModel):

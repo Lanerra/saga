@@ -13,6 +13,7 @@ Notes:
           allowlist/pattern (for example, `[A-Z0-9_]+`) upstream to prevent schema drift.
 """
 
+import json
 from typing import TYPE_CHECKING, Any
 
 from models.kg_constants import WORLD_ITEM_CANONICAL_LABELS
@@ -35,16 +36,26 @@ def canonical_entity_cypher(variable: str, label: str, name: str, identifier: st
         CALL apoc.util.validate(
             NOT entity_label IN ['Character', 'Location', 'Item', 'Event']
             OR entity_name IS NULL OR trim(entity_name) = ''
-            OR (supplied_id IS NOT NULL AND trim(supplied_id) = ''),
+            OR (supplied_id IS NOT NULL AND (trim(supplied_id) = '' OR trim(supplied_id) <> supplied_id)),
             'Invalid canonical entity', [])
         WITH entity_label, entity_name, supplied_id
         OPTIONAL MATCH (candidate)
-        WHERE entity_label IN labels(candidate)
-          AND CASE WHEN supplied_id IS NOT NULL THEN candidate.id = supplied_id
-                   ELSE candidate.name = entity_name END
+        WHERE CASE WHEN supplied_id IS NOT NULL THEN candidate.id = supplied_id
+                   ELSE entity_label IN labels(candidate) AND candidate.name = entity_name END
         WITH entity_label, entity_name, supplied_id, collect(candidate) AS candidates
         CALL apoc.util.validate(size(candidates) > 1, 'Ambiguous canonical entity', [])
         WITH entity_label, entity_name, supplied_id, head(candidates) AS found
+        CALL apoc.util.validate(found IS NOT NULL AND
+            (NOT entity_label IN labels(found) OR found.name IS NULL OR found.name <> entity_name),
+            'Explicit canonical identity conflicts with label or name', [])
+        WITH entity_label, entity_name, supplied_id, found
+        OPTIONAL MATCH (named)
+        WHERE entity_label IN labels(named) AND named.name = entity_name
+        WITH entity_label, entity_name, supplied_id, found, collect(named) AS named_candidates
+        CALL apoc.util.validate(supplied_id IS NOT NULL AND
+            any(named IN named_candidates WHERE named.id IS NULL OR named.id <> supplied_id),
+            'Explicit canonical identity conflicts with existing name', [])
+        WITH entity_label, entity_name, supplied_id, found
         CALL apoc.util.validate(found IS NOT NULL AND (found.id IS NULL OR found.id = ''),
                                 'Canonical entity has no stable ID', [])
         WITH entity_label, entity_name,
@@ -90,6 +101,7 @@ def relationship_statement(
     subject: dict[str, Any], predicate: str, target: dict[str, Any], chapter: int,
     *, origin: str, provisional: bool, description: str = "", confidence: float = 1.0,
     literal: bool = False,
+    scene_index: int | None = None, scene_assertions: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Shared extracted/imported relationship writer; values remain query parameters."""
     from data_access.kg_queries import validate_relationship_type_for_cypher_interpolation
@@ -101,12 +113,19 @@ def relationship_statement(
         if not isinstance(entity.get("name"), str) or not entity["name"].strip():
             raise ValueError("Invalid canonical entity name")
         identifier = entity.get("id")
-        if identifier is not None and (not isinstance(identifier, str) or not identifier.strip()):
+        if identifier is not None and (not isinstance(identifier, str) or not identifier or identifier != identifier.strip()):
             raise ValueError("Invalid canonical entity ID")
     if origin not in {"chapter_extraction", "chapter_profile", "import", "profile"}:
         raise ValueError("Invalid assertion origin")
     if type(chapter) is not int or chapter < 0:
         raise ValueError("Invalid assertion chapter")
+    scene_properties: dict[str, Any] = {}
+    if scene_index is not None:
+        if type(scene_index) is not int or scene_index < 0:
+            raise ValueError("Invalid assertion scene_index")
+        scene_properties["scene_index"] = scene_index
+    if scene_assertions is not None:
+        scene_properties["scene_assertions"] = json.dumps(scene_assertions, ensure_ascii=False, allow_nan=False)
     query = canonical_entity_cypher("s", "$subject_label", "$subject_name", "$subject_id", "$chapter")
     if literal:
         query += """
@@ -123,8 +142,46 @@ def relationship_statement(
         "object_label": target.get("type"), "object_name": target.get("name"), "object_id": target.get("id"),
         "object_value": target.get("value"), "predicate_clean": predicate, "chapter": chapter, "assertion_origin": origin,
         "relationship_properties": {"type": predicate, "is_provisional": provisional, "description": description,
-                                    "confidence": confidence, "source_profile_managed": origin in {"profile", "chapter_profile"}},
+                                    "confidence": confidence, "source_profile_managed": origin in {"profile", "chapter_profile"}, **scene_properties},
     }
+
+
+def _profile_relationship_data(relationships: dict[str, Any], chapter: int, origin: str, default_label: str) -> list[dict[str, Any]]:
+    """Expand the reader's single-dict-or-list projection without changing identity or occurrences."""
+    from data_access.kg_queries import validate_relationship_type_for_cypher_interpolation
+
+    rows = []
+    for name, projection in relationships.items():
+        if not isinstance(name, str) or not name or name != name.strip():
+            raise ValueError("Relationship target requires an exact nonblank name")
+        records = [projection] if isinstance(projection, dict) else projection
+        if not isinstance(records, list) or not records or not all(isinstance(record, dict) for record in records):
+            raise ValueError("Profile relationship must be a dictionary or nonempty list of dictionaries")
+        for record in records:
+            predicate = validate_relationship_type_for_cypher_interpolation(record.get("type"))
+            description = record.get("description", "")
+            if not isinstance(description, str):
+                raise ValueError("Relationship description must be a string")
+            identifier = record.get("target_id")
+            if identifier is not None and (not isinstance(identifier, str) or not identifier or identifier != identifier.strip()):
+                raise ValueError("Relationship target ID must be an exact nonblank string")
+            label = record.get("target_label", default_label)
+            if label not in {"Character", "Location", "Item", "Event"}:
+                raise ValueError("Invalid relationship target label")
+            assertion_chapter = record.get("chapter_added", chapter)
+            assertion_origin = record.get("assertion_origin", origin)
+            if type(assertion_chapter) is not int or assertion_chapter < 0:
+                raise ValueError("Invalid relationship chapter")
+            if assertion_origin not in {"profile", "chapter_profile", "chapter_extraction", "import"}:
+                raise ValueError("Invalid relationship assertion origin")
+            properties = {key: value for key, value in record.items() if key not in {
+                "target_id", "target_label", "chapter_added", "assertion_origin", "id", "fact_id", "created_ts", "updated_ts",
+            }}
+            properties.update(type=predicate, description=description, source_profile_managed=assertion_origin in {"profile", "chapter_profile"})
+            rows.append({"target_name": name, "target_id": identifier, "target_label": label,
+                         "rel_type": predicate, "description": description, "chapter_added": assertion_chapter,
+                         "assertion_origin": assertion_origin, "properties": properties})
+    return rows
 
 
 class NativeCypherBuilder:
@@ -176,7 +233,7 @@ class NativeCypherBuilder:
                 Relationship targets are merged as `:Character` by name. When the target does
                 not exist, a provisional stub node is created with `is_provisional=true`.
         """
-        cypher = canonical_entity_cypher("c", "'Character'", "$name", "$id", "$chapter_number")
+        cypher = canonical_entity_cypher("c", "'Character'", "$name", "$id", "$created_chapter")
         cypher += """
         SET c.personality_description = $description,
             c.status = $status,
@@ -196,36 +253,16 @@ class NativeCypherBuilder:
         CALL (c) {
             UNWIND $relationship_data AS rel_data
         """
-        cypher += canonical_entity_cypher("other", "'Character'", "rel_data.target_name", "rel_data.target_id", "$chapter_number", scope="rel_data")
-        cypher += assertion_cypher("c", "other", "rel_data.rel_type", "$chapter_number", "$assertion_origin",
-                                   "{description: rel_data.description, source_profile_managed: true, type: rel_data.rel_type}")
+        cypher += canonical_entity_cypher("other", "rel_data.target_label", "rel_data.target_name", "rel_data.target_id", "$chapter_number", scope="rel_data")
+        cypher += assertion_cypher("c", "other", "rel_data.rel_type", "rel_data.chapter_added", "rel_data.assertion_origin", "rel_data.properties")
         cypher += "} RETURN c.name as updated_character"
 
-        # Process relationships for batch operations
-        relationship_data = []
-        for target_name, rel_info in char.relationships.items():
-            if not isinstance(rel_info, dict):
-                raise ValueError(f"Relationship data for {char.name} -> {target_name} must be a dict " f"with 'type' and 'description' keys, got {type(rel_info).__name__}")
-            rel_type_raw = rel_info.get("type", "")
-            rel_desc = rel_info.get("description", "")
-
-            rel_type = str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
-            if not rel_type:
-                continue
-
-            relationship_data.append(
-                {
-                    "target_name": target_name,
-                    "rel_type": rel_type,
-                    "target_id": rel_info.get("target_id"),
-                    "description": rel_desc,
-                }
-            )
+        relationship_data = _profile_relationship_data(char.relationships, chapter_number, assertion_origin, "Character")
 
         # Process traits - filter out empty strings
         trait_data = [t.strip() for t in char.traits if t and t.strip()]
 
-        params = {
+        params: dict[str, Any] = {
             "name": char.name,
             "domain_properties": char.model_dump(
                 include={"motivations", "background", "skills", "internal_conflict", "is_protagonist", "physical_description"},
@@ -236,12 +273,14 @@ class NativeCypherBuilder:
             "status": char.status,
             "id": char.id or None,
             "assertion_origin": assertion_origin,
-            "created_chapter": char.created_chapter or chapter_number,
+            "created_chapter": char.created_chapter,
             "is_provisional": char.is_provisional,
             "chapter_number": chapter_number,
             "relationship_data": relationship_data,
         }
 
+        if "scene_assertions" in char.updates:
+            params["domain_properties"]["scene_assertions"] = json.dumps(char.updates["scene_assertions"], ensure_ascii=False, allow_nan=False)
         return cypher, params
 
     @staticmethod
@@ -284,7 +323,7 @@ class NativeCypherBuilder:
         # Build a safe labels clause. In Cypher, labels are colon-separated with no commas.
         # Removed implicit Entity label inheritance
 
-        cypher = canonical_entity_cypher("w", "$primary_label", "$name", "$id", "$chapter_number")
+        cypher = canonical_entity_cypher("w", "$primary_label", "$name", "$id", "$created_chapter")
         cypher += """
         SET
             w.category = $category,
@@ -307,48 +346,11 @@ class NativeCypherBuilder:
         CALL (w) {
             UNWIND $relationship_data AS rel_data
         """
-        cypher += canonical_entity_cypher("other", "coalesce(rel_data.target_label, 'Item')", "rel_data.target_name", "rel_data.target_id", "$chapter_number", scope="rel_data")
-        cypher += assertion_cypher("w", "other", "rel_data.rel_type", "$chapter_number", "$assertion_origin",
-                                   "{description: rel_data.description, source_profile_managed: true, type: rel_data.rel_type}")
+        cypher += canonical_entity_cypher("other", "rel_data.target_label", "rel_data.target_name", "rel_data.target_id", "$chapter_number", scope="rel_data")
+        cypher += assertion_cypher("w", "other", "rel_data.rel_type", "rel_data.chapter_added", "rel_data.assertion_origin", "rel_data.properties")
         cypher += "} RETURN w.id as updated_world_item"
 
-        # Process relationships for batch operations
-        relationship_data = []
-        for target_name, rel_info in item.relationships.items():
-            target_label: str | None = None
-            target_id: str | None = None
-
-            if isinstance(rel_info, dict):
-                rel_type_raw = rel_info.get("type", "RELATED_TO")
-                rel_desc = rel_info.get("description", "")
-
-                # Optional per-relationship target typing / identity (Option A).
-                # These are validated/allowlisted at query time.
-                target_label_raw = rel_info.get("target_label")
-                target_id_raw = rel_info.get("target_id")
-
-                if target_label_raw:
-                    target_label = str(target_label_raw).strip().capitalize() or None
-                if target_id_raw:
-                    target_id = str(target_id_raw).strip() or None
-            else:
-                rel_type_raw = "RELATED_TO"
-                rel_desc = str(rel_info) if rel_info else ""
-
-            # Normalize relationship type for consistent storage and querying.
-            rel_type = str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
-            if not rel_type:
-                rel_type = "RELATED_TO"
-
-            relationship_data.append(
-                {
-                    "target_name": target_name,
-                    "target_label": target_label,
-                    "target_id": target_id,
-                    "rel_type": rel_type,
-                    "description": rel_desc,
-                }
-            )
+        relationship_data = _profile_relationship_data(item.relationships, chapter_number, assertion_origin, "Item")
 
         # Process traits - filter out empty strings
         trait_data = [t.strip() for t in item.traits if t and t.strip()]
@@ -364,7 +366,7 @@ class NativeCypherBuilder:
             "rules": item.rules,
             "key_elements": item.key_elements,
             "trait_data": trait_data,  # List of trait names for FOREACH
-            "created_chapter": item.created_chapter or chapter_number,
+            "created_chapter": item.created_chapter,
             "is_provisional": item.is_provisional,
             "chapter_number": chapter_number,
             "additional_props": flattened_additional_props,  # Flattened to ensure primitive types

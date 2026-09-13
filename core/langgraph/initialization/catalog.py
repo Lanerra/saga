@@ -204,14 +204,20 @@ def materialize_entities(inputs: InitializationSnapshot, world_items: list[World
     return EntityCatalog(inputs=inputs, entities=tuple(entities), evidence=evidence)
 
 
-def select_catalog(state: NarrativeState) -> EntityCatalog:
+def select_catalog(state: NarrativeState, *, retained_chapter_outline: bool = False) -> EntityCatalog:
     reference = state.get("initialization_catalog_ref")
     require(isinstance(reference, dict), "Initialization requires selected initialization_catalog_ref; unfrozen legacy v1 initialization cannot resume as v2; preserve it and start a separate project")
     assert reference is not None
     require(reference["content_type"] == CATALOG_ARTIFACT and reference["version"] == 2, "Expected initialization catalog version 2")
     manager = ContentManager(state["project_dir"])
     catalog = EntityCatalog.model_validate_json(manager.load_text_strict(reference))
-    catalog.verify_inputs(select_inputs(state))
+    selected = state
+    if retained_chapter_outline:
+        # Generation enriches the outline projection, not the initialization authority.
+        # select_inputs reopens/checksums the retained source in the current project.
+        outline = next(artifact for artifact in catalog.inputs.artifacts if artifact.content_type == "chapter_outlines")
+        selected = {**state, "chapter_outlines_ref": outline.reference()}
+    catalog.verify_inputs(select_inputs(selected))
     return catalog
 
 
