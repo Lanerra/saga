@@ -34,7 +34,7 @@ from core.langgraph.content_manager import (
 from core.langgraph.nodes.validation_node import (
     validate_consistency as original_validate_consistency,
 )
-from core.langgraph.quality_policy import SCORE_FIELDS, record_check
+from core.langgraph.quality_policy import SCORE_FIELDS, policy_for, record_check
 from core.langgraph.state import Contradiction, NarrativeState
 from core.langgraph.subgraphs._shared import _should_continue_or_error
 from core.service_context import get_services
@@ -144,7 +144,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
             tone=scores.get("tone_consistency_score"),
         )
 
-        min_quality_threshold = config.MIN_QUALITY_THRESHOLD
+        min_quality_threshold = policy_for(state).minimum_score if state.get("quality_policy") else config.MIN_QUALITY_THRESHOLD
         quality_scores = [
             scores.get("coherence_score", 0.0),
             scores.get("prose_quality_score", 0.0),

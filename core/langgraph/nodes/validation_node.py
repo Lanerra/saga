@@ -21,8 +21,9 @@ from typing import Any
 import structlog
 
 import config
-from core.langgraph.quality_policy import configured_policy, record_check
+from core.langgraph.quality_policy import configured_policy, policy_for, record_check
 from core.langgraph.state import Contradiction, NarrativeState
+from core.project_config import allocate_word_target
 from data_access.validation_queries import fetch_prior_accepted_facts, get_candidate_relationship_assertions
 from models.kg_constants import CONTRADICTORY_TRAIT_PAIRS
 
@@ -121,8 +122,8 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         Relationship validation is permissive by default and does not block writes;
         revision decisions are driven by contradiction severity and plot stagnation.
     """
-    # Check if validation is disabled
-    if not config.settings.validation.ENABLE_VALIDATION:
+    policy_state: NarrativeState = {**state, "quality_policy": state.get("quality_policy") or configured_policy()}
+    if not policy_for(policy_state).consistency_enabled:
         logger.info("validate_consistency: validation disabled, skipping all checks")
         return {
             "contradictions": [],
@@ -442,6 +443,9 @@ def _is_plot_stagnant(
     # Check 1: Minimum word count
     word_count = state.get("draft_word_count", 0)
     minimum = config.settings.PLOT_STAGNATION_MIN_WORD_COUNT
+    if "target_word_count" in state:
+        chapter_target = allocate_word_target(state["target_word_count"], state["total_chapters"], state.get("current_chapter", 1))
+        minimum = min(minimum, chapter_target)
     if word_count < minimum:
         logger.debug(
             "_is_plot_stagnant: insufficient word count",

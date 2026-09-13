@@ -30,6 +30,7 @@ from core.project_config import NarrativeProjectConfig
 from core.service_context import RunServices, get_services, service_lifetime
 from data_access import chapter_queries
 from ui.rich_display import RichDisplayManager
+from utils.file_io import ContainedFiles
 
 logger = structlog.get_logger(__name__)
 
@@ -640,17 +641,18 @@ class LangGraphOrchestrator:
         return f"saga_{safe_project_id}"
 
     def _get_requested_project_id(self) -> str:
-        saga_path = self.project_dir / "saga.yaml"
-        if saga_path.exists():
+        files = ContainedFiles(self.project_dir)
+        if files.exists("saga.yaml"):
             try:
-                data = yaml.safe_load(saga_path.read_text(encoding="utf-8"))
-            except Exception:
-                data = None
-
-            if isinstance(data, dict):
-                value = data.get("project_id")
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
+                data = yaml.safe_load(files.read_bytes("saga.yaml"))
+            except yaml.YAMLError as error:
+                raise ValueError("Invalid saga.yaml project metadata") from error
+            if not isinstance(data, dict):
+                raise ValueError("saga.yaml must contain project metadata")
+            value = data.get("project_id")
+            if not isinstance(value, str) or not value or value != value.strip():
+                raise ValueError("saga.yaml project_id must be a nonempty string without surrounding whitespace")
+            return value
 
         project_dir_name = self.project_dir.name.strip()
         if not project_dir_name:
@@ -714,6 +716,10 @@ class LangGraphOrchestrator:
         checkpoint_project_id = checkpoint_state.get("project_id")
         if checkpoint_project_id != requested_project_id:
             raise CheckpointResumeConflictError(f"Resume conflict: checkpoint project_id '{checkpoint_project_id}' does not match requested project_id '{requested_project_id}'")
+
+        checkpoint_directory = checkpoint_state.get("project_dir")
+        if not isinstance(checkpoint_directory, str) or not checkpoint_directory.strip() or Path(checkpoint_directory).absolute() != self.project_dir.absolute():
+            raise CheckpointResumeConflictError("Resume conflict: checkpoint project_dir does not match the requested project directory")
 
         current_chapter = checkpoint_state.get("current_chapter")
         if not isinstance(current_chapter, int) or isinstance(current_chapter, bool) or current_chapter <= 0:

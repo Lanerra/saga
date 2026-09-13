@@ -174,6 +174,10 @@ async def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncIt
     )
 
     with files.exclusive_lock(checkpoint_path.name + ".writer.lock"):
+        # SQLite opens its own files, outside ContainedFiles' descriptor API.
+        # Admit every existing database/sidecar before handing over the path.
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            files.exists(checkpoint_path.name + suffix)
         async with AsyncSqliteSaver.from_conn_string(db_path) as checkpointer:
             yield checkpointer
 
@@ -192,7 +196,7 @@ def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
     init_step = state.get("initialization_step", "")
 
     # Check for failure indicators
-    if last_error or (init_step and "failed" in init_step.lower()):
+    if should_handle_error(state) == "error" or last_error or (init_step and "failed" in init_step.lower()):
         logger.error(
             "should_continue_init: initialization failed, halting workflow",
             error=last_error,
@@ -300,7 +304,7 @@ def should_continue_to_next_chapter(
     Returns:
         "continue" to advance, "end" if finished, or "error" if fatal error.
     """
-    if state.get("has_fatal_error", False):
+    if should_handle_error(state) == "error":
         return "error"
 
     current = state.get("current_chapter", 1)
@@ -556,7 +560,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
     def should_continue_after_extract(
         state: NarrativeState,
     ) -> Literal["scene_embeddings", "error"]:
-        if state.get("has_fatal_error", False):
+        if should_handle_error(state) == "error":
             return "error"
 
         return "scene_embeddings"

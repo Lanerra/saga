@@ -49,18 +49,18 @@ class ProjectManager:
 
     @classmethod
     def load_config(class_type, project_directory: Path) -> NarrativeProjectConfig:
-        config_path = project_directory / "config.json"
-        if not config_path.exists():
+        files = ContainedFiles(project_directory)
+        if not files.exists("config.json"):
             raise FileNotFoundError(f"Missing config.json in {project_directory}")
-        config_data = json.loads(config_path.read_text(encoding="utf-8"))
+        config_data = json.loads(files.read_bytes("config.json"))
         return NarrativeProjectConfig.model_validate(config_data)
 
     @classmethod
     def load_candidate_config(class_type, project_directory: Path) -> NarrativeProjectConfig:
-        config_path = project_directory / "config.candidate.json"
-        if not config_path.exists():
+        files = ContainedFiles(project_directory)
+        if not files.exists("config.candidate.json"):
             raise FileNotFoundError(f"Missing config.candidate.json in {project_directory}")
-        config_data = json.loads(config_path.read_text(encoding="utf-8"))
+        config_data = json.loads(files.read_bytes("config.candidate.json"))
         return NarrativeProjectConfig.model_validate(config_data)
 
     @classmethod
