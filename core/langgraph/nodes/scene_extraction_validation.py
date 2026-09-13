@@ -116,6 +116,8 @@ def scene_identity_candidates(catalog: EntityCatalog | None, scene_text: str) ->
     """
     if catalog is None:
         raise ValueError("Scene extraction requires an eligible identity catalog")
+    if not scene_text.strip():
+        raise ValueError("Scene text must not be blank")
     candidates: dict[str, dict[str, Any]] = {}
     for candidate in catalog.candidates("Character", "Location", "Item", "Event"):
         name = candidate["name"]

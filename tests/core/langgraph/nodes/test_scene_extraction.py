@@ -192,7 +192,7 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
     state["current_chapter"] = 1
 
     async def mock_llm(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], None]:
-        if "response_format" in kwargs:
+        if "relationship extraction" in kwargs["prompt"]:
             return {"kg_triples": []}, None
         return {"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None
 
@@ -261,9 +261,9 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
     )
 
     content_manager = ContentManager(project_dir)
-    state.update(catalog_state(Path(project_dir), characters=("Elara", "Marcus"), existing=state))
+    state.update(catalog_state(Path(project_dir), characters=("Elara", "Marcus"), locations=("Library",), events=("Arrival",), existing=state))
     state["scene_drafts_ref"] = content_manager.save_list_of_texts(
-        ["Scene 1: Elara enters the library."],
+        ["Scene 1: Elara enters the Library for Arrival."],
         "scenes",
         "chapter_1",
         1,

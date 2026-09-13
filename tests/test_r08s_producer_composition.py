@@ -46,7 +46,7 @@ async def prepare_enriched_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         manager = ContentManager(str(tmp_path))
         assert original is not None
         assert manager.load_json_strict(original)["1"]["version"] == 0
-        state["scene_drafts_ref"] = manager.save_json(["Ada visits Weather Station.", "Ada remains at Weather Station."], "scene_drafts", "chapter_1", 1)
+        state["scene_drafts_ref"] = manager.save_json(["Ada chooses to visit Weather Station.", "Ada chooses to remain at Weather Station."], "scene_drafts", "chapter_1", 1)
         state["chapter_plan_scene_count"] = 2
         return state, requests
     finally:

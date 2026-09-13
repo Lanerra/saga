@@ -499,16 +499,17 @@ def test_retained_corruption_rejected(lifecycle_example: tuple[NarrativeState, D
 async def test_real_extraction_assembly_binds_commit(lifecycle_example: tuple[NarrativeState, DriverExample], monkeypatch: pytest.MonkeyPatch) -> None:
     from core.langgraph.nodes import scene_extraction
     from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
-    from tests.test_staged_initialization import example_state as initialization_state
-    from tests.test_staged_initialization import with_catalog
+    from tests.test_r08g_catalog_fixtures import catalog_state
 
     state, _ = lifecycle_example
-    state = {**state, **with_catalog(initialization_state(Path(state["project_dir"])))}
+    state = catalog_state(Path(state["project_dir"]), characters=("Ada",), locations=("Library",), events=("Arrival",), existing=state)
+    manager = ContentManager(state["project_dir"])
+    state["scene_drafts_ref"] = manager.save_list_of_texts(["Ada returns to the Library for Arrival.\nUnicode: 雨\n"], "scenes", "chapter_1", 2)
     calls: list[str] = []
 
     async def provider(*args: Any, **kwargs: Any) -> tuple[str, dict[str, Any]]:
         calls.append("extraction")
-        if "response_format" in kwargs:
+        if "relationship extraction" in kwargs["prompt"]:
             return '{"kg_triples": []}', {}
         return '{"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}', {}
 
@@ -517,6 +518,7 @@ async def test_real_extraction_assembly_binds_commit(lifecycle_example: tuple[Na
     state = cast(NarrativeState, {**state, **await scene_extraction.extract_from_scenes(state)})
     assert state["extraction_status"] == "complete"
     assert len(calls) == 4
+    state = example_quality_state(state)
     result = await commit_to_graph(state)
     assert result["has_fatal_error"] is False
     assert result["lifecycle_phase"] == "committed"

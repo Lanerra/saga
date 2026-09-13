@@ -111,8 +111,8 @@ def invalid_response(defect: str) -> str:
 ])
 async def test_invalid_scene_relationship_blocks_persistence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defect: str) -> None:
     manager = ContentManager(str(tmp_path))
-    state: NarrativeState = catalog_state(tmp_path, characters=("Elara",), locations=("Library",))
-    state["scene_drafts_ref"] = manager.save_list_of_texts(["Elara enters the Library."], "scenes", "chapter_1", 1)
+    state: NarrativeState = catalog_state(tmp_path, characters=("Elara",), locations=("Library",), events=("Arrival",))
+    state["scene_drafts_ref"] = manager.save_list_of_texts(["Elara enters the Library for Arrival."], "scenes", "chapter_1", 1)
     replies = iter([json.dumps({"character_updates": {}}), json.dumps({"world_updates": {"Location": {}}}), json.dumps({"world_updates": {"Event": {}}}), invalid_response(defect)])
     bodies: list[dict[str, Any]] = []
 

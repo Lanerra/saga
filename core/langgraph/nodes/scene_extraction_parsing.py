@@ -60,6 +60,38 @@ class SceneRelationships(BaseModel):
         }}
 
 
+def scene_entity_response_format(entity_type: str, eligible_names: Collection[str]) -> dict[str, Any]:
+    """Bound entity keys to selected names without requiring every candidate.
+
+    Explicit optional properties also represent the empty set as a closed object;
+    no empty string enum, invented identity, or nullable entity entry is needed.
+    Local parsing and source-span admission remain mandatory.
+    """
+    if entity_type not in {"Character", "Location", "Event"}:
+        raise ValueError("Scene entity type must be Character, Location or Event")
+
+    def record(properties: dict[str, Any], *, required: bool = True) -> dict[str, Any]:
+        return {"type": "object", "properties": properties, "required": list(properties) if required else [], "additionalProperties": False}
+
+    def named(details: dict[str, Any]) -> dict[str, Any]:
+        return record({name: details for name in sorted(eligible_names)}, required=False)
+
+    text = {"type": "string"}
+    strings = {"type": "array", "items": text}
+    if entity_type == "Character":
+        details = record({
+            "description": text, "traits": strings, "status": text,
+            "relationships": named(record({"type": {"type": "string", "enum": sorted(RELATIONSHIP_TYPES)}, "description": text})),
+        })
+        schema = record({"character_updates": named(details)})
+    else:
+        details = record({"description": text, "category": text, "goals": strings, "rules": strings, "key_elements": strings})
+        schema = record({"world_updates": record({entity_type: named(details)})})
+    return {"type": "json_schema", "json_schema": {
+        "name": f"extract_scene_{entity_type.lower()}s", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": schema,
+    }}
+
+
 def _require_named_updates(value: Any, field: str) -> list[tuple[str, dict[str, Any]]]:
     """Reject malformed entries rather than silently accepting a partial mapping."""
     if not isinstance(value, dict):

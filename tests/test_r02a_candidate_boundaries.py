@@ -19,7 +19,7 @@ from tests.test_r08t_migration_contracts import selected_authority_state
 @pytest.mark.parametrize("enabled", [False, True])
 def test_optional_nlp_never_enlarges_or_shrinks_eligible_set(tmp_path: Path, enabled: bool) -> None:
     candidates = scene_identity_candidates(select_catalog(selected_scene(tmp_path)), SCENE)
-    assert set(candidates) == {"Father O'Brien", "The Hague", "King's Cross", "The Blackwood Family"}
+    assert set(candidates) == {"Father O'Brien", "The Hague", "King's Cross", "The Blackwood Family", "The Arrival"}
     for name in candidates:
         assert validate_named_entity(name, candidates) == name
         with config.bind_settings(config.snapshot_settings().model_copy(update={"ENABLE_ENTITY_VALIDATION": enabled})):
@@ -70,22 +70,28 @@ async def test_outside_scene_or_nonliteral_name_fails_despite_producer_assertion
 
 @pytest.mark.parametrize("invalid_row", [False, True])
 async def test_empty_candidate_set_is_explicit_not_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid_row: bool) -> None:
-    state = selected_scene(tmp_path, "Neighbors gathered at the community hall.")
-    replies: list[dict[str, Any]] = [{"character_updates": {}}, {"world_updates": {"Location": {}}}, {"world_updates": {"Event": {}}}, {"kg_triples": []}]
+    scene = "Neighbors gathered at the community hall."
     if invalid_row:
-        replies[3] = {"kg_triples": [{"subject": "Neighbors", "object_entity": "Neighbors", "predicate": "ALLIES_WITH", "description": "Invalid"}]}
+        scene += " Father O'Brien waits."
+    state = selected_scene(tmp_path, scene)
+    replies: list[dict[str, Any]] = [{"character_updates": {}}, {"kg_triples": []}]
+    if invalid_row:
+        replies[1] = {"kg_triples": [{"subject": "Neighbors", "object_entity": "Neighbors", "predicate": "ALLIES_WITH", "description": "Invalid"}]}
     result, requests = await run_extraction(monkeypatch, state, replies)
-    assert len(requests) == 4
-    schema = requests[3]["response_format"]["json_schema"]["schema"]
-    assert schema["properties"]["kg_triples"]["maxItems"] == 0
+    assert len(requests) == (2 if invalid_row else 0)
     assert result["extraction_status"] == ("failed" if invalid_row else "complete")
     if not invalid_row:
+        assert all(outcome["status"] == "succeeded" and outcome["item_count"] == 0 for outcome in result["extraction_outcomes"])
         assert ContentManager(str(tmp_path)).load_json_strict(result["extracted_relationships_ref"]) == []
+    else:
+        assert result["extraction_outcomes"][-1]["status"] == "failed"
+        assert "ineligible" in result["extraction_outcomes"][-1]["error"]
 
 
 def selected_named_scene(tmp_path: Path, additional_name: str) -> NarrativeState:
     state = selected_authority_state(
         tmp_path, ("Father O'Brien", "The Blackwood Family", "Absent Name", additional_name),
+        event_names=("The Arrival",),
         world_items=tuple(WorldItem(name=name, category="location", description="Synthetic named place", id=identity)
                           for name, identity in [("The Hague", "place-exact-17"), ("King's Cross", "place-exact-18")]),
     )

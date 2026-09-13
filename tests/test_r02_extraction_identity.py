@@ -18,6 +18,7 @@ from core.langgraph.nodes.scene_extraction_validation import _validate_entity_wi
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship
 from core.llm_interface_refactored import create_llm_service
 from core.service_context import get_services
+from models.kg_models import WorldItem
 from tests.test_r08t_migration_contracts import selected_authority_state
 
 # Exact response content and corresponding request scene from retained synthetic traffic.
@@ -70,7 +71,16 @@ def test_grounding_requires_exact_named_span(enabled: bool, scene: str, name: st
 
 
 def retained_catalog(tmp_path: Path) -> EntityCatalog:
-    return select_catalog(selected_authority_state(tmp_path, ("Mara", "Delphine", "Silas", "Hank", "Rosalind", "Emmett")))
+    return select_catalog(selected_authority_state(
+        tmp_path, ("Mara", "Delphine", "Silas", "Hank", "Rosalind", "Emmett"),
+        world_items=(WorldItem(name="The Hague", category="location", description="Supplemental named location", id="supplemental-place"),),
+        event_names=("The King's Return",),
+    ))
+
+
+def retained_scene_with_eligible_world_candidates(scene: str) -> str:
+    """Keep captured bytes intact; supplemental prose exercises nonempty producer rejection."""
+    return scene + "\n\nMara visits The Hague during The King's Return."
 
 
 @pytest.mark.parametrize("index", [0, 1, 2, 3, 5, 6, 7])
@@ -78,6 +88,7 @@ def retained_catalog(tmp_path: Path) -> EntityCatalog:
 async def test_retained_invalid_collections_fail_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, index: int) -> None:
     retained = RETAINED[index]
     catalog = retained_catalog(tmp_path)
+    scene = retained_scene_with_eligible_world_candidates(retained["scene"]) if retained["kind"] in {"locations", "events"} else retained["scene"]
     requests: list[bytes] = []
     def respond(request: httpx.Request) -> httpx.Response:
         requests.append(request.content)
@@ -88,7 +99,7 @@ async def test_retained_invalid_collections_fail_closed(tmp_path: Path, monkeypa
         extractor = getattr(scene_extraction, f"_extract_{retained['kind']}_from_scene")
         error = "unnamed possessive descriptor" if index in (0, 3) else "ineligible"
         with pytest.raises(ValueError, match=error):
-            await extractor(retained["scene"], 0, 1, "Synthetic", "Literary Fiction", "Mara", "synthetic", catalog=catalog)
+            await extractor(scene, 0, 1, "Synthetic", "Literary Fiction", "Mara", "synthetic", catalog=catalog)
         assert len(requests) == 1
         assert retained["scene"] in json.loads(requests[0])["messages"][-1]["content"]
     finally:

@@ -15,7 +15,7 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import create_llm_service
 from core.service_context import get_services
 from models.kg_models import WorldItem
-from tests.test_r02_extraction_identity import RETAINED, entity, relationship, retained_catalog
+from tests.test_r02_extraction_identity import RETAINED, entity, relationship, retained_catalog, retained_scene_with_eligible_world_candidates
 from tests.test_r08t_migration_contracts import selected_authority_state
 
 
@@ -98,7 +98,8 @@ async def test_retained_scene_failure_publishes_no_partial_payload(tmp_path: Pat
     service = create_llm_service(HTTPClientService(client=httpx.AsyncClient(transport=httpx.MockTransport(respond))))
     monkeypatch.setattr(get_services(), "language_model", service)
     try:
-        result = await extract_from_scene(RETAINED[0]["scene"], 0, 1, "Synthetic", "Literary Fiction", "Mara", "synthetic", catalog=catalog)
+        scene = retained_scene_with_eligible_world_candidates(RETAINED[0]["scene"])
+        result = await extract_from_scene(scene, 0, 1, "Synthetic", "Literary Fiction", "Mara", "synthetic", catalog=catalog)
         assert result["extraction_status"] == "failed"
         assert set(result) == {"extraction_status", "extraction_outcomes"}
         assert all(outcome["status"] == "failed" for outcome in result["extraction_outcomes"])

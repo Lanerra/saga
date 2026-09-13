@@ -20,7 +20,7 @@ from core.service_context import get_services
 from models.kg_models import WorldItem
 from tests.test_staged_initialization import example_state
 
-SCENE = "Neighbors gathered at the community hall. Father O'Brien visits The Hague and King's Cross. The Blackwood Family assists Father O'Brien."
+SCENE = "Neighbors gathered at the community hall. Father O'Brien visits The Hague and King's Cross. The Blackwood Family assists Father O'Brien. The Arrival ceremony begins."
 
 
 def selected_scene(tmp_path: Path, scene: str = SCENE) -> NarrativeState:
@@ -31,6 +31,12 @@ def selected_scene(tmp_path: Path, scene: str = SCENE) -> NarrativeState:
     sheet = manager.load_json_strict(reference)["Ada"]
     sheets = {name: {**sheet, "name": name} for name in ["Father O'Brien", "The Blackwood Family", "Absent Name"]}
     state["character_sheets_ref"] = manager.save_json(sheets, "character_sheets", "named", 1)
+    chapter_reference = state["chapter_outlines_ref"]
+    assert chapter_reference is not None
+    chapters = manager.load_json_strict(chapter_reference)
+    chapters["1"]["key_beats"] = ["The Arrival"]
+    chapters["1"]["version"] = 1
+    state["chapter_outlines_ref"] = manager.save_json(chapters, "chapter_outlines", "named", 1)
     catalog = materialize_entities(select_inputs(state), [
         WorldItem(name=name, category="location", description="Synthetic named place", id=identity)
         for name, identity in [("The Hague", "place-exact-17"), ("King's Cross", "place-exact-18")]
@@ -108,7 +114,7 @@ async def test_catalog_names_ids_and_choices_survive_full_handoff(tmp_path: Path
     assert relationships[0]["target_id"] == "place-exact-17"
     assert relationships[0]["source_type"] == "Character"
     assert relationships[0]["target_type"] == "Location"
-    expected = {"Father O'Brien", "The Blackwood Family", "The Hague", "King's Cross"}
+    expected = {"Father O'Brien", "The Blackwood Family", "The Hague", "King's Cross", "The Arrival"}
     for request in requests:
         prompt = request["messages"][-1]["content"]
         assert "ELIGIBLE SCENE IDENTITIES" in prompt

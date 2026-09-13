@@ -40,7 +40,7 @@ async def test_scene_extraction_subgraph_runs_extraction_and_consolidation(tmp_p
     state["current_chapter"] = 1
 
     async def mock_llm(*args: object, **kwargs: object) -> tuple[dict[str, object], None]:
-        if "response_format" in kwargs:
+        if "relationship extraction" in str(kwargs["prompt"]):
             return {"kg_triples": []}, None
         return {"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None
 

@@ -31,6 +31,7 @@ from core.langgraph.nodes.scene_extraction_parsing import (
     parse_character_updates,
     parse_kg_triples,
     parse_world_updates,
+    scene_entity_response_format,
 )
 from core.langgraph.nodes.scene_extraction_validation import (
     _validate_entity_with_spacy,
@@ -159,6 +160,8 @@ async def _extract_characters_from_scene(
         List of character entity dicts with scene_index field.
     """
     candidates = {name: candidate for name, candidate in scene_identity_candidates(catalog, scene_text).items() if candidate["label"] == "Character"}
+    if not candidates:
+        return []
     prompt = render_prompt(
         "knowledge_agent/extract_characters.j2",
         {
@@ -181,6 +184,9 @@ async def _extract_characters_from_scene(
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
             max_attempts=2,
+            auto_clean_response=False,
+            reject_duplicate_keys=True,
+            response_format=scene_entity_response_format("Character", candidates),
         )
 
         with scene_name_authority(candidates):
@@ -268,6 +274,8 @@ async def _extract_locations_from_scene(
         List of location entity dicts with scene_index field.
     """
     candidates = {name: candidate for name, candidate in scene_identity_candidates(catalog, scene_text).items() if candidate["label"] == "Location"}
+    if not candidates:
+        return []
     prompt = render_prompt(
         "knowledge_agent/extract_locations.j2",
         {
@@ -289,6 +297,9 @@ async def _extract_locations_from_scene(
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
             max_attempts=2,
+            auto_clean_response=False,
+            reject_duplicate_keys=True,
+            response_format=scene_entity_response_format("Location", candidates),
         )
 
         with scene_name_authority(candidates):
@@ -373,6 +384,8 @@ async def _extract_events_from_scene(
         List of event entity dicts with scene_index field.
     """
     candidates = {name: candidate for name, candidate in scene_identity_candidates(catalog, scene_text).items() if candidate["label"] == "Event"}
+    if not candidates:
+        return []
     prompt = render_prompt(
         "knowledge_agent/extract_events.j2",
         {
@@ -394,6 +407,9 @@ async def _extract_events_from_scene(
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
             max_attempts=2,
+            auto_clean_response=False,
+            reject_duplicate_keys=True,
+            response_format=scene_entity_response_format("Event", candidates),
         )
 
         with scene_name_authority(candidates):
@@ -478,6 +494,8 @@ async def _extract_relationships_from_scene(
         List of relationship dicts with scene_index field.
     """
     candidates = scene_identity_candidates(catalog, scene_text)
+    if not candidates:
+        return []
     prompt = render_prompt(
         "knowledge_agent/extract_relationships.j2",
         {
