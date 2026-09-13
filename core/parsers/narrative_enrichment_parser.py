@@ -21,10 +21,6 @@ from pydantic import BaseModel, ConfigDict
 
 import config
 from core.embedding_contract import embedding_identity, validate_embedding
-from core.entity_embedding_service import (
-    compute_entity_embedding_text,
-    compute_entity_embedding_text_hash,
-)
 from data_access.chapter_queries import (
     get_chapter_data_from_db,
     save_chapter_data_to_db,
@@ -68,7 +64,17 @@ class ChapterEmbeddingExtractionResult(BaseModel):
     def validated_vector(self) -> np.ndarray:
         if self.embedding_identity != embedding_identity():
             raise ValueError("Chapter enrichment embedding identity mismatch")
-        return validate_embedding(self.embedding_vector, model=self.embedding_model)
+        vector = validate_embedding(self.embedding_vector, model=self.embedding_model)
+        if not np.any(vector):
+            raise ValueError("Chapter enrichment embedding must be nonzero")
+        return vector
+
+    def validate_source(self, narrative_text: str, chapter_number: int) -> None:
+        if self.chapter_number != chapter_number:
+            raise ValueError("Enrichment chapter identity mismatch")
+        if not narrative_text or self.source_text != narrative_text:
+            raise ValueError("Chapter embedding source mismatch; retain the old candidate and explicitly revalidate from the draft producer")
+        self.validated_vector()
 
 
 class NarrativeEnrichmentParser:
@@ -92,6 +98,8 @@ class NarrativeEnrichmentParser:
         narrative_text: str,
         chapter_number: int = 0,
         extraction_model: str = "gpt-4",
+        *,
+        chapter_embedding: ChapterEmbeddingExtractionResult | None = None,
     ):
         """Initialize the NarrativeEnrichmentParser.
 
@@ -103,6 +111,7 @@ class NarrativeEnrichmentParser:
         self.narrative_text = narrative_text
         self.chapter_number = chapter_number
         self.extraction_model = extraction_model
+        self.chapter_embedding = chapter_embedding
 
     async def extract_physical_descriptions(self) -> list[PhysicalDescriptionExtractionResult]:
         """Extract physical descriptions from narrative text.
@@ -257,7 +266,8 @@ class NarrativeEnrichmentParser:
     async def extract_chapter_embeddings(self) -> list[ChapterEmbeddingExtractionResult]:
         """Extract chapter embeddings from narrative text.
 
-        This method uses the entity embedding service to extract embeddings from the narrative text.
+        Reuse the identified draft producer when supplied; standalone callers embed
+        the narrative itself, never the chapter's planning metadata.
 
         Returns:
             List of ChapterEmbeddingExtractionResult objects
@@ -281,17 +291,13 @@ class NarrativeEnrichmentParser:
             logger.warning(f"No chapter found with number {self.chapter_number}")
             return []
 
+        if self.chapter_embedding is not None:
+            self.chapter_embedding.validate_source(self.narrative_text, self.chapter_number)
+            return [self.chapter_embedding]
+
         # Extract embedding using the embedding service
         try:
-            # Compute the embedding text
-            embedding_text = compute_entity_embedding_text(
-                name=chapter.title,
-                description=chapter.summary,
-                category=f"Chapter {chapter.number}",
-            )
-
-            # Compute the embedding text hash for change detection (used for validation)
-            _ = compute_entity_embedding_text_hash(embedding_text)
+            embedding_text = self.narrative_text
 
             # Generate the embedding vector
             configuration = config.snapshot_settings()
@@ -513,8 +519,16 @@ class NarrativeEnrichmentParser:
         try:
             # Update each chapter with the new embedding
             for result in extraction_results:
+                from core.langgraph.nodes.narrative_enrichment_node import NarrativeEnrichmentNode
+
+                result.validate_source(self.narrative_text, self.chapter_number)
                 chapter_number = result.chapter_number
                 embedding_vector = result.embedding_vector
+                chapter = await get_chapter_data_from_db(chapter_number)
+                if chapter is None:
+                    raise ValueError("Enrichment chapter must exist uniquely")
+                if chapter.embedding and not NarrativeEnrichmentNode()._validate_embedding(chapter.embedding, embedding_vector):
+                    raise ValueError(f"Invalid embedding for chapter {chapter_number}")
 
                 # Sync the embedding to the database using save_chapter_data_to_db
                 await save_chapter_data_to_db(

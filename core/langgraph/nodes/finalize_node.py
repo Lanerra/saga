@@ -25,9 +25,11 @@ from core.langgraph.content_manager import (
     get_draft_text,
     get_previous_summaries,
     load_embedding,
+    load_scene_embeddings,
     require_project_dir,
 )
 from core.langgraph.manuscript import ManuscriptReceipt, ManuscriptStore
+from core.langgraph.nodes.commit_graph_ops import _aggregate_scene_embeddings_to_chapter
 from core.langgraph.quality_policy import acceptance_decision, announce_acceptance, validation_decision
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
@@ -39,8 +41,8 @@ logger = structlog.get_logger(__name__)
 async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     """Finalize the chapter and persist it to durable storage.
 
-    This node writes a canonical chapter file, resolves an embedding (prefer an
-    upstream `embedding_ref`, otherwise compute a fallback), and persists chapter
+    This node writes a canonical chapter file, resolves an embedding (prefer a
+    scene aggregate, then `embedding_ref`, otherwise compute a fallback), and persists chapter
     metadata to Neo4j.
 
     Args:
@@ -148,17 +150,16 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "finalize",
         }
 
-    # Step 2: Get or generate embedding (exactly once per chapter when embedding node is present)
-    #
-    # Preferred behavior:
-    # - If an upstream embedding node ran, it should have stored `embedding_ref` in state.
-    #   We load and reuse that here (no recompute).
-    # - If no embedding is available (e.g., embedding node absent), we compute as a fallback.
+    # Preserve the same producer priority as graph commit and staged enrichment.
     try:
         embedding = None
         embedding_ref = state.get("embedding_ref")
 
-        if embedding_ref:
+        scene_embeddings_ref = state.get("scene_embeddings_ref")
+        if scene_embeddings_ref:
+            vectors = load_scene_embeddings(content_manager, scene_embeddings_ref)
+            embedding = np.asarray(_aggregate_scene_embeddings_to_chapter(vectors), dtype=config.EMBEDDING_DTYPE)
+        elif embedding_ref:
             embedding_list = load_embedding(content_manager, embedding_ref)
             embedding = np.array(embedding_list, dtype=np.float32)
             logger.info(

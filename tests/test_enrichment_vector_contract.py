@@ -87,7 +87,7 @@ async def test_existing_enrichment_caller_reaches_real_writer(configured: None, 
         class CandidateTransaction:
             def run(self, query: str, parameters: Any = None) -> Rows:
                 if "RETURN c.embedding_vector AS embedding" in query:
-                    return Rows([{"embedding": [1.0, 0.0, 0.0] if existing else None}])
+                    return Rows([{"embedding": [1.0, 0.0, 0.0] if existing else None, "embedding_model": config.EMBEDDING_MODEL, "embedding_identity": embedding_identity()}])
                 writes.append((query, parameters))
                 return Rows()
 

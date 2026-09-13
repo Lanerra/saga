@@ -250,13 +250,13 @@ async def test_update_chapter_embeddings(sample_chapter_data: Chapter, monkeypat
             embedding_model=config.EMBEDDING_MODEL,
             embedding_identity=embedding_identity(),
             confidence=0.95,
-            source_text="Test source text",
+            source_text="Test narrative",
             extraction_method="embedding_service",
         )
     ]
 
     # Mock the save_chapter_data_to_db function
-    with patch("core.parsers.narrative_enrichment_parser.save_chapter_data_to_db") as mock_save_chapter:
+    with patch("core.parsers.narrative_enrichment_parser.save_chapter_data_to_db") as mock_save_chapter, patch("core.parsers.narrative_enrichment_parser.get_chapter_data_from_db", return_value=sample_chapter_data):
         mock_save_chapter.return_value = None  # save_chapter_data_to_db returns None
 
         # Call the update_chapter_embeddings method

@@ -70,7 +70,7 @@ class EnrichmentTransaction(TransactionExample):
         if "RETURN c.physical_description AS description" in query:
             return Rows([{"description": self.description}])
         if "RETURN c.embedding_vector AS embedding" in query:
-            return Rows([{"embedding": self.embedding}])
+            return Rows([{"embedding": self.embedding, "embedding_model": config.EMBEDDING_MODEL, "embedding_identity": embedding_identity()}])
         if "RETURN c.id AS updated_character" in query:
             self.description = parameters["physical_description"]
             self.statements.append(query)

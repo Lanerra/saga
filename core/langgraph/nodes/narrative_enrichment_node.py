@@ -18,11 +18,16 @@ import structlog
 from neo4j import Transaction
 from pydantic import BaseModel, ConfigDict, Field
 
+import config
+from core.embedding_contract import embedding_identity, validate_embedding
 from core.langgraph.content_manager import (
     ContentManager,
     get_draft_text,
+    load_embedding,
+    load_scene_embeddings,
     require_project_dir,
 )
+from core.langgraph.nodes.commit_graph_ops import _aggregate_scene_embeddings_to_chapter
 from core.langgraph.state import NarrativeState
 from core.parsers.narrative_enrichment_parser import (
     ChapterEmbeddingExtractionResult,
@@ -75,12 +80,16 @@ class EnrichmentCandidate(BaseModel):
                 raise ValueError("Enrichment chapter identity mismatch")
             vector = embedding.validated_vector().tolist()
             rows = list(transaction.run(
-                "MATCH (c:Chapter {number: $number}) RETURN c.embedding_vector AS embedding",
+                "MATCH (c:Chapter {number: $number}) RETURN c.embedding_vector AS embedding, c.embedding_model AS embedding_model, c.embedding_identity AS embedding_identity",
                 {"number": chapter_number},
             ))
             if len(rows) != 1:
                 raise ValueError("Enrichment chapter must exist uniquely")
             existing = rows[0]["embedding"]
+            if existing is not None:
+                if rows[0].get("embedding_identity") != embedding_identity():
+                    raise ValueError("Chapter enrichment embedding identity mismatch")
+                validate_embedding(existing, model=rows[0].get("embedding_model"))
             if existing and not validator._validate_embedding(existing, vector):
                 raise ValueError(f"Invalid embedding for chapter {chapter_number}")
             transaction.run(*build_chapter_upsert_statement(
@@ -106,6 +115,8 @@ class NarrativeEnrichmentNode:
         self,
         narrative_text: str,
         chapter_number: int,
+        *,
+        chapter_embedding: ChapterEmbeddingExtractionResult | None = None,
     ) -> EnrichmentCandidate:
         """Collect validated enrichment without granting graph authority.
 
@@ -133,6 +144,7 @@ class NarrativeEnrichmentNode:
         parser = NarrativeEnrichmentParser(
             narrative_text=narrative_text,
             chapter_number=chapter_number,
+            chapter_embedding=chapter_embedding,
         )
 
         physical_descriptions = await parser.extract_physical_descriptions()
@@ -492,7 +504,25 @@ async def enrich_narrative(state: NarrativeState) -> dict[str, Any]:
 
         lifecycle = ChapterLifecycle(state)
         if lifecycle.enrichment() is None:
-            candidate = await node.process(draft_text, chapter_number)
+            chapter_embedding = None
+            if config.ENABLE_CHAPTER_EMBEDDING_EXTRACTION:
+                vector = None
+                scene_embeddings_ref = state.get("scene_embeddings_ref")
+                embedding_ref = state.get("embedding_ref")
+                if scene_embeddings_ref:
+                    vectors = load_scene_embeddings(content_manager, scene_embeddings_ref)
+                    vector = _aggregate_scene_embeddings_to_chapter(vectors)
+                    method = "scene_mean"
+                elif embedding_ref:
+                    vector = load_embedding(content_manager, embedding_ref)
+                    method = "embedding_ref"
+                if vector is not None:
+                    chapter_embedding = ChapterEmbeddingExtractionResult(
+                        chapter_number=chapter_number, embedding_vector=vector,
+                        embedding_model=config.EMBEDDING_MODEL, embedding_identity=embedding_identity(),
+                        confidence=0.95, source_text=draft_text, extraction_method=method,
+                    )
+            candidate = await node.process(draft_text, chapter_number, chapter_embedding=chapter_embedding)
             lifecycle.retain_enrichment(candidate.model_dump(mode="json"))
     except Exception as error:
         logger.error("enrich_narrative: enrichment failed", error=str(error))

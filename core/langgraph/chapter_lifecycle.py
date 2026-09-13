@@ -381,6 +381,8 @@ class ChapterLifecycle:
         receipt = ManuscriptReceipt.model_validate(acceptance["manuscript"])
         if receipt.chapter_number != self.chapter_number or receipt.body_sha256 != self.manifest.artifacts["draft_ref"].checksum:
             raise ValueError("Accepted manuscript/draft mismatch")
+        if acceptance.get("enrichment") is not None:
+            self._validate_enrichment(acceptance["enrichment"])
         self.manuscripts.read(receipt)
         return receipt
 
@@ -398,12 +400,22 @@ class ChapterLifecycle:
         path = self.enrichment_path()
         if not self.files.exists(path):
             return None
-        return EnrichmentCandidate.model_validate_json(self.files.read_bytes(path)).model_dump(mode="json")
+        return self._validate_enrichment(EnrichmentCandidate.model_validate_json(self.files.read_bytes(path)).model_dump(mode="json"))
 
-    def retain_enrichment(self, candidate: dict[str, Any]) -> None:
+    def _validate_enrichment(self, candidate: dict[str, Any]) -> dict[str, Any]:
         from core.langgraph.nodes.narrative_enrichment_node import EnrichmentCandidate
 
-        content = EnrichmentCandidate.model_validate(candidate).model_dump(mode="json")
+        content = EnrichmentCandidate.model_validate(candidate)
+        reference = self.state.get("draft_ref")
+        if not isinstance(reference, dict):
+            raise ValueError("Enrichment requires a draft reference")
+        draft = self._read_artifact(dict(reference)).decode("utf-8")
+        for embedding in content.embeddings:
+            embedding.validate_source(draft, self.chapter_number)
+        return content.model_dump(mode="json")
+
+    def retain_enrichment(self, candidate: dict[str, Any]) -> None:
+        content = self._validate_enrichment(candidate)
         self._retain(self.enrichment_path(), canonical_bytes(content))
 
     async def publish(self) -> NarrativeState:
