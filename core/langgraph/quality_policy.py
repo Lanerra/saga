@@ -1,4 +1,5 @@
 """Content-bound quality evidence; author exceptions never override strict gates."""
+
 from __future__ import annotations
 
 import hashlib
@@ -114,10 +115,20 @@ def validation_decision(state: NarrativeState) -> dict[str, Any]:
             exceptions.append("max_revisions_findings")
         else:
             raise ValueError("Mandatory quality gate failed: unresolved findings")
-    return {"schema_version": 1, "policy": policy.model_dump(), "source": source, "checks": {name: value.model_dump() for name, value in checks.items()},
-            "scores": scores, "feedback": state.get("quality_feedback"), "findings": findings, "force_continue": force,
-            "iteration_count": iteration, "max_iterations": maximum, "exceptions": exceptions,
-            "status": "accepted_with_exceptions" if exceptions else "accepted"}
+    return {
+        "schema_version": 1,
+        "policy": policy.model_dump(),
+        "source": source,
+        "checks": {name: value.model_dump() for name, value in checks.items()},
+        "scores": scores,
+        "feedback": state.get("quality_feedback"),
+        "findings": findings,
+        "force_continue": force,
+        "iteration_count": iteration,
+        "max_iterations": maximum,
+        "exceptions": exceptions,
+        "status": "accepted_with_exceptions" if exceptions else "accepted",
+    }
 
 
 def acceptance_decision(state: NarrativeState) -> dict[str, Any]:
@@ -146,10 +157,15 @@ def verify_decision(decision: dict[str, Any], state: NarrativeState) -> None:
     from core.langgraph.state import Contradiction
 
     retained: NarrativeState = {
-        **state, "quality_policy": decision["policy"], "quality_checks": decision["checks"],
-        "graph_quality_check": decision["graph_quality_check"], "force_continue": decision["force_continue"],
-        "max_iterations": decision["max_iterations"], "quality_feedback": decision["feedback"],
-        "contradictions": [Contradiction.model_validate(item) for item in decision["findings"]], **decision["scores"],
+        **state,
+        "quality_policy": decision["policy"],
+        "quality_checks": decision["checks"],
+        "graph_quality_check": decision["graph_quality_check"],
+        "force_continue": decision["force_continue"],
+        "max_iterations": decision["max_iterations"],
+        "quality_feedback": decision["feedback"],
+        "contradictions": [Contradiction.model_validate(item) for item in decision["findings"]],
+        **decision["scores"],
         "has_fatal_error": False,
     }
     if decision != acceptance_decision(retained):
@@ -193,10 +209,16 @@ def retain_maintenance(state: NarrativeState, operation: str, outcome: dict[str,
         directory = manuscript.artifact_path.removesuffix(".md") + ".maintenance"
     else:
         # Standalone legacy diagnostics have no publication identity; they cannot
-        # certify acceptance. All publication entrypoints now require a policy.
+        # certify acceptance. All publication entrypoints require a policy.
         return
-    receipt = {"schema_version": 1, **identity, "policy": "advisory", "operation": operation, "outcome": outcome,
-               "status": "accepted_with_exceptions" if outcome.get("errors") or outcome.get("warnings") or outcome.get("issues_found") else "completed"}
+    receipt = {
+        "schema_version": 1,
+        **identity,
+        "policy": "advisory",
+        "operation": operation,
+        "outcome": outcome,
+        "status": "accepted_with_exceptions" if outcome.get("errors") or outcome.get("warnings") or outcome.get("issues_found") else "completed",
+    }
     encoded = json.dumps(receipt, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()
     checksum = hashlib.sha256(encoded).hexdigest()
     files = ContainedFiles(Path(require_project_dir(state)), durable=True)

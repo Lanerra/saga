@@ -1,4 +1,3 @@
-# core/project_bootstrapper.py
 from __future__ import annotations
 
 from pathlib import Path
@@ -160,9 +159,9 @@ class ProjectBootstrapper:
         user_prompt: str,
     ) -> NarrativeProjectConfig:
         if template_name not in GENRE_TEMPLATES:
-            raise ValueError(f"Unknown genre template '{template_name}'. " f"Available templates: {sorted(GENRE_TEMPLATES.keys())}")
+            raise ValueError(f"Unknown genre template '{template_name}'. Available templates: {sorted(GENRE_TEMPLATES.keys())}")
         template = GENRE_TEMPLATES[template_name]
-        enriched_prompt = f"{user_prompt.strip()}\n\n" f"Genre guidance: {template['genre']}\n" f"Thematic direction: {template['theme']}\n" f"Setting inspiration: {template['setting']}"
+        enriched_prompt = f"{user_prompt.strip()}\n\nGenre guidance: {template['genre']}\nThematic direction: {template['theme']}\nSetting inspiration: {template['setting']}"
         return await self.generate_metadata(enriched_prompt)
 
     # NOT YET WIRED INTO CLI — available for future interactive bootstrap flow

@@ -1,4 +1,3 @@
-# core/langgraph/nodes/validation_node.py
 """Validate generated narrative for internal consistency.
 
 This module defines the Phase 2 validation node used by the LangGraph workflow.
@@ -191,20 +190,16 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 
     contradictions: list[Contradiction] = []
 
-    # Check 1: Validate all extracted relationships (PERMISSIVE MODE)
-    # In permissive mode, this only logs info messages and never blocks.
-    # Relationship validation is now informational only to support creative freedom.
     relationship_contradictions = await _validate_relationships(
         candidate_assertions,
         state.get("current_chapter", 1),
         extracted_entities,
     )
-    # Note: In permissive mode, relationship_contradictions will be empty
-    # since the validator always returns valid=True
+
     contradictions.extend(relationship_contradictions)
 
     # Check 2: Character trait consistency
-    # NEW FUNCTIONALITY: Checks for contradictory character traits
+
     prior_facts = await fetch_prior_accepted_facts(state)
     trait_contradictions = await _check_character_traits(
         extracted_entities.get("characters", []),
@@ -407,13 +402,16 @@ async def _check_character_traits(
             for previous, candidate in ((first, second), (second, first)):
                 if previous in established and candidate in candidates:
                     findings.add((name, latest_chapter, previous, candidate))
-    return [Contradiction(
-        type="character_trait",
-        description=f"{name} was established as '{previous}' in chapter {chapter}, but is now described as '{candidate}'",
-        conflicting_chapters=[chapter, current_chapter],
-        severity="major",
-        suggested_fix=f"Remove '{candidate}' or explain character development",
-    ) for name, chapter, previous, candidate in sorted(findings)]
+    return [
+        Contradiction(
+            type="character_trait",
+            description=f"{name} was established as '{previous}' in chapter {chapter}, but is now described as '{candidate}'",
+            conflicting_chapters=[chapter, current_chapter],
+            severity="major",
+            suggested_fix=f"Remove '{candidate}' or explain character development",
+        )
+        for name, chapter, previous, candidate in sorted(findings)
+    ]
 
 
 def _is_plot_stagnant(

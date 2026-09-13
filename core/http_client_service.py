@@ -1,4 +1,3 @@
-# core/http_client_service.py
 """Perform HTTP I/O for LLM provider integrations.
 
 This module provides a small HTTP layer used by higher-level LLM services. It
@@ -33,7 +32,6 @@ logger = structlog.get_logger(__name__)
 _request_deadline: ContextVar[float | None] = ContextVar("saga_request_deadline", default=None)
 
 
-
 def bounded_request[**P, R](function: Callable[Concatenate[Any, P], Coroutine[Any, Any, R]]) -> Callable[Concatenate[Any, P], Coroutine[Any, Any, R]]:
     """Share one absolute HTTPX_TIMEOUT across retries, fallback and JSON repair.
 
@@ -41,6 +39,7 @@ def bounded_request[**P, R](function: Callable[Concatenate[Any, P], Coroutine[An
     best-effort callers. Child tasks inherit the deadline, never a fresh allowance.
     CPU-only work is checked on return; asyncio cancellation is cooperative.
     """
+
     @wraps(function)
     async def bounded(self: Any, *arguments: P.args, **keywords: P.kwargs) -> R:
         loop = asyncio.get_running_loop()
@@ -60,6 +59,7 @@ def bounded_request[**P, R](function: Callable[Concatenate[Any, P], Coroutine[An
                 return result
         finally:
             _request_deadline.reset(token)
+
     return bounded
 
 
@@ -246,7 +246,6 @@ class HTTPClientService:
 
             effective_headers = {"Content-Type": "application/json", **(headers or {})}
 
-
             last_exception: Exception | None = None
 
             for attempt in range(effective_max_retries):
@@ -297,8 +296,6 @@ class HTTPClientService:
                 raise last_exception
             else:
                 raise Exception("HTTP request failed with no specific error")
-
-    # Streaming support removed to simplify HTTP client and standardize on non-streaming calls.
 
     def get_statistics(self) -> dict[str, Any]:
         """Return HTTP request statistics for monitoring."""
@@ -437,5 +434,3 @@ class CompletionHTTPClient:
         response_data = load_strict_json(response.text)
         completion_content(response_data, self._http_client.configuration)
         return response_data
-
-    # Streaming completion removed; use get_completion() only.

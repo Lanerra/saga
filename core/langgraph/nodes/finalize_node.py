@@ -118,7 +118,6 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     except ValueError as error:
         return {"current_node": "finalize", "error_node": "finalize", "has_fatal_error": True, "last_error": str(error)}
 
-    # Step 1: Save to filesystem
     try:
         receipt = await _save_chapter_to_filesystem(
             chapter_number=chapter_number,
@@ -185,7 +184,6 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         embedding = None
         # Continue without embedding (non-critical)
 
-    # Step 3: Save to Neo4j
     try:
         current_summary = state.get("current_summary")
         if current_summary is None:
@@ -232,7 +230,7 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     announce_acceptance(quality, quality_path)
-    # Step 4: Clear temporary extraction fields, preserving quality evidence.
+    # Retain quality evidence when clearing transient extraction state.
     logger.info(
         "finalize_chapter: finalization complete",
         chapter=chapter_number,

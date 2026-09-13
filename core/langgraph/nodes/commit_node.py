@@ -254,9 +254,7 @@ async def _prepare_explicit_entity_admission(
             continue
         identities[key] = entity
         for other in entities:
-            if other.name.strip().lower() == entity.name.strip().lower() and (
-                canonicalize_entity_type_for_persistence(other.type), other.attributes.get("id")
-            ) != key:
+            if other.name.strip().lower() == entity.name.strip().lower() and (canonicalize_entity_type_for_persistence(other.type), other.attributes.get("id")) != key:
                 raise ValueError("Explicit canonical entity ID/name conflict in batch")
         candidates.append({"index": len(candidates), "label": label, "id": identifier, "name": entity.name})
     if not candidates:
@@ -395,8 +393,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         relationships=len(relationships),
     )
 
-    # Step 0: Pre-commit validation
-    # Validate entities and relationships before committing to database
+    # Reject invalid extraction before constructing graph writes.
     chapter = state.get("current_chapter", 1)
     extracted_entities_dict = {
         "characters": char_entities,
@@ -441,8 +438,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         char_entities = [entity for entity in char_entities if entity.name.lower() not in existing_names]
         world_entities = [entity for entity in world_entities if entity.name.lower() not in existing_names]
 
-        # Step 1: Deduplicate characters (READ operations)
-        # Since entities are canonical from Stage 1, no deduplication is needed
         for char in char_entities:
             char_mappings[char.name] = char.name
 
@@ -452,7 +447,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             if "id" in item.attributes:
                 world_mappings[item.name] = item.attributes["id"]
 
-        # Step 3: Convert ExtractedEntity to CharacterProfile/WorldItem models
         # Deduplicate entity lists to prevent creating duplicate models
         unique_char_entities = _deduplicate_entity_list(char_entities)
         unique_world_entities = _deduplicate_entity_list(world_entities)
@@ -460,14 +454,16 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         character_models = _convert_to_character_profiles(unique_char_entities, char_mappings, state.get("current_chapter", 1))
         world_item_models = _convert_to_world_items(unique_world_entities, world_mappings, state.get("current_chapter", 1))
 
-        # Step 4-6: Collect ALL Cypher statements for single transaction
-        # This ensures atomicity - either all succeed or all are rolled back
+        # All chapter writes share one transaction.
         all_statements: list[tuple[str, dict]] = [*admission_statements, chapter_assertion_delete_statement(chapter)]
 
         # Step 4a: Collect entity persistence statements
         if character_models or world_item_models:
             entity_statements = await _build_entity_persistence_statements(
-                character_models, world_item_models, state.get("current_chapter", 1), protected_identities=protected_identities,
+                character_models,
+                world_item_models,
+                state.get("current_chapter", 1),
+                protected_identities=protected_identities,
             )
             all_statements.extend(entity_statements)
 
@@ -541,7 +537,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         )
         all_statements.append(chapter_statement)
 
-        # Step 5: Execute ALL statements in a SINGLE transaction
         # If any statement fails, all are rolled back
         if all_statements:
             from core.service_context import get_services
@@ -589,7 +584,8 @@ async def _build_entity_persistence_statements(
     characters: list[CharacterProfile],
     world_items: list[WorldItem],
     chapter_number: int,
-    *, protected_identities: frozenset[tuple[str, str]] = frozenset(),
+    *,
+    protected_identities: frozenset[tuple[str, str]] = frozenset(),
 ) -> list[tuple[str, dict]]:
     """Build Cypher statements to persist entities.
 
@@ -691,10 +687,7 @@ async def _build_relationship_statements(
         entity_types=list(entity_type_map.items())[:10],  # Log first 10 for debugging
     )
 
-    entity_identity_map = {
-        (canonicalize_entity_type_for_persistence(entity.type), entity.name): entity.attributes.get("id")
-        for entity in [*char_entities, *world_entities]
-    }
+    entity_identity_map = {(canonicalize_entity_type_for_persistence(entity.type), entity.name): entity.attributes.get("id") for entity in [*char_entities, *world_entities]}
 
     # Helper to create subject/object dict with type + optional stable id.
     def _make_entity_dict(
@@ -736,9 +729,7 @@ async def _build_relationship_statements(
         entity_type = explicit_type if explicit_type is not None else entity_type_map.get(original_name, None)
         entity_category = entity_category_map.get(original_name, "")
         known_type = entity_type_map.get(original_name)
-        if explicit_type is not None and known_type is not None and (
-            canonicalize_entity_type_for_persistence(explicit_type) != canonicalize_entity_type_for_persistence(known_type)
-        ):
+        if explicit_type is not None and known_type is not None and (canonicalize_entity_type_for_persistence(explicit_type) != canonicalize_entity_type_for_persistence(known_type)):
             raise ValueError("Relationship endpoint type conflicts with extracted entity identity")
 
         if not entity_type or not str(entity_type).strip():
@@ -788,10 +779,16 @@ async def _build_relationship_statements(
                 raise ValueError("Profile relationship must be a dictionary")
             target_type = information.get("target_label", "Character" if source["type"] == "Character" else "Item")
             target = _make_entity_dict(name=target_name, original_name=target_name, explicit_type=target_type, stable_id=information.get("target_id"))
-            structured_triples.append({
-                "subject": source, "predicate": information["type"], "object_entity": target,
-                "description": information.get("description", ""), "confidence": 1.0, "assertion_origin": "chapter_profile",
-            })
+            structured_triples.append(
+                {
+                    "subject": source,
+                    "predicate": information["type"],
+                    "object_entity": target,
+                    "description": information.get("description", ""),
+                    "confidence": 1.0,
+                    "assertion_origin": "chapter_profile",
+                }
+            )
 
     for rel in relationships:
         # `char_mappings` canonicalizes character names for consistent relationship endpoints.
@@ -882,9 +879,13 @@ async def _build_relationship_statements(
                 {"name": subject_name, "type": subject_label, "id": subject_id},
                 predicate_clean,
                 {"name": object_name, "type": object_label, "id": object_id},
-                chapter, origin=triple.get("assertion_origin", "chapter_extraction"), provisional=is_from_flawed_draft,
-                confidence=triple.get("confidence", 1.0), description=triple.get("description", ""),
-                scene_index=triple.get("scene_index"), scene_assertions=triple.get("scene_assertions"),
+                chapter,
+                origin=triple.get("assertion_origin", "chapter_extraction"),
+                provisional=is_from_flawed_draft,
+                confidence=triple.get("confidence", 1.0),
+                description=triple.get("description", ""),
+                scene_index=triple.get("scene_index"),
+                scene_assertions=triple.get("scene_assertions"),
             )
 
             logger.debug(

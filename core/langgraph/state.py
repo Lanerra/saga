@@ -1,4 +1,3 @@
-# core/langgraph/state.py
 """
 Define the LangGraph state schema for SAGA workflows.
 
@@ -16,10 +15,7 @@ from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-# Import settings for model configuration
 import config
-
-# Import ContentRef for externalized content
 from core.langgraph.content_manager import ContentRef
 from core.schema_validator import schema_validator
 
@@ -204,18 +200,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Entity Extraction Results
     # =========================================================================
-    # Sequential extraction (no reducers needed):
-    # - extract_characters: Clears and populates extracted_entities["characters"]
-    # - extract_locations: Appends to extracted_entities["world_items"]
-    # - extract_events: Appends to extracted_entities["world_items"]
-    # - extract_relationships: Populates extracted_relationships
-    #
-    # Each extraction cycle starts fresh by clearing these fields in the first node.
-    # NOTE: These fields have been removed in favor of ContentRef-based externalization
-    # extracted_entities: dict[str, list[dict[str, Any]]]
-    # extracted_relationships: list[dict[str, Any]]
-
-    # Externalized extraction references (to reduce state bloat)
+    # Extraction payloads live in the content store, not in checkpoints.
     extracted_entities_ref: ContentRef | None  # Reference to externalized extracted entities
     extracted_relationships_ref: ContentRef | None  # Reference to externalized extracted relationships
 
@@ -224,7 +209,7 @@ class NarrativeState(TypedDict, total=False):
     extraction_outcomes: list[SceneExtractionOutcome]
 
     # =========================================================================
-    # Validation and Quality Control (NEW: formalized validation state)
+    # Validation and quality control
     # =========================================================================
     contradictions: list[Contradiction]
     needs_revision: bool
@@ -255,7 +240,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     extraction_model: str
     revision_model: str
-    # New tiered model configuration
+    # Model roles
     large_model: str
     medium_model: str
     small_model: str
@@ -291,8 +276,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Chapter Planning (properly typed with SceneDetail TypedDict)
     # =========================================================================
-    # NOTE: chapter_plan field has been removed in favor of ContentRef-based externalization
-    # chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
+
     current_scene_index: int  # Index of the scene currently being processed
     chapter_plan_scene_count: int  # Total number of scenes in the current chapter plan
 
@@ -436,7 +420,7 @@ def create_initial_state(
     original_prompt: str = "",
     extraction_model: str | None = None,
     revision_model: str | None = None,
-    # New model params with defaults
+    # Model defaults
     large_model: str | None = None,
     medium_model: str | None = None,
     small_model: str | None = None,
@@ -502,10 +486,6 @@ def create_initial_state(
         "extracted_relationships_ref": None,
         "chapter_plan_ref": None,
         "revision_guidance_ref": None,
-        # Entity extraction
-        # NOTE: These fields have been removed in favor of ContentRef-based externalization
-        # "extracted_entities": {},
-        # "extracted_relationships": [],
         # Validation
         "contradictions": [],
         "needs_revision": False,
@@ -533,8 +513,6 @@ def create_initial_state(
         "project_dir": project_dir,
         # Context management
         # Chapter planning
-        # NOTE: chapter_plan field has been removed in favor of ContentRef-based externalization
-        # "chapter_plan": None,
         "current_scene_index": 0,
         "chapter_plan_scene_count": 0,
         # World building

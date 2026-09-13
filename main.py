@@ -1,4 +1,3 @@
-# main.py
 import argparse
 import asyncio
 import sys
@@ -68,15 +67,12 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(title="Commands", dest="command", required=True)
 
-    # Quick mode
     quick_parser = subparsers.add_parser("quick", help="Quick mode: bootstrap and generate")
     quick_parser.add_argument("prompt", help="Story premise")
 
-    # Bootstrap mode
     bootstrap_parser = subparsers.add_parser("bootstrap", help="Bootstrap mode: generate metadata")
     bootstrap_parser.add_argument("prompt", help="Story premise")
 
-    # Generate mode
     generate_parser = subparsers.add_parser("generate", help="Generate mode: run novel generation loop")
     generate_parser.add_argument("--project-dir", "-p", type=Path, required=True, help="Exact project to initialize or resume; no reset or deletion")
     generate_parser.add_argument(
@@ -85,7 +81,6 @@ def main() -> None:
         help="Validate and promote this project's config.candidate.json; never replace config.json",
     )
 
-    # Parser mode
     parser_parser = subparsers.add_parser("parse", help="Accept a complete retained initialization import; individual parser writes are blocked")
     parser_parser.add_argument(
         "--project-dir",
@@ -123,13 +118,11 @@ def main() -> None:
             print(f"SAGA export succeeded: chapters {chapters} -> {output}")
         elif arguments.command == "parse":
             results = asyncio.run(run_parser_command(arguments.project_dir, arguments.parser))
-            # Print results
             print("\nParser Results:")
             print("-" * 50)
             for parser_name, (success, message) in results.items():
                 status = "✅" if success else "❌"
                 print(f"{status} {parser_name}: {message}")
-            # Check if all parsers succeeded
             all_successful = all(success for success, _ in results.values())
             if not all_successful:
                 print("SAGA parse failed; retained artifacts may require reconciliation.", file=sys.stderr)

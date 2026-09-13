@@ -20,7 +20,7 @@ from models.kg_constants import (
 from .cache_coordinator import guard_graph_cache
 from .cypher_builders.native_builders import NativeCypherBuilder
 
-# Legacy world cypher builder removed; native builder is the single path.
+# World writes use the native Cypher builder.
 
 logger = structlog.get_logger(__name__)
 
@@ -159,7 +159,7 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
 
-    query = f"MATCH (we {{id: $id}}) WHERE {label_predicate}" " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)" " RETURN we"
+    query = f"MATCH (we {{id: $id}}) WHERE {label_predicate} AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE) RETURN we"
 
     results = await get_services().database.execute_read_query(query, {"id": requested_id, "include_provisional": include_provisional})
 
