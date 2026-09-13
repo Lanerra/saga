@@ -3,7 +3,7 @@ import inspect
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -19,6 +19,7 @@ from core.project_manager import ProjectManager
 from core.service_context import get_services
 from orchestration.langgraph_orchestrator import LangGraphOrchestrator
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.test_staged_initialization import example_state, with_catalog
 
 STYLE = "First-person present, spare concrete sentences; no access to other minds."
 PROJECT = {
@@ -64,6 +65,24 @@ def record_provider(monkeypatch: pytest.MonkeyPatch, response: str) -> Recording
     return provider
 
 
+def planning_author_state(directory: Path, target: int = 101) -> NarrativeState:
+    state: dict[str, Any] = dict(author_state(directory, target))
+    selected: dict[str, Any] = dict(example_state(directory))
+    state["graph_project_id"] = selected["graph_project_id"]
+    manager = ContentManager(str(directory))
+    for name in ("character_sheets", "global_outline", "act_outlines", "chapter_outlines"):
+        payload = json.loads(json.dumps(manager.load_json_strict(selected[name + "_ref"])).replace("Ada", "Mara"))
+        if name == "global_outline":
+            payload["total_chapters"] = 3
+            payload["acts"][0]["chapters_end"] = 3
+        elif name == "act_outlines":
+            payload["acts"][0]["chapters_in_act"] = 3
+        elif name == "chapter_outlines":
+            payload = {str(number): {**payload["1"], "chapter_number": number, "key_beats": SCENE["beats"]} for number in range(1, 4)}
+        state[name + "_ref"] = manager.save_json(payload, name, "author", version=0 if name == "chapter_outlines" else 1)
+    return with_catalog(cast(NarrativeState, state))
+
+
 async def test_bootstrap_preserves_requested_style(monkeypatch: pytest.MonkeyPatch) -> None:
     provider = record_provider(monkeypatch, json.dumps({**PROJECT, "target_word_count": 101}))
     result = await ProjectBootstrapper(get_services().language_model).generate_metadata(
@@ -84,6 +103,7 @@ async def test_project_target_roundtrips_to_real_state(tmp_path: Path, monkeypat
     original = (directory / "config.json").read_bytes()
     loaded = ProjectManager.load_config(directory)
     database = FakeNeo4jManager()
+    database.configure_response(r"MATCH \(c:Chapter\)\s+RETURN c.number AS chapter_number", [])
     monkeypatch.setattr(get_services().database, "execute_read_query", database.execute_read_query)
     state = await LangGraphOrchestrator(project_dir=directory)._load_or_create_state(project_id=directory.name, narrative_config=loaded)
     assert (state["narrative_style"], state["target_word_count"], state["total_chapters"]) == (STYLE, 101, 3)
@@ -134,12 +154,13 @@ async def test_draft_targets_preserve_both_remainders(tmp_path: Path, monkeypatc
     assert sum(map(sum, targets)) == 101
 
 
+@pytest.mark.run_settings(TARGET_SCENES_MIN=3)
 async def test_planning_receives_style_and_same_chapter_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    provider = record_provider(monkeypatch, json.dumps([SCENE] * 3))
+    provider = record_provider(monkeypatch, json.dumps([SCENE, {**SCENE, "beats": []}, {**SCENE, "beats": []}]))
     database = FakeNeo4jManager()
     database.configure_response(r"RETURN c.name AS name", [{"name": "Mara"}])
     monkeypatch.setattr(get_services().database, "execute_read_query", database.execute_read_query)
-    result = await plan_scenes(author_state(tmp_path))
+    result = await plan_scenes(planning_author_state(tmp_path))
     assert result.get("has_fatal_error", False) is False
     assert "Narrative Style & Voice:\n" + STYLE + "\n" in provider.prompts[0]
     assert "Chapter length target: ~34 words in total" in provider.prompts[0]
@@ -168,9 +189,10 @@ async def test_author_omniscient_perspective_is_not_overridden(tmp_path: Path, m
 @pytest.mark.run_settings(TARGET_SCENES_MIN=0)
 async def test_invalid_requested_scene_count_stops_planning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider = record_provider(monkeypatch, json.dumps([SCENE]))
-    result = await plan_scenes(author_state(tmp_path))
+    result = await plan_scenes(planning_author_state(tmp_path))
     assert result["has_fatal_error"] is True
     assert provider.prompts == []
+    assert result["last_error"] is not None and "Requested scene count" in result["last_error"]
 
 
 @pytest.mark.parametrize("node", [plan_scenes, draft_scene])
@@ -184,9 +206,10 @@ async def test_invalid_state_targets_fail_closed(node: Any, target: Any, tmp_pat
     assert provider.prompts == []
 
 
+@pytest.mark.run_settings(SCENE_PLAN_MAX_ATTEMPTS=1)
 async def test_planner_rejects_more_scenes_than_words(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider = record_provider(monkeypatch, json.dumps([SCENE] * 2))
-    state = author_state(tmp_path, target=3)
+    state = planning_author_state(tmp_path, target=3)
     result = await plan_scenes(state)
     assert result["has_fatal_error"] is True
     assert result["chapter_plan_ref"] is None

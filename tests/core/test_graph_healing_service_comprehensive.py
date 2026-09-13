@@ -227,7 +227,7 @@ class TestGraphHealingServiceEnrichment:
     async def test_apply_enrichment_with_valid_data(self) -> None:
         """Test that apply_enrichment applies enrichment correctly."""
         service = GraphHealingService()
-        enriched = {"inferred_description": "A test character", "confidence": 0.8}
+        enriched = {"inferred_description": "A test character", "inferred_traits": [], "inferred_role": "", "confidence": 0.8}
 
         with patch_service('database.execute_write_query') as mock_write:
             result = await service.apply_enrichment("test_element_id", enriched)
@@ -238,7 +238,7 @@ class TestGraphHealingServiceEnrichment:
     async def test_apply_enrichment_below_confidence_threshold(self) -> None:
         """Test that apply_enrichment rejects low confidence enrichment."""
         service = GraphHealingService()
-        enriched = {"inferred_description": "A test character", "confidence": 0.5}
+        enriched = {"inferred_description": "A test character", "inferred_traits": [], "inferred_role": "", "confidence": 0.5}
 
         with patch_service('database.execute_write_query') as mock_write:
             result = await service.apply_enrichment("test_element_id", enriched)

@@ -499,8 +499,11 @@ def test_retained_corruption_rejected(lifecycle_example: tuple[NarrativeState, D
 async def test_real_extraction_assembly_binds_commit(lifecycle_example: tuple[NarrativeState, DriverExample], monkeypatch: pytest.MonkeyPatch) -> None:
     from core.langgraph.nodes import scene_extraction
     from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
+    from tests.test_staged_initialization import example_state as initialization_state
+    from tests.test_staged_initialization import with_catalog
 
     state, _ = lifecycle_example
+    state = {**state, **with_catalog(initialization_state(Path(state["project_dir"])))}
     calls: list[str] = []
 
     async def provider(*args: Any, **kwargs: Any) -> tuple[str, dict[str, Any]]:
