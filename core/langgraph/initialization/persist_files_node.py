@@ -372,6 +372,7 @@ def _write_character_files(project_dir: Path, character_sheets: dict) -> None:
 
         character_data = {
             "name": name,
+            "selected_sheet": sheet,
             "role": "protagonist" if sheet.get("is_protagonist") else "character",
             **normalized_parsed,
             **{key: _normalize_prose(sheet[key]) if isinstance(sheet[key], str) else sheet[key] for key in (
@@ -396,6 +397,8 @@ def _write_outline_files(
     global_outline: dict | None,
     act_outlines: dict,
     state: NarrativeState,
+    *,
+    selected_outlines: dict[str, Any] | None = None,
 ) -> None:
     """Write global/act outline artifacts under `outline/`."""
     outline_dir = project_dir / "outline"
@@ -447,6 +450,8 @@ def _write_outline_files(
         "generated_at": datetime.now(UTC).isoformat(),
         "source": "initialization",
     }
+    if selected_outlines is not None:
+        beats_data["selected_outlines"] = selected_outlines
 
     if global_outline:
         raw_text = global_outline.get("raw_text", "")
@@ -493,8 +498,7 @@ def _write_world_items_file(project_dir: Path, world_items: list[Any], setting: 
                 "id": getattr(item, "id", ""),
                 "name": getattr(item, "name", ""),
                 "category": getattr(item, "category", ""),
-                # Description is prose; normalize into multiline-safe form.
-                "description": _normalize_prose(description),
+                "description": description,
             }
         )
 
@@ -521,6 +525,8 @@ def _write_saga_yaml(project_dir: Path, state: NarrativeState) -> None:
         "setting",
         "total_chapters",
         "target_word_count",
+        "narrative_style",
+        "protagonist_name",
         "project_id",
     ):
         if key in state:

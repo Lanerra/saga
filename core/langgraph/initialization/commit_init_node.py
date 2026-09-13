@@ -15,9 +15,6 @@ import structlog
 
 import config
 from core.langgraph.content_manager import (
-    ContentManager,
-    get_character_sheets,
-    get_global_outline,
     require_project_dir,
 )
 from core.langgraph.state import NarrativeState
@@ -45,145 +42,6 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         return {
             "current_node": "commit_initialization", "last_error": f"Initialization admission failed: {error}",
             "initialization_step": "commit_failed", "has_fatal_error": True, "error_node": "commit_initialization",
-        }
-
-
-async def _legacy_commit_initialization_to_graph(state: NarrativeState) -> NarrativeState:
-    """Convert initialization artifacts to Neo4j models and persist them.
-
-    Args:
-        state: Workflow state. Reads character sheets and global outline (preferring
-            externalized refs).
-
-    Returns:
-        Updated state containing:
-        - initialization_step: `"committed_to_graph"` on success.
-        - current_node: `"commit_initialization"`.
-        - last_error: Cleared on success.
-
-        On errors, returns a state with `has_fatal_error` set and `last_error` populated.
-
-    Notes:
-        This node performs Neo4j writes and invalidates `data_access` read caches after
-        successful persistence.
-    """
-    # Initialize content manager for reading externalized content
-    content_manager = ContentManager(require_project_dir(state))
-
-    # Get character sheets and global outline (from external files)
-    character_sheets = get_character_sheets(state, content_manager)
-    global_outline = get_global_outline(state, content_manager)
-
-    outline_relationships_ref = state.get("outline_relationships_ref")
-    outline_relationships: list[Any] = []
-    if outline_relationships_ref:
-        logger.info(
-            "commit_initialization_to_graph: loading outline relationships",
-            ref=outline_relationships_ref,
-        )
-        try:
-            loaded = content_manager.load_json(outline_relationships_ref)
-            assert isinstance(loaded, list), f"outline_relationships must be a JSON array, got {type(loaded).__name__}"
-            outline_relationships = loaded
-            logger.info(
-                "commit_initialization_to_graph: loaded outline relationships",
-                count=len(outline_relationships),
-            )
-        except Exception as e:
-            logger.warning(
-                "commit_initialization_to_graph: failed to load outline relationships",
-                error=str(e),
-                ref=outline_relationships_ref,
-            )
-    else:
-        logger.warning("commit_initialization_to_graph: no outline_relationships_ref in state")
-
-    logger.info(
-        "commit_initialization_to_graph: starting initialization data commit",
-        characters=len(character_sheets),
-        has_global_outline=bool(global_outline),
-        outline_relationships=len(outline_relationships),
-    )
-
-    if not character_sheets:
-        logger.warning("commit_initialization_to_graph: no character sheets to commit")
-
-    try:
-        # Step 1: Parse character sheets into CharacterProfile models
-        character_profiles = []
-        if character_sheets:
-            character_profiles = await _parse_character_sheets_to_profiles(
-                character_sheets,
-                model_name=state.get("medium_model", config.MEDIUM_MODEL),
-            )
-
-        # Step 2: Extract world items from outlines
-        world_items = []
-        if global_outline:
-            world_items = await _extract_world_items_from_outline(
-                global_outline,
-                state.get("setting", ""),
-                model_name=state.get("medium_model", config.MEDIUM_MODEL),
-            )
-
-        # Step 3: Commit to Neo4j using direct batch approach
-        if character_profiles or world_items or outline_relationships:
-            statements = await _build_entity_persistence_statements(
-                character_profiles,
-                world_items,
-                outline_relationships,
-                chapter_number=0,  # Initialization entities exist before any chapters
-            )
-
-            if statements:
-                await get_services().database.execute_cypher_batch(statements)
-
-                # P0-1: Cache invalidation after Neo4j writes
-                # Local import avoids eager import side effects / circular deps.
-                from data_access.cache_coordinator import (
-                    clear_character_read_caches,
-                    clear_world_read_caches,
-                )
-
-                cleared_character = clear_character_read_caches()
-                cleared_world = clear_world_read_caches()
-
-                logger.debug(
-                    "commit_initialization_to_graph: executed batch and invalidated caches",
-                    total_statements=len(statements),
-                    cache_cleared={
-                        "character": cleared_character,
-                        "world": cleared_world,
-                    },
-                )
-
-        logger.info(
-            "commit_initialization_to_graph: successfully committed initialization data",
-            characters=len(character_profiles),
-            world_items=len(world_items),
-        )
-
-        updated_state: NarrativeState = {
-            "current_node": "commit_initialization",
-            "last_error": None,
-            "initialization_step": "committed_to_graph",
-        }
-
-        return updated_state
-
-    except Exception as e:
-        error_msg = f"Failed to commit initialization data: {e}"
-        logger.error(
-            "commit_initialization_to_graph: fatal error during commit",
-            error=str(e),
-            exc_info=True,
-        )
-        return {
-            "current_node": "commit_initialization",
-            "last_error": error_msg,
-            "has_fatal_error": True,
-            "error_node": "commit_initialization",
-            "initialization_step": "commit_failed",
         }
 
 
@@ -499,11 +357,9 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     """
     raw_text = response.strip()
 
-    data = _load_json_with_contract_then_salvage(
-        context="world_items_extraction",
-        raw_text=raw_text,
-        expected_root=list,
-    )
+    from core.langgraph.initialization.snapshot import strict_json
+
+    data = strict_json(raw_text)
 
     if not isinstance(data, list):
         raise ValueError("World items extraction must be a JSON array")
@@ -531,6 +387,8 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
 
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"World item at index {index} 'name' must be a non-empty string")
+        if name != name.strip():
+            raise ValueError(f"World item at index {index} 'name' must not have surrounding whitespace")
         if not isinstance(category, str) or category not in allowed_categories:
             raise ValueError(f"World item at index {index} 'category' must be one of {sorted(allowed_categories)}")
         if not isinstance(description, str) or not description.strip():
@@ -538,9 +396,9 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
 
         items.append(
             WorldItem(
-                id=generate_entity_id(name.strip(), category),
-                name=name.strip(),
-                description=description.strip(),
+                id=generate_entity_id(name, category),
+                name=name,
+                description=description,
                 category=category,
                 created_chapter=0,
                 is_provisional=False,

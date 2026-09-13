@@ -89,6 +89,9 @@ class InitializationImport:
             require(encoded(manager.load_json_strict(artifact.reference())) == artifact.payload, "Selected initialization source changed")
 
     def projection_manifest(self, snapshot: InitializationSnapshot) -> str:
+        from core.langgraph.initialization.catalog import EntityCatalog
+        from models.kg_models import WorldItem
+
         from core.langgraph.initialization.persist_files_node import (
             _create_directory_structure,
             _write_character_files,
@@ -106,8 +109,13 @@ class InitializationImport:
             state["total_chapters"] = snapshot.total_chapters
             _create_directory_structure(root)
             _write_character_files(root, snapshot.source("character_sheets"))
-            _write_outline_files(root, snapshot.source("global_outline"), {act["act_number"]: act for act in snapshot.source("act_outlines")["acts"]}, state)
-            _write_world_items_file(root, [], state.get("setting", ""))
+            _write_outline_files(
+                root, snapshot.source("global_outline"), {act["act_number"]: act for act in snapshot.source("act_outlines")["acts"]}, state,
+                selected_outlines={name: snapshot.source(name) for name in ("global_outline", "act_outlines", "chapter_outlines")},
+            )
+            catalog = EntityCatalog.model_validate_json(encoded(snapshot.source(CATALOG_ARTIFACT)))
+            world_items = [WorldItem.model_validate_json(entity.payload) for entity in catalog.entities if entity.label in {"Item", "Location"}]
+            _write_world_items_file(root, world_items, state.get("setting", ""))
             _write_saga_yaml(root, state)
             _write_world_rules_stub(root)
             _write_world_history_stub(root)

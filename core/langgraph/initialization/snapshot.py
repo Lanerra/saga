@@ -263,7 +263,10 @@ def _select_snapshot(state: NarrativeState, *, include_relationships: bool) -> I
         project_id=validate_project_id(state["graph_project_id"]), total_chapters=total, total_acts=total_acts,
         artifacts=tuple(artifacts), characters=tuple(characters), chapters=tuple(parsed_chapters),
         relationships=(),
-        metadata=encoded({key: state.get(key, "") for key in ("title", "genre", "theme", "setting", "project_id")}),
+        metadata=encoded({
+            **{key: state.get(key, "") for key in ("title", "genre", "theme", "setting", "project_id")},
+            **{key: state[key] for key in ("target_word_count", "narrative_style", "protagonist_name") if key in state},
+        }),
     )
     if not include_relationships:
         return snapshot

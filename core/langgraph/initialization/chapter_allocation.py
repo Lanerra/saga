@@ -136,9 +136,8 @@ def choose_act_ranges(global_outline: dict, total_chapters: int) -> dict[int, Ac
 
     Notes:
         Preference order:
-        1) Use explicit act ranges when all acts 1..act_count provide `chapters_start` and
-           `chapters_end`.
-        2) Otherwise compute balanced ranges.
+        1) Validate and preserve the exact selected act partition when `acts` exists.
+        2) Compute balanced ranges only for an unpopulated outline without `acts`.
 
         When `act_count` is missing or invalid, this defaults to 3.
     """
@@ -147,8 +146,26 @@ def choose_act_ranges(global_outline: dict, total_chapters: int) -> dict[int, Ac
     if act_count <= 0:
         act_count = 3
 
-    explicit = extract_explicit_act_ranges(global_outline)
-    if explicit and all(i in explicit for i in range(1, act_count + 1)):
+    if "acts" in global_outline:
+        if not _is_int(total_chapters) or total_chapters <= 0:
+            raise ValueError("Expected positive total_chapters")
+        if not _is_int(act_count_raw) or not 1 <= act_count_raw <= total_chapters:
+            raise ValueError("Invalid selected act count")
+        acts = global_outline["acts"]
+        if not isinstance(acts, list) or len(acts) != act_count:
+            raise ValueError("Selected acts must match act_count")
+        explicit: dict[int, ActRange] = {}
+        cursor = 1
+        for number, act in enumerate(acts, 1):
+            if not isinstance(act, dict) or type(act.get("act_number")) is not int or act["act_number"] != number:
+                raise ValueError("Selected acts must have ordered unique identities")
+            start, end = act.get("chapters_start"), act.get("chapters_end")
+            if not _is_int(start) or not _is_int(end) or start != cursor or not start <= end <= total_chapters:
+                raise ValueError("Selected act ranges must form an exact nonempty partition")
+            explicit[number] = ActRange(number, start, end)
+            cursor = end + 1
+        if cursor != total_chapters + 1:
+            raise ValueError("Selected act ranges must cover all chapters")
         return explicit
 
     return compute_balanced_act_ranges(total_chapters=total_chapters, act_count=act_count)
@@ -167,8 +184,10 @@ def determine_act_for_chapter(
         chapter_number: 1-indexed chapter number.
 
     Returns:
-        Act number, clamped into `[1, act_count]` when possible.
+        Act number for a valid chapter in the selected partition.
     """
+    if not _is_int(chapter_number) or not _is_int(total_chapters) or not 1 <= chapter_number <= total_chapters:
+        raise ValueError("Requested chapter is outside the selected topology")
     act_count_raw = global_outline.get("act_count", 3)
     act_count = act_count_raw if _is_int(act_count_raw) else 3
     if act_count <= 0:
@@ -181,7 +200,4 @@ def determine_act_for_chapter(
         if act_range and act_range.contains(chapter_number):
             return act_number
 
-    # Fallback: if out-of-range, clamp to last act; if <=0, clamp to 1
-    if chapter_number <= 0:
-        return 1
-    return act_count
+    raise ValueError("Requested chapter has no selected act")

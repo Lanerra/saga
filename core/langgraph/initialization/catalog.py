@@ -77,6 +77,18 @@ class EntityCatalog(FrozenPayload):
                 event_models: dict[str, type[BaseModel]] = {"MajorPlotPoint": MajorPlotPoint, "ActKeyEvent": ActKeyEvent, "SceneEvent": SceneEvent}
                 require(payload.get("event_type") in event_models, "Catalog event type mismatch")
                 event_models[payload["event_type"]].model_validate(payload)
+        source_entities = tuple(entity for entity in self.entities if entity.label not in {"Location", "Item"})
+        require(source_entities == _materialize_source_entities(self.inputs), "Catalog entities differ from selected source materialization")
+        if self.evidence:
+            from core.langgraph.initialization.commit_init_node import _parse_world_items_extraction
+
+            require(len(self.evidence) == 1 and self.evidence[0].template == "knowledge_agent/extract_world_items_lines.j2", "Unexpected world producer evidence")
+            world_items = _parse_world_items_extraction(self.evidence[0].response)
+            expected_world = tuple(
+                GraphEntity(label="Location" if item.category == "location" else "Item", identity=item.id, payload=encoded(item.model_dump(mode="json")))
+                for item in world_items
+            )
+            require(tuple(entity for entity in self.entities if entity.label in {"Location", "Item"}) == expected_world, "Catalog world entities differ from selected producer evidence")
         return self
 
     def verify_inputs(self, inputs: InitializationSnapshot) -> None:
@@ -150,7 +162,7 @@ class RelationshipArtifact(FrozenPayload):
             catalog.endpoint(relationship.target_id, relationship.target_label)
 
 
-def materialize_entities(inputs: InitializationSnapshot, world_items: list[WorldItem], evidence: tuple[ProducerEvidence, ...]) -> EntityCatalog:
+def _materialize_source_entities(inputs: InitializationSnapshot) -> tuple[GraphEntity, ...]:
     entities: list[GraphEntity] = []
 
     def add(label: Any, model: BaseModel) -> None:
@@ -172,8 +184,7 @@ def materialize_entities(inputs: InitializationSnapshot, world_items: list[World
     require({event.act_number for event in act_events} == set(range(1, inputs.total_acts + 1)), "Incomplete act event coverage")
     for act_event in act_events:
         add("Event", act_event)
-    for item in world_items:
-        add("Location" if item.category == "location" else "Item", item)
+
     chapter_parser = ChapterOutlineParser()
     names = [sheet.name for sheet in inputs.characters]
     for chapter in inputs.chapters:
@@ -183,6 +194,13 @@ def materialize_entities(inputs: InitializationSnapshot, world_items: list[World
             add("Scene", scene)
         for scene_event in chapter_parser._parse_scene_events(source, names):
             add("Event", scene_event)
+    return tuple(entities)
+
+
+def materialize_entities(inputs: InitializationSnapshot, world_items: list[WorldItem], evidence: tuple[ProducerEvidence, ...]) -> EntityCatalog:
+    entities = list(_materialize_source_entities(inputs))
+    for item in world_items:
+        entities.append(GraphEntity(label="Location" if item.category == "location" else "Item", identity=item.id, payload=encoded(item.model_dump(mode="json"))))
     return EntityCatalog(inputs=inputs, entities=tuple(entities), evidence=evidence)
 
 
@@ -211,7 +229,7 @@ async def materialize_initialization_catalog(state: NarrativeState) -> Narrative
         template = "knowledge_agent/extract_world_items_lines.j2"
         prompt = render_prompt(template, {
             "setting": json.loads(inputs.metadata)["setting"],
-            "outline_text": encoded({"global_outline": inputs.source("global_outline"), "act_outlines": inputs.source("act_outlines")}),
+            "outline_text": encoded({name: inputs.source(name) for name in ARTIFACTS[:-1]}),
         })
         response, _ = await get_services().language_model.async_call_llm(
             model_name=config.NARRATIVE_MODEL, prompt=prompt, temperature=0.3,

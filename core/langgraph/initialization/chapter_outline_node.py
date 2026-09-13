@@ -13,6 +13,7 @@ import json
 from typing import Any
 
 import structlog
+from pydantic import BaseModel, ConfigDict, Field
 
 import config
 from core.langgraph.content_manager import (
@@ -31,10 +32,19 @@ from core.langgraph.initialization.chapter_allocation import (
     determine_act_for_chapter as determine_act_for_chapter_from_outline,
 )
 from core.langgraph.state import NarrativeState
+from core.project_config import allocate_word_target
 from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
+
+
+class ChapterOutlineResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    scene_description: str = Field(min_length=1)
+    key_beats: list[str] = Field(min_length=3, max_length=5)
+    plot_point: str = Field(min_length=1)
 
 
 async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
@@ -112,6 +122,13 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
                     "last_error": None,
                     "initialization_step": f"chapter_outline_{chapter_number}_enriched",
                 }
+
+            return {
+                "last_error": f"Failed to enrich outline for chapter {chapter_number}",
+                "has_fatal_error": True,
+                "current_node": "chapter_outline",
+                "initialization_step": f"chapter_outline_{chapter_number}_failed",
+            }
 
         logger.info(
             "generate_chapter_outline: using existing outline",
@@ -223,10 +240,10 @@ async def _generate_single_chapter_outline(
 
     # Get act outline if available
     act_outline = act_outlines.get(act_number, {})
-    act_outline_text = act_outline.get("raw_text", "")
+    act_outline_text = json.dumps({key: value for key, value in act_outline.items() if key != "raw_text"}, ensure_ascii=False)
 
     # Build character context
-    character_context = build_character_summary(character_sheets, max_characters=3)
+    character_context = json.dumps(character_sheets, ensure_ascii=False)
 
     # Build previous context
     previous_context = "\n".join(previous_summaries[-3:]) if previous_summaries else "This is the beginning of the story."
@@ -253,6 +270,7 @@ async def _generate_single_chapter_outline(
     prompt = render_prompt(
         "initialization/generate_chapter_outline.j2",
         {
+            "chapter_target_word_count": allocate_word_target(state.get("target_word_count", config.TARGET_WORD_COUNT), total_chapters, chapter_number),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
@@ -261,7 +279,7 @@ async def _generate_single_chapter_outline(
             "act_number": act_number,
             "chapter_in_act": chapter_in_act,
             "total_chapters": total_chapters,
-            "global_outline": global_outline.get("raw_text", ""),
+            "global_outline": json.dumps({key: value for key, value in global_outline.items() if key != "raw_text"}, ensure_ascii=False),
             "act_outline": act_outline_text,
             "character_context": character_context,
             "previous_context": previous_context,
@@ -276,7 +294,8 @@ async def _generate_single_chapter_outline(
             temperature=0.7,
             max_tokens=config.MAX_GENERATION_TOKENS,
             allow_fallback=True,
-            auto_clean_response=True,
+            auto_clean_response=False,
+            response_format={"type": "json_schema", "json_schema": {"name": "chapter_outline", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": ChapterOutlineResponse.model_json_schema()}},
             system_prompt=get_system_prompt("initialization"),
         )
 
@@ -386,72 +405,14 @@ def _parse_chapter_outline(
     Returns:
         Dictionary containing structured chapter outline
     """
-    scene_description = ""
-    key_beats = []
-    plot_point = ""
+    from core.langgraph.initialization.snapshot import strict_json
 
-    try:
-        # Clean potential markdown
-        cleaned_response = response.strip()
-        if cleaned_response.startswith("```json"):
-            cleaned_response = cleaned_response[7:]
-        if cleaned_response.endswith("```"):
-            cleaned_response = cleaned_response[:-3]
-
-        # Try to parse as JSON first
-        data = json.loads(cleaned_response)
-
-        # Ensure data is a dictionary (not a list or other type)
-        if not isinstance(data, dict):
-            logger.warning(
-                "_parse_chapter_outline: JSON parsing succeeded but returned non-dict type",
-                chapter=chapter_number,
-                type=type(data).__name__,
-            )
-            raise json.JSONDecodeError("Expected JSON object, got non-object type", cleaned_response, 0)
-
-        scene_description = data.get("scene_description", "")
-        key_beats = data.get("key_beats", [])
-        plot_point = data.get("plot_point", "")
-
-    except json.JSONDecodeError:
-        logger.warning(
-            "_parse_chapter_outline: JSON parsing failed, falling back to text parsing",
-            chapter=chapter_number,
-        )
-
-        # Fallback to text parsing
-        lines = response.split("\n")
-
-        # Try to extract sections
-        current_section = None
-        for line in lines:
-            line_lower = line.lower().strip()
-
-            if "scene" in line_lower or "summary" in line_lower:
-                current_section = "scene"
-            elif "beat" in line_lower or "event" in line_lower:
-                current_section = "beats"
-            elif "plot point" in line_lower or "focus" in line_lower:
-                current_section = "plot"
-            elif line.strip():
-                if current_section == "scene" and not scene_description:
-                    scene_description = line.strip()
-                elif current_section == "beats" and line.strip().startswith(("-", "*", "•")):
-                    key_beats.append(line.strip().lstrip("-*• "))
-                elif current_section == "plot" and not plot_point:
-                    plot_point = line.strip()
-
-        # Fallback: use full response as scene description
-        if not scene_description:
-            scene_description = response
+    data = ChapterOutlineResponse.model_validate(strict_json(response))
     chapter_outline = {
         "chapter_number": chapter_number,
         "act_number": act_number,
         "raw_text": response,
-        "scene_description": scene_description,
-        "key_beats": key_beats[:10],  # Limit to 10 beats
-        "plot_point": plot_point or f"Chapter {chapter_number} events",
+        **data.model_dump(),
         "generated_at": "on_demand",
     }
 
@@ -492,9 +453,9 @@ async def _enrich_skeleton_outline(
     previous_summaries = get_previous_summaries(state, content_manager)
 
     act_outline = act_outlines.get(act_number, {})
-    act_outline_text = act_outline.get("raw_text", "")
+    act_outline_text = json.dumps({key: value for key, value in act_outline.items() if key != "raw_text"}, ensure_ascii=False)
 
-    character_context = build_character_summary(character_sheets, max_characters=3)
+    character_context = json.dumps(character_sheets, ensure_ascii=False)
 
     previous_context = "\n".join(previous_summaries[-3:]) if previous_summaries else "This is the beginning of the story."
 
@@ -534,6 +495,7 @@ Return the enriched outline in the same JSON format:
     prompt = render_prompt(
         "initialization/generate_chapter_outline.j2",
         {
+            "chapter_target_word_count": allocate_word_target(state.get("target_word_count", config.TARGET_WORD_COUNT), total_chapters, chapter_number),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
@@ -542,7 +504,7 @@ Return the enriched outline in the same JSON format:
             "act_number": act_number,
             "chapter_in_act": chapter_in_act,
             "total_chapters": total_chapters,
-            "global_outline": global_outline.get("raw_text", ""),
+            "global_outline": json.dumps({key: value for key, value in global_outline.items() if key != "raw_text"}, ensure_ascii=False),
             "act_outline": act_outline_text,
             "character_context": character_context,
             "previous_context": previous_context,
@@ -559,7 +521,8 @@ Return the enriched outline in the same JSON format:
             temperature=0.7,
             max_tokens=config.MAX_GENERATION_TOKENS,
             allow_fallback=True,
-            auto_clean_response=True,
+            auto_clean_response=False,
+            response_format={"type": "json_schema", "json_schema": {"name": "chapter_outline", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": ChapterOutlineResponse.model_json_schema()}},
             system_prompt=get_system_prompt("initialization"),
         )
 

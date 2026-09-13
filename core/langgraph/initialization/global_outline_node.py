@@ -8,23 +8,26 @@ resulting outline is externalized to keep workflow state small.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 import config
 from core.langgraph.content_manager import ContentManager, get_character_sheets, require_project_dir
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-from utils.common import try_load_json_from_response
+
 
 logger = structlog.get_logger(__name__)
 
 
 class ActOutline(BaseModel):
     """Structured outline for a single act."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     act_number: int = Field(description="Act number (1-5)")
     title: str = Field(description="Title or name of the act")
@@ -37,6 +40,8 @@ class ActOutline(BaseModel):
 class CharacterArc(BaseModel):
     """Character arc progression throughout the story."""
 
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     character_name: str = Field(description="Name of the character")
     starting_state: str = Field(description="Character's state at story start")
     ending_state: str = Field(description="Character's state at story end")
@@ -45,6 +50,8 @@ class CharacterArc(BaseModel):
 
 class GlobalOutlineSchema(BaseModel):
     """Structured global story outline."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     act_count: int = Field(description="Number of acts: 1 for one chapter, 2 for two, 3 for three or four, and 3 or 5 for five or more chapters")
     acts: list[ActOutline] = Field(description="List of act outlines")
@@ -94,7 +101,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
         logger.warning("generate_global_outline: no character sheets available, " "generating without character context")
 
     # Build character context for outline generation
-    character_context = _build_character_context_from_sheets(character_sheets)
+    character_context = json.dumps(character_sheets, ensure_ascii=False)
 
     # Step 1: Generate global outline
     prompt = render_prompt(
@@ -112,6 +119,11 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
         },
     )
 
+    schema = GlobalOutlineSchema.model_json_schema()
+    total_chapters = state.get("total_chapters", 20)
+    schema["properties"]["act_count"]["enum"] = [min(total_chapters, 3)] if total_chapters < 5 else [3, 5]
+    schema["$defs"]["CharacterArc"]["properties"]["character_name"]["enum"] = list(character_sheets)
+
     try:
         response, usage = await get_services().language_model.async_call_llm(
             model_name=state.get("large_model", config.LARGE_MODEL),
@@ -119,7 +131,8 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             temperature=0.7,
             max_tokens=config.MAX_GENERATION_TOKENS,
             allow_fallback=True,
-            auto_clean_response=True,
+            auto_clean_response=False,
+            response_format={"type": "json_schema", "json_schema": {"name": "global_outline", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": schema}},
             system_prompt=get_system_prompt("initialization"),
         )
 
@@ -134,6 +147,8 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
 
         # Parse outline structure
         global_outline = _parse_global_outline(response, state)
+        if {arc["character_name"] for arc in global_outline["character_arcs"]} != set(character_sheets):
+            raise ValueError("Global outline must include exactly one arc for every selected character")
 
         logger.info(
             "generate_global_outline: generation complete",
@@ -235,8 +250,18 @@ def _validate_chapter_allocations(outline: GlobalOutlineSchema, total_chapters: 
     # Check sequential act numbering
     act_numbers = [act.act_number for act in outline.acts]
     expected_numbers = list(range(1, outline.act_count + 1))
-    if sorted(act_numbers) != expected_numbers:
+    if act_numbers != expected_numbers:
         errors.append(f"Act numbers should be {expected_numbers}, got {act_numbers}")
+
+    cursor = 1
+    for act in outline.acts:
+        if not 1 <= act.chapters_start <= act.chapters_end <= total_chapters or act.chapters_start != cursor:
+            errors.append("Act ranges must form an ordered nonempty chapter partition")
+        cursor = act.chapters_end + 1
+
+    allowed_counts = {min(total_chapters, 3)} if total_chapters < 5 else {3, 5}
+    if outline.act_count not in allowed_counts:
+        errors.append(f"Act count must be one of {sorted(allowed_counts)}")
 
     return errors
 
@@ -251,23 +276,15 @@ def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, Any
     Returns:
         Parsed outline data as a JSON-serializable dictionary.
 
-    Notes:
-        This function validates structure via Pydantic and records any detected
-        validation issues in the returned outline payload.
+    Reject schema or geometry failures before retaining a selected artifact.
     """
     total_chapters = state.get("total_chapters", 20)
 
-    parsed, candidates, parse_errors = try_load_json_from_response(
-        response,
-        expected_root=dict,
-    )
-    if parsed is None:
-        logger.warning(
-            "_parse_global_outline: JSON parsing failed, using fallback",
-            tried_sources=[source for source, _candidate in candidates[:5]],
-            errors=parse_errors[:5],
-        )
-        return _fallback_parse_outline(response, state)
+    from core.langgraph.initialization.snapshot import strict_json
+
+    if type(total_chapters) is not int or total_chapters <= 0:
+        raise ValueError("Expected positive total_chapters")
+    parsed = strict_json(response)
 
     try:
         # Validate with Pydantic schema
@@ -276,10 +293,10 @@ def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, Any
         # Validate chapter allocations
         validation_errors = _validate_chapter_allocations(outline, total_chapters)
         if validation_errors:
-            logger.warning(
-                "_parse_global_outline: validation issues",
-                errors=validation_errors,
-            )
+            raise ValueError("; ".join(validation_errors))
+        arc_names = [arc.character_name for arc in outline.character_arcs]
+        if len(set(arc_names)) != len(arc_names):
+            raise ValueError("Duplicate character arc identity")
 
         # Convert to dictionary for state storage
         global_outline = {

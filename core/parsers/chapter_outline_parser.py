@@ -109,8 +109,7 @@ class ChapterOutlineParser:
 
         chapter_id = self._generate_id("Chapter", chapter_number)
 
-        # Use the summary field directly from chapter outline data
-        summary = chapter_outline_data.get("summary", "")
+        summary = chapter_outline_data.get("summary") or chapter_outline_data.get("scene_description", "")
 
         chapter = Chapter(
             id=chapter_id,

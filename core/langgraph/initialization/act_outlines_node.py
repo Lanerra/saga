@@ -8,6 +8,7 @@ global outline when present, otherwise a balanced fallback allocation is used.
 
 from __future__ import annotations
 
+import json
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -19,7 +20,7 @@ from core.langgraph.content_manager import (
     require_project_dir,
 )
 from core.langgraph.initialization.chapter_allocation import choose_act_ranges
-from core.langgraph.initialization.chapter_outline_node import build_character_summary
+
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -149,8 +150,7 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
 
     Notes:
         This node performs LLM I/O and writes act outlines to disk via `ContentManager`.
-        JSON/schema contract violations for a single act are handled by skipping that
-        act outline rather than crashing the entire initialization run.
+        Any failed selected act fails the collection without publishing a partial artifact.
     """
     logger.info(
         "generate_act_outlines: starting act outline generation",
@@ -224,10 +224,12 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
 
             act_outlines[act_num] = act_outline
         else:
-            logger.warning(
-                "generate_act_outlines: failed to generate act",
-                act_number=act_num,
-            )
+            return {
+                "last_error": f"Failed to generate required act outline: {act_num}",
+                "current_node": "act_outlines",
+                "has_fatal_error": True,
+                "initialization_step": "act_outlines_failed",
+            }
 
     if not act_outlines:
         error_msg = "Failed to generate any act outlines"
@@ -253,7 +255,7 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
 
         # Ensure each entry is self-describing (required for v2 list format).
         if act_outline.get("act_number") != act_number:
-            act_outline = {**act_outline, "act_number": act_number}
+            raise ValueError(f"Act outline identity mismatch: {act_number}")
 
         acts_externalized.append(act_outline)
 
@@ -311,8 +313,8 @@ async def _generate_single_act_outline(
     act_role = _get_act_role(act_number, total_acts)
 
     # Build context strings
-    character_context = build_character_summary(character_sheets, include_description=True)
-    global_outline_text = global_outline.get("raw_text", "")
+    character_context = json.dumps(character_sheets, ensure_ascii=False)
+    global_outline_text = json.dumps({key: value for key, value in global_outline.items() if key != "raw_text"}, ensure_ascii=False)
 
     prompt = render_prompt(
         "initialization/generate_act_outline.j2",
@@ -331,6 +333,10 @@ async def _generate_single_act_outline(
         },
     )
 
+    schema = ActOutlineSchema.model_json_schema()
+    for name, value in {"act_number": act_number, "total_acts": total_acts, "act_role": act_role, "chapters_in_act": chapters_in_act}.items():
+        schema["properties"][name]["enum"] = [value]
+
     try:
         data, usage = await get_services().language_model.async_call_llm_json_object(
             model_name=state.get("large_model", config.LARGE_MODEL),
@@ -338,9 +344,11 @@ async def _generate_single_act_outline(
             temperature=0.7,
             max_tokens=config.MAX_GENERATION_TOKENS,
             allow_fallback=True,
-            auto_clean_response=True,
+            auto_clean_response=False,
             system_prompt=get_system_prompt("initialization"),
             max_attempts=2,
+            reject_duplicate_keys=True,
+            response_format={"type": "json_schema", "json_schema": {"name": "act_outline", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": schema}},
         )
 
         outline = ActOutlineSchema.model_validate(data)

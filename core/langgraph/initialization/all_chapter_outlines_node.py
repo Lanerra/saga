@@ -46,16 +46,16 @@ async def generate_all_chapter_outlines(state: NarrativeState) -> NarrativeState
         - Enrichment happens on-demand with recent summaries and graph state
         - Reuses existing `_generate_single_chapter_outline` logic
 
-        Can be disabled via GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT config parameter
-        to fall back to on-demand generation.
+        Complete graph admission requires every skeleton before materialization.
     """
     import config
 
     if not config.settings.GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT:
-        logger.info("generate_all_chapter_outlines: skipping (disabled by config), " "will generate on-demand")
         return {
             "current_node": "all_chapter_outlines",
-            "initialization_step": "all_chapter_outlines_skipped",
+            "initialization_step": "all_chapter_outlines_failed",
+            "has_fatal_error": True,
+            "last_error": "Initialization requires GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT=True; on-demand-only initialization is unsupported",
         }
 
     total_chapters = state.get("total_chapters", 20)
