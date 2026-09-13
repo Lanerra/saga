@@ -122,6 +122,12 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     total_chapters = state.get("total_chapters", 20)
     schema["properties"]["act_count"]["enum"] = [min(total_chapters, 3)] if total_chapters < 5 else [3, 5]
     schema["$defs"]["CharacterArc"]["properties"]["character_name"]["enum"] = list(character_sheets)
+    # The wire grammar must not advertise fields as optional when the prompt
+    # and selected-character admission require them. Keep local checks strict.
+    schema["required"].append("character_arcs")
+    schema["properties"]["character_arcs"].update(minItems=len(character_sheets), maxItems=len(character_sheets))
+    schema["$defs"]["ActOutline"]["required"].append("key_events")
+    schema["$defs"]["CharacterArc"]["required"].append("key_moments")
 
     try:
         response, usage = await get_services().language_model.async_call_llm(
