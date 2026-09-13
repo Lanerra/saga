@@ -100,16 +100,8 @@ async def normalize_relationships(state: NarrativeState) -> RelationshipNormaliz
     # Convert dicts to ExtractedRelationship objects
     extracted_rels = []
     for rel_dict in extracted_rels_dicts:
-        try:
-            rel = ExtractedRelationship(**rel_dict)
-            extracted_rels.append(rel)
-        except Exception as e:
-            logger.warning(
-                "Failed to parse extracted relationship",
-                rel_dict=rel_dict,
-                error=str(e),
-            )
-            continue
+        rel = ExtractedRelationship(**rel_dict)
+        extracted_rels.append(rel)
 
     # Process each relationship
     normalized_rels = []
@@ -139,10 +131,7 @@ async def normalize_relationships(state: NarrativeState) -> RelationshipNormaliz
         if config.REL_NORM_STRICT_CANONICAL_MODE and not was_normalized and normalized_type == original_type:
             canonical_result = await normalization_service.map_to_canonical(original_type)
             if canonical_result[0] is None:  # None means rejected
-                rejected_count += 1
-                if canonical_result[3]:  # is_property=True
-                    property_count += 1
-                continue  # Skip adding this relationship
+                raise ValueError("Strict canonical relationship normalization rejected the batch")
 
         # Check if novel (before updating vocabulary)
         is_novel = False

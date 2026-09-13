@@ -4,15 +4,12 @@
 This subgraph replaces chapter-level extraction to keep prompts small.
 """
 
-from typing import Literal
-
 import structlog
 from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
 from core.langgraph.nodes.extraction_nodes import consolidate_extraction
 from core.langgraph.nodes.scene_extraction import extract_from_scenes
 from core.langgraph.state import NarrativeState
-
 from core.langgraph.subgraphs._shared import _should_continue_or_error
 
 logger = structlog.get_logger(__name__)

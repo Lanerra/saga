@@ -37,7 +37,8 @@ Per-location entry (inside world_updates.Location):
   - "key_elements" (array of strings)
 
 Extraction rules:
-- Prefer proper nouns.
+{% include "knowledge_agent/_named_identity.j2" %}
+- Require proper names; do not title-case an unnamed location or classify equipment as a place.
 - Skip weather/lighting/atmosphere unless it is a stable named anomaly.
 
 Chapter text:

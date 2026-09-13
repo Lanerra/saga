@@ -24,7 +24,7 @@ from .cypher_builders.native_builders import NativeCypherBuilder
 
 logger = structlog.get_logger(__name__)
 
-# Mapping from normalized world item names to canonical IDs
+# Mapping from exact world item names to canonical IDs
 #
 # Lifecycle contract (P1):
 # - `resolve_world_name()` is best-effort ONLY (purely in-memory; no DB IO).
@@ -47,7 +47,7 @@ def rebuild_world_name_map(world_items: list["WorldItem"]) -> None:
     WORLD_NAME_TO_ID.clear()
     for item in world_items:
         if isinstance(item, WorldItem) and item.name and item.id:
-            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+            WORLD_NAME_TO_ID[item.name] = item.id
 
 
 def update_world_name_map(world_items: list["WorldItem"]) -> None:
@@ -62,7 +62,7 @@ def update_world_name_map(world_items: list["WorldItem"]) -> None:
     """
     for item in world_items:
         if isinstance(item, WorldItem) and item.name and item.id:
-            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+            WORLD_NAME_TO_ID[item.name] = item.id
 
 
 def resolve_world_name(name: str) -> str | None:
@@ -81,7 +81,7 @@ def resolve_world_name(name: str) -> str | None:
     """
     if not name:
         return None
-    return WORLD_NAME_TO_ID.get(utils._normalize_for_id(name))
+    return WORLD_NAME_TO_ID.get(name)
 
 
 def get_world_item_by_name(world_data: dict[str, dict[str, WorldItem]], name: str) -> WorldItem | None:
@@ -114,11 +114,10 @@ def get_world_item_by_name(world_data: dict[str, dict[str, WorldItem]], name: st
 @guard_graph_cache
 @alru_cache(maxsize=128)
 async def get_world_item_by_id(item_id: str, *, include_provisional: bool = False) -> WorldItem | None:
-    """Return a world item by id, with best-effort name fallback.
+    """Return a world item by its literal stable ID.
 
     Args:
-        item_id: World item id. This function also accepts a display name as a fallback
-            input; if a name-to-id mapping exists, it will re-query using the resolved id.
+        item_id: World item ID. Resolve an exact display name explicitly before calling.
         include_provisional: Whether provisional world items and provisional elaboration
             events may be returned.
 
@@ -143,13 +142,14 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
             should invalidate via [`clear_world_read_caches()`](data_access/cache_coordinator.py:42).
 
         Identity semantics:
-            If a name fallback resolves to an id, the returned model uses that canonical id
-            as its identity (`item_detail["id"] = effective_id`).
+            A missing ID is not a name lookup and malformed graph records are not repaired.
     """
     logger.info(f"Loading world item '{item_id}' from Neo4j...")
 
     requested_id = item_id
     effective_id: str = item_id
+    if not isinstance(item_id, str) or not item_id.strip():
+        raise ValueError("World item lookup requires a nonblank stable ID")
 
     # Canonical labeling contract:
     # - World item nodes are labeled with canonical "world" labels only
@@ -162,11 +162,6 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     query = f"MATCH (we {{id: $id}}) WHERE {label_predicate}" " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)" " RETURN we"
 
     results = await get_services().database.execute_read_query(query, {"id": requested_id, "include_provisional": include_provisional})
-    if not results or not results[0].get("we"):
-        alt_id = resolve_world_name(requested_id)
-        if alt_id and alt_id != requested_id:
-            effective_id = alt_id
-            results = await get_services().database.execute_read_query(query, {"id": effective_id, "include_provisional": include_provisional})
 
     if not results or not results[0].get("we"):
         logger.info(f"No world item found for id '{requested_id}'.")
@@ -176,6 +171,8 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     category = we_node.get("category")
     item_name = we_node.get("name")
     we_id = we_node.get("id")
+    if len(results) != 1 or we_id != requested_id:
+        raise ValueError("World item ID read returned ambiguous or conflicting identity")
 
     # Validate and normalize core fields for world item
     # This ensures that all world items have valid id, category, and name
@@ -198,22 +195,6 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
 
     # Prefer the fetched/validated node id as the single effective id for enrichment + identity.
     effective_id = we_id
-
-    # Check if any fields were missing and log a warning if so
-    missing_fields = []
-    if not we_node.get("category"):
-        missing_fields.append("category")
-    if not we_node.get("name"):
-        missing_fields.append("name")
-    if not we_node.get("id"):
-        missing_fields.append("id")
-
-    if missing_fields:
-        logger.warning(f"Corrected world item with missing core fields ({', '.join(missing_fields)}) for id '{item_id}': {we_node}")
-        # Update the we_node dict with corrected values for subsequent processing
-        we_node["category"] = category
-        we_node["name"] = item_name
-        we_node["id"] = we_id
 
     item_detail: dict[str, Any] = dict(we_node)
     item_detail.pop("created_ts", None)

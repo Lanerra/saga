@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from core.schema_validator import canonicalize_entity_type_for_persistence
 from models.kg_models import CharacterProfile, WorldItem
+from utils import classify_category_label
 from utils.text_processing import validate_and_filter_traits
 
 if TYPE_CHECKING:
@@ -19,6 +21,15 @@ if TYPE_CHECKING:
 
 
 logger = structlog.get_logger(__name__)
+
+
+def _explicit_entity_id(entity: ExtractedEntity) -> str:
+    if "id" not in entity.attributes:
+        return ""
+    identifier = entity.attributes["id"]
+    if not isinstance(identifier, str) or not identifier.strip():
+        raise ValueError("Explicit entity ID must be a nonblank string")
+    return identifier
 
 
 def _convert_to_character_profiles(
@@ -67,7 +78,7 @@ def _convert_to_character_profiles(
         profiles.append(
             CharacterProfile(
                 name=final_name,
-                id=entity.attributes.get("id", ""),
+                id=_explicit_entity_id(entity),
                 personality_description=entity.description,
                 traits=traits,
                 status=status if isinstance(status, str) else "Unknown",
@@ -104,11 +115,13 @@ def _convert_to_world_items(
 
     for entity in entities:
         # Use deduplicated ID
-        final_id = entity.attributes.get("id") or id_mappings.get(entity.name, "")
+        final_id = _explicit_entity_id(entity) if "id" in entity.attributes else id_mappings.get(entity.name, "")
 
         # Use the category from attributes (preserves specific type like "artifact", "document")
         # The ExtractedEntity validator automatically stores the original type here before normalization
         category = entity.attributes.get("category", entity.type.lower() if entity.type else "")
+        if not isinstance(category, str) or classify_category_label(category) != canonicalize_entity_type_for_persistence(entity.type):
+            raise ValueError("World entity category conflicts with canonical label")
 
         # Extract structured fields
         goals = entity.attributes.get("goals", [])

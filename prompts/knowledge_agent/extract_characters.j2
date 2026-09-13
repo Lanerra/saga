@@ -2,6 +2,7 @@ You are a specialized character extraction agent for an autonomous novel writing
 Your task is to extract ONLY actual characters from the provided chapter text.
 
 Extract only characters that are:
+{% include "knowledge_agent/_named_identity.j2" %}
 - Named individuals with proper names (Elias, Clara, Jebediah)
 - Specific entities with unique identity (The Blackwood Matriarch, Father O'Brien)
 - Named groups or factions (The Choctaw Tribe, The Blackwood Family)
@@ -54,7 +55,7 @@ Per-character entry requirements:
 
 Extraction rules:
 - Use proper names as keys
-- Resolve pronouns to canonical names
+- Resolve pronouns only to exact names explicitly present in this text
 - Skip background mentions and crowds
 
 Chapter text:

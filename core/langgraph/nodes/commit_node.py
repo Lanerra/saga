@@ -431,7 +431,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
     # Track mappings for deduplication
     char_mappings: dict[str, str] = {}
-    world_mappings: dict[str, str] = {}  # name -> deterministic id
+    world_mappings: dict[str, str] = {}
 
     try:
         admission_statements, protected_identities = await _prepare_explicit_entity_admission([*char_entities, *world_entities])
@@ -446,31 +446,11 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         for char in char_entities:
             char_mappings[char.name] = char.name
 
-        # Step 2: Deduplicate world items (READ operations)
-        # First pass: deduplicate within batch (same name = same id)
-        seen_names: dict[str, str] = {}  # name -> first assigned id
-
+        # Missing IDs use the same canonical graph resolver as characters.
+        # Python punctuation normalization must not collapse distinct named places.
         for item in world_entities:
-            # Check if we've already seen this name in the batch
-            if item.name in seen_names:
-                # Reuse the id from the first occurrence
-                world_mappings[item.name] = seen_names[item.name]
-                logger.debug(
-                    "commit_to_graph: within-batch duplicate detected",
-                    name=item.name,
-                    reusing_id=seen_names[item.name],
-                )
-                continue
-
-            # First time seeing this name, generate deterministic ID
-            from utils.text_processing import generate_entity_id
-
-            deduplicated_id = generate_entity_id(
-                item.name,
-                item.attributes.get("category", ""),
-            )
-            world_mappings[item.name] = deduplicated_id
-            seen_names[item.name] = deduplicated_id
+            if "id" in item.attributes:
+                world_mappings[item.name] = item.attributes["id"]
 
         # Step 3: Convert ExtractedEntity to CharacterProfile/WorldItem models
         # Deduplicate entity lists to prevent creating duplicate models
@@ -496,7 +476,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         # Contract: relationship writes are chapter-idempotent.
         # Every commit replaces the chapter's relationship set (including "no relationships").
 
-        # Filter out invalid abstract-concept relationships
+        # Validate the entire relationship batch before any graph write.
         relationships = _filter_invalid_relationships(relationships)
 
         relationship_statements = await _build_relationship_statements(
@@ -700,6 +680,8 @@ async def _build_relationship_statements(
         entity_category_map[entity.name] = entity.attributes.get("category", "")
 
     for entity in world_entities:
+        if entity.name in entity_type_map and entity_type_map[entity.name] != entity.type:
+            raise ValueError("Ambiguous relationship endpoint identity across entity types")
         entity_type_map[entity.name] = entity.type
         entity_category_map[entity.name] = entity.attributes.get("category", "")
 
@@ -753,6 +735,11 @@ async def _build_relationship_statements(
 
         entity_type = explicit_type if explicit_type is not None else entity_type_map.get(original_name, None)
         entity_category = entity_category_map.get(original_name, "")
+        known_type = entity_type_map.get(original_name)
+        if explicit_type is not None and known_type is not None and (
+            canonicalize_entity_type_for_persistence(explicit_type) != canonicalize_entity_type_for_persistence(known_type)
+        ):
+            raise ValueError("Relationship endpoint type conflicts with extracted entity identity")
 
         if not entity_type or not str(entity_type).strip():
             inferred_type = None
@@ -778,6 +765,9 @@ async def _build_relationship_statements(
             neo4j_type = canonicalize_entity_type_for_persistence(entity_type)
 
         resolved_stable_id = stable_id if stable_id is not None else entity_identity_map.get((neo4j_type, original_name))
+        known_id = entity_identity_map.get((neo4j_type, original_name))
+        if stable_id is not None and known_id is not None and stable_id != known_id:
+            raise ValueError("Relationship endpoint ID conflicts with extracted entity identity")
         if resolved_stable_id is None and neo4j_type != "Character":
             resolved_stable_id = world_mappings.get(original_name)
 
@@ -849,7 +839,7 @@ async def _build_relationship_statements(
             obj = triple["object_entity"]
 
             if not isinstance(subject, dict) or not isinstance(obj, dict):
-                continue
+                raise ValueError("Relationship endpoints must be typed entity dictionaries")
 
             subject_name = subject["name"]
             subject_type = subject["type"]
@@ -862,11 +852,7 @@ async def _build_relationship_statements(
             predicate_clean = validate_relationship_type_for_cypher_interpolation(predicate_normalized)
 
             if not predicate_clean:
-                logger.warning(
-                    "_build_relationship_statements: skipping relationship with empty predicate",
-                    triple=triple,
-                )
-                continue
+                raise ValueError("Relationship predicate must not be empty")
 
             object_name = obj["name"]
             object_type = obj["type"]
@@ -881,16 +867,7 @@ async def _build_relationship_statements(
             )
 
             if not is_valid:
-                logger.warning(
-                    "_build_relationship_statements: skipping semantically invalid relationship",
-                    source=subject_name,
-                    source_type=subject_type,
-                    predicate=predicate_clean,
-                    target=object_name,
-                    target_type=object_type,
-                    reason=error_message,
-                )
-                continue
+                raise ValueError(f"Relationship semantic validation failed: {error_message}")
 
             subject_label = _get_cypher_labels(subject_type).lstrip(":")
             object_label = _get_cypher_labels(object_type).lstrip(":")
@@ -918,15 +895,6 @@ async def _build_relationship_statements(
             # CORE-011: persistence boundary contract violation (canonical labels / safe rel types).
             # Do NOT silently drop relationships; fail the commit path with a clear error.
             raise ValueError(f"Persistence boundary validation failed for relationship triple: {e}") from e
-        except Exception as e:
-            # Non-contract build errors are treated as best-effort (skip this triple) to avoid
-            # failing the entire commit for incidental formatting issues.
-            logger.warning(
-                "_build_relationship_statements: failed to build statement for triple",
-                error=str(e),
-                triple=triple,
-            )
-            continue
 
     logger.info(
         "_build_relationship_statements: built statements",

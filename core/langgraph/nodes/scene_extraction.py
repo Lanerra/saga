@@ -79,13 +79,6 @@ async def extract_from_scene(
     try:
         if not scene_text.strip():
             raise ValueError("Scene text must not be blank")
-        if config.settings.ENABLE_ENTITY_VALIDATION:
-            from core.text_processing_service import TextProcessingService
-
-            processor = TextProcessingService()
-            scene_text = processor.clean_text_with_spacy(scene_text, aggressive=False)
-            if not scene_text.strip():
-                raise ValueError("Scene text must not be blank after cleaning")
     except Exception as error:
         preprocessing_error = str(error)
         preprocessing_error_type = type(error).__name__
@@ -157,8 +150,6 @@ async def _extract_characters_from_scene(
     Returns:
         List of character entity dicts with scene_index field.
     """
-    from core.text_processing_service import TextProcessingService
-
     prompt = render_prompt(
         "knowledge_agent/extract_characters.j2",
         {
@@ -183,36 +174,18 @@ async def _extract_characters_from_scene(
         )
 
         parsed = parse_character_updates(data, scene_index, chapter_number)
-        tp = TextProcessingService()
 
         characters: list[dict[str, Any]] = []
         for name, info in parsed:
             character_name = str(name)
 
-            should_classify, classification_reason = tp.spacy_service.should_classify_as_character(
-                character_name
-            )
-
-            if not should_classify:
-                logger.debug(
-                    "_extract_characters_from_scene: rejecting entity based on classification",
-                    entity_name=character_name,
-                    reason=classification_reason,
-                    scene_index=scene_index,
-                    chapter=chapter_number,
-                )
-                continue
-
             is_validated = _validate_entity_with_spacy(scene_text, character_name)
 
             if not is_validated:
-                logger.warning(
-                    "_extract_characters_from_scene: skipping invalid character",
-                    character_name=character_name,
-                    scene_index=scene_index,
-                    chapter=chapter_number,
-                )
-                continue
+                raise ValueError("Character extraction contains an ungrounded or unnamed entity")
+            for target_name in info.get("relationships", {}):
+                if not _validate_entity_with_spacy(scene_text, target_name):
+                    raise ValueError("Character relationship contains an ungrounded or unnamed endpoint")
 
             characters.append(
                 {
@@ -310,13 +283,7 @@ async def _extract_locations_from_scene(
             is_validated = _validate_entity_with_spacy(scene_text, str(name))
 
             if not is_validated:
-                logger.warning(
-                    "_extract_locations_from_scene: skipping invalid location",
-                    location_name=str(name),
-                    scene_index=scene_index,
-                    chapter=chapter_number,
-                )
-                continue
+                raise ValueError("Location extraction contains an ungrounded or unnamed entity")
 
             category = str(info.get("category", "Location")).strip()
             locations.append(
@@ -416,13 +383,7 @@ async def _extract_events_from_scene(
             is_validated = _validate_entity_with_spacy(scene_text, str(name))
 
             if not is_validated:
-                logger.warning(
-                    "_extract_events_from_scene: skipping invalid event",
-                    event_name=str(name),
-                    scene_index=scene_index,
-                    chapter=chapter_number,
-                )
-                continue
+                raise ValueError("Event extraction contains an ungrounded or unnamed entity")
 
             category = str(info.get("category", "Event")).strip()
             events.append(
@@ -529,15 +490,7 @@ async def _extract_relationships_from_scene(
             target_validated = _validate_entity_with_spacy(scene_text, target_text)
 
             if not subject_validated or not target_validated:
-                logger.warning(
-                    "_extract_relationships_from_scene: skipping invalid relationship",
-                    subject=subject_text,
-                    target=target_text,
-                    predicate=predicate_text,
-                    scene_index=scene_index,
-                    chapter=chapter_number,
-                )
-                continue
+                raise ValueError("Relationship extraction contains an ungrounded or unnamed endpoint")
 
             if subject_text and target_text and predicate_text:
                 relationships.append(

@@ -6,7 +6,6 @@ import structlog
 from async_lru import alru_cache  # type: ignore[import-untyped]
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
-import utils
 from core.exceptions import handle_database_error
 from core.schema_validator import validate_kg_object
 from core.service_context import get_services
@@ -15,7 +14,7 @@ from models import CharacterProfile
 from .cache_coordinator import guard_graph_cache
 from .cypher_builders.native_builders import NativeCypherBuilder
 
-# Mapping from normalized character names to canonical display names
+# Mapping from exact character names to canonical display names
 #
 # Lifecycle contract (P1):
 # - `resolve_character_name()` is best-effort ONLY (purely in-memory; no DB IO).
@@ -38,7 +37,7 @@ def rebuild_character_name_map(characters: list["CharacterProfile"]) -> None:
     CHAR_NAME_TO_CANONICAL.clear()
     for char in characters:
         if isinstance(char, CharacterProfile) and char.name:
-            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
+            CHAR_NAME_TO_CANONICAL[char.name] = char.name
 
 
 def update_character_name_map(characters: list["CharacterProfile"]) -> None:
@@ -53,14 +52,14 @@ def update_character_name_map(characters: list["CharacterProfile"]) -> None:
     """
     for char in characters:
         if isinstance(char, CharacterProfile) and char.name:
-            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
+            CHAR_NAME_TO_CANONICAL[char.name] = char.name
 
 
 def resolve_character_name(name: str) -> str:
     """Return a canonical character display name when a mapping is known.
 
     Args:
-        name: A character name variant.
+        name: An exact character display name; no inferred aliases.
 
     Returns:
         The canonical display name when the in-memory mapping has an entry. Otherwise
@@ -72,7 +71,7 @@ def resolve_character_name(name: str) -> str:
     """
     if not name:
         return name
-    return CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id(name), name)
+    return CHAR_NAME_TO_CANONICAL.get(name, name)
 
 
 logger = structlog.get_logger(__name__)

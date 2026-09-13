@@ -7,6 +7,7 @@ isolated, avoiding eager spaCy model loading at import time.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import structlog
@@ -32,67 +33,52 @@ def _get_text_processing_service() -> TextProcessingService:
     return _text_processing_service
 
 
-def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
-    """Validate that an extracted entity is actually present in the scene text.
+def validate_named_entity(entity_name: str) -> str:
+    """Reject explicit unnamed/abstract descriptors without rewriting identity.
 
-    Args:
-        scene_text: The source scene text.
-        entity_name: The entity name to validate.
-
-    Returns:
-        True if entity is validated (present or validation disabled), False if not found.
+    These are lexical exclusions, not a classifier or proof of narrative meaning.
+    Articles, conjunctions and possessives inside proper names are not exclusions.
+    Source grounding is a separate, mandatory check at extraction.
     """
-    if not config.settings.ENABLE_ENTITY_VALIDATION:
-        logger.debug("_validate_entity_with_spacy: entity validation disabled by config")
-        return True
+    if not isinstance(entity_name, str) or not entity_name or entity_name != entity_name.strip():
+        raise ValueError("Entity name must be an exact nonblank name")
+    words = entity_name.split()
+    content = words[1:] if words[0].casefold() in {"the", "a", "an"} else words
+    descriptor = " ".join(content).casefold()
+    excluded = {
+        "truth", "knowledge", "secret", "secrets", "understanding", "consequences",
+        "fear", "presence", "power", "meaning", "escape", "guilt", "communication",
+        "protection", "survival", "group", "entity", "survivors", "force", "hunters",
+        "villagers", "unknown dangers", "mysterious entity",
+    }
+    if not content or descriptor in excluded or words[0].casefold() == "to":
+        raise ValueError("Entity name is an unnamed or abstract descriptor")
+    if not any(character.isupper() for word in content for character in word):
+        raise ValueError("Entity name must identify a named entity, not a lowercase descriptor")
+    possessive = re.search(r"(?:['’]s|s['’])\s+(.+)$", entity_name)
+    if possessive:
+        attribute = possessive.group(1)
+        if attribute.casefold() in {"father", "mother", "parent", "parents", "brother", "sister", "family"} or attribute[0].islower():
+            raise ValueError("Entity name is an unnamed possessive descriptor")
+    return entity_name
 
-    if not _get_text_processing_service().spacy_service.is_loaded():
-        logger.warning("_validate_entity_with_spacy: spaCy model not loaded, skipping validation")
-        return True
 
+def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
+    """Require an exact named span; optional NLP must not authorize fuzzy aliases.
+
+    Keep the historical entry point for callers. This identity check does not
+    depend on statistical model availability or ENABLE_ENTITY_VALIDATION.
+    """
     try:
-        is_present = _get_text_processing_service().spacy_service.verify_entity_presence(
-            scene_text, entity_name, threshold=0.7
-        )
-
-        if not is_present:
-            logger.warning(
-                "_validate_entity_with_spacy: entity not found in text",
-                entity_name=entity_name,
-                entity_length=len(entity_name),
-                scene_text_length=len(scene_text),
-            )
-
-        return is_present
-    except Exception as e:
-        logger.error("_validate_entity_with_spacy: validation failed, using fallback", error=str(e))
-        # Fallback to simple substring matching
-        return entity_name.lower() in scene_text.lower()
+        validate_named_entity(entity_name)
+    except ValueError:
+        return False
+    return re.search(r"(?<!\w)" + re.escape(entity_name) + r"(?!\w)", scene_text) is not None
 
 
 def _get_normalized_entity_key(name: str) -> str:
-    """Get a normalized key for entity deduplication using spaCy.
-
-    Args:
-        name: The entity name to normalize.
-
-    Returns:
-        Normalized key for deduplication.
-    """
-    if (
-        config.settings.ENABLE_ENTITY_VALIDATION
-        and _get_text_processing_service().spacy_service.is_loaded()
-    ):
-        try:
-            return _get_text_processing_service().spacy_service.normalize_entity_name(name)
-        except Exception as e:
-            logger.warning(
-                "_get_normalized_entity_key: spaCy normalization failed, using fallback",
-                error=str(e),
-            )
-
-    # Fallback to simple case-insensitive normalization
-    return name.lower()
+    """Use literal identity; linguistic similarity is not an alias contract."""
+    return name
 
 
 def load_spacy_model_if_enabled() -> None:

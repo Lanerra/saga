@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 import config
+from core.langgraph.nodes.scene_extraction_validation import validate_named_entity
 from models.kg_constants import RELATIONSHIP_TYPES
 
 
@@ -23,6 +24,11 @@ class SceneRelationship(BaseModel):
     predicate: str = Field(json_schema_extra={"enum": [name for name in sorted(RELATIONSHIP_TYPES)]})
     object_entity: str = Field(pattern=r"\S")
     description: str
+
+    @field_validator("subject", "object_entity")
+    @classmethod
+    def named_endpoint(cls, value: str) -> str:
+        return validate_named_entity(value)
 
     @field_validator("predicate")
     @classmethod
@@ -52,6 +58,7 @@ def _require_named_updates(value: Any, field: str) -> list[tuple[str, dict[str, 
     for name, information in value.items():
         if not isinstance(name, str) or not name.strip() or not isinstance(information, dict):
             raise ValueError(f"{field} entries must map nonblank names to objects")
+        validate_named_entity(name)
         for key in ("description", "status", "category"):
             if key in information and not isinstance(information[key], str):
                 raise ValueError(f"{field}.{name}.{key} must be a string")
@@ -63,6 +70,10 @@ def _require_named_updates(value: Any, field: str) -> list[tuple[str, dict[str, 
                 raise ValueError(f"{field}.{name}.{key} must be an array of strings")
         if "relationships" in information and not isinstance(information["relationships"], dict):
             raise ValueError(f"{field}.{name}.relationships must be an object")
+        for target_name, relationship in information.get("relationships", {}).items():
+            validate_named_entity(target_name)
+            if not isinstance(relationship, dict) or relationship.get("type") not in RELATIONSHIP_TYPES:
+                raise ValueError(f"{field}.{name}.relationships must use canonical relationship types")
     return list(value.items())
 
 
@@ -126,31 +137,9 @@ def parse_kg_triples(
 
 
 def normalize_triple_entities(triple: dict[str, Any]) -> tuple[str, str, str, str]:
-    """Normalize subject/predicate/object from a kg_triple dict.
-
-    Handles cases where subject or object_entity are nested dicts with a "name" field.
-
-    Args:
-        triple: A kg_triple dict with subject, predicate, object_entity keys.
-
-    Returns:
-        Tuple of (subject_text, target_text, predicate_text, description).
-    """
-    subject = triple.get("subject", "")
-    predicate = triple.get("predicate", "RELATES_TO")
-    object_entity = triple.get("object_entity", "")
-    description = triple.get("description", "")
-
-    if isinstance(subject, dict):
-        subject = subject.get("name", str(subject))
-    if isinstance(object_entity, dict):
-        object_entity = object_entity.get("name", str(object_entity))
-
-    subject_text = str(subject) if subject else ""
-    target_text = str(object_entity) if object_entity else ""
-    predicate_text = str(predicate) if predicate else ""
-
-    return subject_text, target_text, predicate_text, str(description)
+    """Convert the strict producer contract without defaults or identity repair."""
+    row = SceneRelationship.model_validate(triple)
+    return row.subject, row.object_entity, row.predicate, row.description
 
 
 def normalize_dict_items(

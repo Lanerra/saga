@@ -16,8 +16,9 @@ Extraction rules:
 - Predicates MUST be UPPERCASE_WITH_UNDERSCORES and MUST be one of the CANONICAL RELATIONSHIP TYPES listed above.
 
 ENTITY REQUIREMENTS:
+{% include "knowledge_agent/_named_identity.j2" %}
 - Both subject and object must be proper nouns or specific named entities
-- Do NOT extract relationships where the object is:
+- Do NOT extract relationships where either endpoint is:
   * A possessive construct (X's [attribute])
   * An abstract concept (fear, knowledge, power, meaning, escape)
   * An action/state as noun (communication, protection, survival)
@@ -40,7 +41,7 @@ Examples demonstrating valid relationships:
 {"kg_triples":[
   {"subject":"Elara","predicate":"LOCATED_AT","object_entity":"Sunken Library","description":"Elara is currently at the Sunken Library."},
   {"subject":"Marcus","predicate":"ALLIES_WITH","object_entity":"Elara","description":"Marcus considers Elara a trusted ally."},
-  {"subject":"Marcus","predicate":"WIELDS","object_entity":"Enchanted Blade","description":"Marcus wields an enchanted blade."}
+  {"subject":"Marcus","predicate":"WIELDS","object_entity":"Enchanted Blade","description":"Marcus wields the weapon named Enchanted Blade."}
 ]}
 
 Remember: If the chapter text describes "Alice is with Bob", this is NOT a LOCATED_AT relationship. Use ALLIES_WITH only if the text supports an alliance, or another listed canonical social relationship supported by the text. Mere co-presence does not establish a social relationship.
