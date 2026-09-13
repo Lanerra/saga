@@ -28,7 +28,7 @@ def test_context_default_reserves_prompt_space() -> None:
 
 
 async def test_act_selectors_use_configured_completion_budget(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "MAX_KG_TRIPLE_TOKENS", 65536)
+    monkeypatch.setitem(vars(config), "MAX_KG_TRIPLE_TOKENS", 65536)
     completion = AsyncMock(side_effect=[('[{"name":"Ada","role":"witness"}]', {}), ('{"location":"Hall"}', {})])
     monkeypatch.setattr(get_services().language_model, "async_call_llm", completion)
     parser = ActOutlineParser()
@@ -38,7 +38,7 @@ async def test_act_selectors_use_configured_completion_budget(monkeypatch: pytes
 
 
 async def test_summary_retention_does_not_cap_reasoning(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "MAX_SUMMARY_TOKENS", 65536)
+    monkeypatch.setitem(vars(config), "MAX_SUMMARY_TOKENS", 65536)
     completion = AsyncMock(return_value=("Ada arrives.", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", completion)
     assert await _summarize_scene_text("Ada arrives in the rain.", "Arrival", "synthetic", 7) == "Ada arrives."

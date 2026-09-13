@@ -199,7 +199,7 @@ async def test_generation_reopens_identified_artifact_and_drafts_with_retained_p
     reference = save_embedding(manager, vector, 1, embedding_model=config.EMBEDDING_MODEL)
     state["embedding_ref"] = reference
     artifact = manager.load_json(reference)
-    monkeypatch.setattr(config, "DEFAULT_NARRATIVE_STYLE", "Current global style must not replace retained style")
+    monkeypatch.setitem(vars(config), "DEFAULT_NARRATIVE_STYLE", "Current global style must not replace retained style")
     different_policy = NarrativeProjectConfig(
         title="Different", genre="Mystery", theme="Trust", setting="Archive", protagonist_name="Mara",
         total_chapters=3, target_word_count=999, narrative_style="Different requested style",

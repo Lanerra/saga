@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+import config
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.commit_node import _build_relationship_statements, commit_to_graph
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
@@ -65,7 +66,7 @@ def test_additional_properties_cannot_overwrite_identity(field: str) -> None:
 async def test_public_admission_rejects_malformed_explicit_identity(
     label: str, identifier: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     manager = ContentManager(str(tmp_path))
     entity = {"name": "Protected", "type": label, "description": "Candidate",
               "first_appearance_chapter": 2, "attributes": {"id": identifier}}

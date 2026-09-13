@@ -340,7 +340,7 @@ async def test_parser_command_bootstraps_frozen_receipt_with_one_owner(tmp_path:
             events.append("database_closed")
             await super().close()
 
-    monkeypatch.setattr(config, "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     language_model: Any = Outlines()
     database: Any = Database()
 

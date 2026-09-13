@@ -105,8 +105,8 @@ def _entrypoint_probe() -> None:
         assert Path(runner.__file__).resolve() == ROOT / "core/parser_runner.py"
         print(f"Parser runner provenance: {runner.__file__}", flush=True)
         patches.setattr(ProjectManager, "projects_root", Path(directory) / "undiscovered")
-        patches.setattr(config, "SIMPLE_LOGGING_MODE", True)
-        patches.setattr(config, "ENABLE_RICH_PROGRESS", False)
+        patches.setitem(vars(config), "SIMPLE_LOGGING_MODE", True)
+        patches.setitem(vars(config), "ENABLE_RICH_PROGRESS", False)
 
         def service_creation(*arguments: object, **keywords: object) -> NoReturn:
             if case == "interrupt":

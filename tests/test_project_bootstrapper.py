@@ -40,10 +40,10 @@ def bootstrapper(fake_language_model_service: MagicMock) -> ProjectBootstrapper:
 
 @pytest.fixture()
 def _patch_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "LARGE_MODEL", "test-model")
-    monkeypatch.setattr(config, "TEMPERATURE_INITIAL_SETUP", 0.7)
-    monkeypatch.setattr(config, "DEFAULT_NARRATIVE_STYLE", "Third Person Limited")
-    monkeypatch.setattr(config, "TOTAL_CHAPTERS", 12)
+    monkeypatch.setitem(vars(config), "LARGE_MODEL", "test-model")
+    monkeypatch.setitem(vars(config), "TEMPERATURE_INITIAL_SETUP", 0.7)
+    monkeypatch.setitem(vars(config), "DEFAULT_NARRATIVE_STYLE", "Third Person Limited")
+    monkeypatch.setitem(vars(config), "TOTAL_CHAPTERS", 12)
 
 
 @pytest.fixture(autouse=True)

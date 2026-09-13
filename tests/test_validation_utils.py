@@ -20,10 +20,10 @@ PROTAGONIST = "Vera Okonkwo"
 
 @pytest.fixture()
 def patched_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "CONFIGURED_GENRE", GENRE)
-    monkeypatch.setattr(config, "CONFIGURED_THEME", THEME)
-    monkeypatch.setattr(config, "CONFIGURED_SETTING_DESCRIPTION", SETTING)
-    monkeypatch.setattr(config, "DEFAULT_PROTAGONIST_NAME", PROTAGONIST)
+    monkeypatch.setitem(vars(config), "CONFIGURED_GENRE", GENRE)
+    monkeypatch.setitem(vars(config), "CONFIGURED_THEME", THEME)
+    monkeypatch.setitem(vars(config), "CONFIGURED_SETTING_DESCRIPTION", SETTING)
+    monkeypatch.setitem(vars(config), "DEFAULT_PROTAGONIST_NAME", PROTAGONIST)
 
 
 @pytest.fixture()

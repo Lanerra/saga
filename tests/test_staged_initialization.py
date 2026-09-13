@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import config
 from core.graph_ownership import load_graph_project_id
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.initialization import all_chapter_outlines_node, commit_init_node
@@ -66,7 +67,7 @@ async def test_stage_is_frozen_before_any_graph_write(tmp_path: Path, monkeypatc
     state = with_catalog(example_state(tmp_path))
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     writes = AsyncMock()
     monkeypatch.setattr(get_services().database, "execute_cypher_batch", writes)
     result = await commit_init_node.commit_initialization_to_graph(state)
@@ -101,7 +102,7 @@ async def test_declared_corrupt_relationships_fail_before_domain_writes(tmp_path
     writes = AsyncMock()
     monkeypatch.setattr(get_services().database, "execute_cypher_batch", writes)
     monkeypatch.setattr(commit_init_node, "_extract_world_items_from_outline", AsyncMock(return_value=[]))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_init_node.commit_initialization_to_graph({
         "project_dir": str(tmp_path), "character_sheets_ref": characters,
         "global_outline_ref": outline, "outline_relationships_ref": relationships,
@@ -139,7 +140,7 @@ async def test_semantic_admission_precedes_provider_and_writes(tmp_path: Path, m
     state[name + "_ref"] = manager.save_json(value, name, "admission", version=reference["version"])
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_init_node.commit_initialization_to_graph(cast(NarrativeState, state))
     assert result.get("has_fatal_error") is True
     assert provider.await_count == 0
@@ -151,7 +152,7 @@ async def test_projection_interruption_preserves_user_bytes(tmp_path: Path, monk
 
     state = with_catalog(example_state(tmp_path))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     prepared = await commit_init_node.commit_initialization_to_graph(state)
     importer = InitializationImport(str(tmp_path))
     plan = importer.load()
@@ -195,7 +196,7 @@ async def test_duplicate_json_keys_rejected(tmp_path: Path, monkeypatch: pytest.
     reference["checksum"] = hashlib.sha256(text.encode()).hexdigest()
     state["chapter_outlines_ref"] = reference
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_init_node.commit_initialization_to_graph(state)
     assert result.get("has_fatal_error") is True
 

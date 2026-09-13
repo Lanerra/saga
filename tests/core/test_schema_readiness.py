@@ -6,6 +6,7 @@ from typing import Any, cast
 import pytest
 from neo4j import Driver
 
+import config
 from core.db_manager import Neo4jManagerSingleton
 from core.exceptions import DatabaseError
 from core.graph_ownership import OWNER_QUERY
@@ -190,7 +191,7 @@ async def test_catalog_acceptance_checks_effective_event_identity(tmp_path: Path
     state["global_outline_ref"] = manager.save_json(outline, "global_outline", "duplicate", version=2)
     selector = SyntheticSelector()
     monkeypatch.setattr(get_services().language_model, "async_call_llm", selector)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     importer = InitializationImport(str(tmp_path))
     plan = await importer.prepare(with_catalog(state))
     events = [json.loads(entity.payload) for entity in plan.entities if entity.label == "Event" and json.loads(entity.payload)["name"] == outline["midpoint"]]

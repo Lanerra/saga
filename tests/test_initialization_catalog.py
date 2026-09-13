@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import config
 from core.exceptions import ContentIntegrityError
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.initialization.catalog import materialize_initialization_catalog, select_catalog
@@ -66,7 +67,7 @@ async def test_catalog_producer_snapshot_plan_reuses_exact_entities(tmp_path: Pa
     state["outline_relationships_ref"] = None
     provider = SyntheticSelector()
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     state.update(await materialize_initialization_catalog(state))
     catalog = select_catalog(state)
     location = catalog.candidates("Location")[0]
@@ -91,7 +92,7 @@ async def selected_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provid
     state = example_state(tmp_path)
     state["outline_relationships_ref"] = None
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     state.update(await materialize_initialization_catalog(state))
     return dict(state)
 
@@ -219,7 +220,7 @@ async def test_duplicate_long_event_names_select_by_id(tmp_path: Path, monkeypat
     source["inciting_incident"] = source["midpoint"] = "Ada visits the measuring station " * 20
     state["global_outline_ref"] = manager.save_json(source, "global_outline", "duplicate", version=2)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     state.update(await materialize_initialization_catalog(state))
     catalog = select_catalog(state)
     events = catalog.candidates("Event")[:2]
@@ -283,7 +284,7 @@ async def test_selected_catalog_sqlite_resume_then_acceptance_retry(tmp_path: Pa
     state = example_state(tmp_path)
     state["outline_relationships_ref"] = None
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     configuration = {"configurable": {"thread_id": "synthetic_catalog_recovery"}}
     database_path = str(tmp_path / "checkpoints/saga.db")
     async with create_checkpointer(database_path) as saver:

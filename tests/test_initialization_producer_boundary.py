@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import config
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.initialization.commit_init_node import commit_initialization_to_graph
 from core.langgraph.initialization.outline_relationships_node import extract_outline_relationships
@@ -28,7 +29,7 @@ async def test_generated_character_evidence_survives_freeze(tmp_path: Path, monk
     state["character_sheets_ref"] = manager.save_json(sheets, "character_sheets", "all", version=2)
     state = with_catalog(state)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_initialization_to_graph(state)
     assert result["initialization_step"] == "initialization_prepared"
     assert InitializationImport(str(tmp_path)).load().snapshot.source("character_sheets") == sheets
@@ -58,7 +59,7 @@ async def test_corrupt_projection_manifest_fails_before_publication(tmp_path: Pa
 
     state = with_catalog(example_state(tmp_path))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     importer = InitializationImport(str(tmp_path))
     plan = await importer.prepare(state)
     original = persist_files_node._publish_new_file
@@ -96,7 +97,7 @@ async def test_global_semantic_schema_precedes_extraction(tmp_path: Path, monkey
     state["global_outline_ref"] = manager.save_json(value, "global_outline", "all", version=2)
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_initialization_to_graph(state)
     assert result["has_fatal_error"] is True
     provider.assert_not_awaited()
@@ -116,7 +117,7 @@ async def test_selected_user_edits_are_frozen_and_projected_without_reextraction
     state = with_catalog(state)
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     importer = InitializationImport(str(tmp_path))
     plan = await importer.prepare(state)
     assert plan.snapshot.characters[0].motivations == sheets["Ada"]["motivations"]
@@ -134,7 +135,7 @@ async def test_frozen_character_identity_reaches_native_writer(tmp_path: Path, m
     from utils.text_processing import generate_entity_id
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     plan = await InitializationImport(str(tmp_path)).prepare(with_catalog(example_state(tmp_path)))
     character = next(entity for entity in plan.entities if entity.label == "Character")
     payload = json.loads(character.payload)
@@ -149,7 +150,7 @@ async def test_initial_chapter_rows_satisfy_lifecycle_status(tmp_path: Path, mon
     import json
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     plan = await InitializationImport(str(tmp_path)).prepare(with_catalog(example_state(tmp_path)))
     statements = [json.loads(statement.parameters)["properties"] for statement in plan.statements if statement.query.startswith("CREATE (n:Chapter)")]
     assert len(statements) == 1
@@ -195,7 +196,7 @@ async def test_prompt_nullable_event_role_prepares(tmp_path: Path, monkeypatch: 
         return "[]", {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_initialization_to_graph(with_catalog(example_state(tmp_path)))
     assert result["initialization_step"] == "initialization_prepared", result
     plan = InitializationImport(str(tmp_path)).load()
@@ -217,7 +218,7 @@ async def test_compatible_relationship_channels_coalesce(tmp_path: Path, monkeyp
     state = example_relationship_state(tmp_path, channels, confidences)
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_initialization_to_graph(state)
     assert result["initialization_step"] == "initialization_prepared", result
     importer = InitializationImport(str(tmp_path))
@@ -258,7 +259,7 @@ async def test_incompatible_relationship_channels_reject(tmp_path: Path, monkeyp
         relationships["relationships"][0]["source_profile_managed"] = True
     state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "all", version=3)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_initialization_to_graph(state)
     assert result["initialization_step"] == "commit_failed"
     assert result["has_fatal_error"] is True
@@ -293,7 +294,7 @@ async def test_differing_relationship_prose_is_attributed_unresolved(
     state = with_catalog(state, relationships["relationships"])
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     importer = InitializationImport(str(tmp_path))
     plan = await importer.prepare(state)
     edges = [json.loads(statement.parameters) for statement in plan.statements if "relationship:FAMILY_OF" in statement.query]
@@ -374,7 +375,7 @@ async def test_outline_only_description_order_does_not_choose_display(tmp_path: 
         relationship["description"] = description
     state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "all", version=3)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     snapshot = select_snapshot(state)
     forward = await produce_plan(snapshot)
     relationships["relationships"].reverse()
@@ -397,7 +398,7 @@ async def test_structured_relationship_conflict_still_rejects(tmp_path: Path, mo
         return "[]", {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     with pytest.raises(ValueError, match="Conflicting duplicate relationship"):
         await InitializationImport(str(tmp_path)).prepare(with_catalog(example_state(tmp_path)))
     assert not (tmp_path / ".saga/initialization/selected").exists()
@@ -411,7 +412,7 @@ async def test_nullable_role_retains_identity_and_shape_admission(tmp_path: Path
         return "[]", {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_initialization_to_graph(with_catalog(example_state(tmp_path)))
     assert result["initialization_step"] == "commit_failed"
     assert result["has_fatal_error"] is True

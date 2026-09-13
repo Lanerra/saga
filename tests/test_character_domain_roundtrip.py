@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+import config
 from core.langgraph.initialization.graph_plan import produce_plan
 from core.langgraph.initialization.snapshot import select_snapshot
 from core.parsers.narrative_enrichment_parser import NarrativeEnrichmentParser, PhysicalDescriptionExtractionResult
@@ -43,7 +44,7 @@ async def test_frozen_producer_supplies_typed_domain(tmp_path: Path, monkeypatch
         return "[]", {}
 
     monkeypatch.setattr(get_services().language_model, 'async_call_llm', provider)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     plan = await produce_plan(select_snapshot(with_catalog(example_state(tmp_path))))
     character = next(entity for entity in plan.entities if entity.label == "Character")
     payload = json.loads(character.payload)
@@ -66,7 +67,7 @@ async def test_parser_identical_description_issues_no_write(monkeypatch: pytest.
 
     monkeypatch.setattr(get_services().database, "execute_read_query", read)
     monkeypatch.setattr(get_services().database, "execute_cypher_batch", write)
-    monkeypatch.setattr("config.ENABLE_PHYSICAL_DESCRIPTION_VALIDATION", False)
+    monkeypatch.setitem(vars(config), "ENABLE_PHYSICAL_DESCRIPTION_VALIDATION", False)
     parser = NarrativeEnrichmentParser("Ada has silver hair.", 1)
     assert await parser.update_character_physical_descriptions([PhysicalDescriptionExtractionResult(character_name="Ada", extracted_description="Silver hair")]) is True
     assert writes == []

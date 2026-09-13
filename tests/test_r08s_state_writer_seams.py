@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+import config
 from core.langgraph.content_manager import ContentManager, get_extracted_relationships
 from core.langgraph.nodes.commit_entity_conversion import _convert_to_character_profiles, _convert_to_world_items
 from core.langgraph.nodes.commit_node import _build_entity_persistence_statements, _build_relationship_statements
@@ -114,7 +115,7 @@ def test_native_writer_rejects_undeclared_relationship_shapes(kind: str, informa
 
 
 async def test_entity_chronology_survives_conversion_without_overwriting_protected_profiles(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    monkeypatch.setitem(vars(config), "ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     history = [{"name": "Ada", "scene_index": 0, "description": "First"}, {"name": "Ada", "scene_index": 1, "description": "Later"}]
     character = ExtractedEntity(name="Ada", type="Character", description="Later", first_appearance_chapter=0, attributes={"id": "ada", "scene_assertions": history})
     world = ExtractedEntity(name="Place", type="Location", description="Later", first_appearance_chapter=0,
