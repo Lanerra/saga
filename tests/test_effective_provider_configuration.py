@@ -37,11 +37,12 @@ def test_credentials_are_private() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('embedding_key', ['embedding-secret-canary', ''])
+@pytest.mark.unbound_settings
 async def test_credentials_are_endpoint_isolated(monkeypatch: pytest.MonkeyPatch, embedding_key: str) -> None:
-    monkeypatch.setattr(config, 'OPENAI_API_BASE', 'https://completion.invalid/v1')
-    monkeypatch.setattr(config, 'EMBEDDING_API_BASE', 'https://embedding.invalid')
-    monkeypatch.setattr(config, 'OPENAI_API_KEY', 'completion-secret-canary')
-    monkeypatch.setattr(config, 'EMBEDDING_API_KEY', embedding_key)
+    monkeypatch.setitem(vars(config), 'OPENAI_API_BASE', 'https://completion.invalid/v1')
+    monkeypatch.setitem(vars(config), 'EMBEDDING_API_BASE', 'https://embedding.invalid')
+    monkeypatch.setitem(vars(config), 'OPENAI_API_KEY', 'completion-secret-canary')
+    monkeypatch.setitem(vars(config), 'EMBEDDING_API_KEY', embedding_key)
     requests: list[httpx.Request] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -63,9 +64,10 @@ async def test_credentials_are_endpoint_isolated(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.asyncio
+@pytest.mark.unbound_settings
 async def test_active_provider_snapshot_survives_mutation(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, 'OPENAI_API_BASE', 'https://first.invalid/v1')
-    monkeypatch.setattr(config, 'OPENAI_API_KEY', 'first-secret-canary')
+    monkeypatch.setitem(vars(config), 'OPENAI_API_BASE', 'https://first.invalid/v1')
+    monkeypatch.setitem(vars(config), 'OPENAI_API_KEY', 'first-secret-canary')
     requests: list[httpx.Request] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -73,8 +75,8 @@ async def test_active_provider_snapshot_survives_mutation(monkeypatch: pytest.Mo
         return httpx.Response(200, json={'choices': [{'message': {'content': 'answer'}}]})
 
     service = create_llm_service(HTTPClientService(client=httpx.AsyncClient(transport=httpx.MockTransport(respond))))
-    monkeypatch.setattr(config, 'OPENAI_API_BASE', 'https://later.invalid/v1')
-    monkeypatch.setattr(config, 'OPENAI_API_KEY', 'later-secret-canary')
+    monkeypatch.setitem(vars(config), 'OPENAI_API_BASE', 'https://later.invalid/v1')
+    monkeypatch.setitem(vars(config), 'OPENAI_API_KEY', 'later-secret-canary')
     try:
         assert await service.async_call_llm('model', 'prompt-canary', auto_clean_response=False) == ('answer', {})
         assert [(str(request.url), request.headers['authorization']) for request in requests] == [('https://first.invalid/v1/chat/completions', 'Bearer first-secret-canary')]
@@ -118,6 +120,7 @@ async def test_provider_operational_logs_exclude_canaries(caplog: pytest.LogCapt
         await service.aclose()
 
 
+@pytest.mark.unbound_settings
 def test_reload_uses_real_file_below_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, request: pytest.FixtureRequest) -> None:
     from pydantic_settings import DotEnvSettingsSource
 
@@ -129,48 +132,52 @@ def test_reload_uses_real_file_below_process(monkeypatch: pytest.MonkeyPatch, tm
     monkeypatch.setattr(DotEnvSettingsSource, '_read_env_files', original_reader)
     synthetic_file = tmp_path / 'synthetic-settings.ini'
     synthetic_file.write_text('OPENAI_API_KEY=file-secret-canary\nOPENAI_API_BASE=https://file.invalid/v1\nTEMPERATURE_OVERRIDE=0.25\n')
-    monkeypatch.setenv('OPENAI_API_KEY', 'process-secret-canary')
-    monkeypatch.setenv('OPENAI_API_BASE', 'https://process.invalid/v1')
     handlers = list(logging.getLogger().handlers)
     try:
-        assert reload_settings(env_file=synthetic_file) is True
-        with config.bind_settings(config.snapshot_settings()):
-            assert config.OPENAI_API_BASE == 'https://process.invalid/v1'
-            assert config.settings.OPENAI_API_KEY.get_secret_value() == 'process-secret-canary'
-            assert config.Temperatures.OVERRIDE == 0.25
-        assert logging.getLogger().handlers == handlers
-        synthetic_file.write_text('LLM_RETRY_ATTEMPTS=0\n')
-        with pytest.raises(ValidationError):
-            reload_settings(env_file=synthetic_file)
-        assert config.snapshot_settings().TEMPERATURE_OVERRIDE == 0.25
+        with monkeypatch.context() as environment:
+            environment.setenv('OPENAI_API_KEY', 'process-secret-canary')
+            environment.setenv('OPENAI_API_BASE', 'https://process.invalid/v1')
+            assert reload_settings(env_file=synthetic_file) is True
+            with config.bind_settings(config.snapshot_settings()):
+                assert config.OPENAI_API_BASE == 'https://process.invalid/v1'
+                assert config.settings.OPENAI_API_KEY.get_secret_value() == 'process-secret-canary'
+                assert config.Temperatures.OVERRIDE == 0.25
+            assert logging.getLogger().handlers == handlers
+            synthetic_file.write_text('LLM_RETRY_ATTEMPTS=0\n')
+            with pytest.raises(ValidationError):
+                reload_settings(env_file=synthetic_file)
+            assert config.snapshot_settings().TEMPERATURE_OVERRIDE == 0.25
     finally:
         reload_settings(env_file=None)
 
 
 @pytest.mark.asyncio
+@pytest.mark.unbound_settings
 async def test_managed_run_binds_one_immutable_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.service_context import managed_services
     from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
 
-    monkeypatch.setenv('TEMPERATURE_OVERRIDE', '0.2')
-    config.reload(env_file=None)
-    async with managed_services(database=cast(Neo4jManagerSingleton, FakeNeo4jManager())) as services:
-        assert config.settings is services.configuration
-        assert cast(RefactoredLLMService, services.language_model).configuration is services.configuration
-        with pytest.raises(ValidationError):
-            services.configuration.HTTPX_TIMEOUT = 0  # type: ignore[misc]  # Exercise runtime rejection.
-        with pytest.raises(ValidationError):
-            services.configuration.validation.ENABLE_VALIDATION = False  # type: ignore[misc]
-        with pytest.raises(TypeError):
-            services.configuration.relationship_normalization.SIMILARITY_THRESHOLDS['DEFAULT'] = 0.1  # type: ignore[index]
-        monkeypatch.setenv('TEMPERATURE_OVERRIDE', '0.8')
+    try:
+        with monkeypatch.context() as environment:
+            environment.setenv('TEMPERATURE_OVERRIDE', '0.2')
+            config.reload(env_file=None)
+            async with managed_services(database=cast(Neo4jManagerSingleton, FakeNeo4jManager())) as services:
+                assert config.settings is services.configuration
+                assert cast(RefactoredLLMService, services.language_model).configuration is services.configuration
+                with pytest.raises(ValidationError):
+                    services.configuration.HTTPX_TIMEOUT = 0  # type: ignore[misc]
+                with pytest.raises(ValidationError):
+                    services.configuration.validation.ENABLE_VALIDATION = False  # type: ignore[misc]
+                with pytest.raises(TypeError):
+                    services.configuration.relationship_normalization.SIMILARITY_THRESHOLDS['DEFAULT'] = 0.1  # type: ignore[index]
+                environment.setenv('TEMPERATURE_OVERRIDE', '0.8')
+                config.reload(env_file=None)
+                assert config.Temperatures.OVERRIDE == 0.2
+            async with managed_services(database=cast(Neo4jManagerSingleton, FakeNeo4jManager())) as services:
+                assert config.settings is services.configuration
+                assert config.Temperatures.OVERRIDE == 0.8
+    finally:
         config.reload(env_file=None)
-        assert config.Temperatures.OVERRIDE == 0.2
-    async with managed_services(database=cast(Neo4jManagerSingleton, FakeNeo4jManager())) as services:
-        assert config.settings is services.configuration
-        assert config.Temperatures.OVERRIDE == 0.8
-    monkeypatch.delenv('TEMPERATURE_OVERRIDE')
-    config.reload(env_file=None)
 
 
 @pytest.mark.asyncio
@@ -191,8 +198,9 @@ async def test_narrative_parser_embedding_failure_logs_no_text(caplog: pytest.Lo
 
 
 @pytest.mark.parametrize('field', ['LLM_RETRY_ATTEMPTS', 'JSON_PARSE_RETRY_ATTEMPTS', 'MAX_CONCURRENT_LLM_CALLS', 'HTTPX_TIMEOUT'])
+@pytest.mark.unbound_settings
 def test_invalid_controls_fail_before_client_allocation(monkeypatch: pytest.MonkeyPatch, field: str) -> None:
-    monkeypatch.setattr(config, field, 0)
+    monkeypatch.setitem(vars(config), field, 0)
     allocations = []
 
     def allocate(**kwargs: Any) -> httpx.AsyncClient:
@@ -269,7 +277,12 @@ async def test_outline_flag_uses_bound_run_snapshot() -> None:
     from core.langgraph.initialization.all_chapter_outlines_node import generate_all_chapter_outlines
 
     with config.bind_settings(EffectiveSettings(_env_file=None, GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT=False)):
-        assert await generate_all_chapter_outlines({}) == {'current_node': 'all_chapter_outlines', 'initialization_step': 'all_chapter_outlines_skipped'}
+        assert await generate_all_chapter_outlines({}) == {
+            'current_node': 'all_chapter_outlines',
+            'initialization_step': 'all_chapter_outlines_failed',
+            'has_fatal_error': True,
+            'last_error': 'Initialization requires GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT=True; on-demand-only initialization is unsupported',
+        }
 
 
 def test_schema_validator_uses_bound_run_snapshot() -> None:
@@ -283,7 +296,7 @@ def test_schema_validator_uses_bound_run_snapshot() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize('attempts', [1, 2, 3])
 @pytest.mark.parametrize('route', ['world', 'possessions', 'event_items'])
-async def test_parser_honors_configured_attempts(attempts: int, route: str, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_parser_honors_configured_attempts(attempts: int, route: str, caplog: pytest.LogCaptureFixture) -> None:
     import json
 
     from core.parsers.act_outline_parser import ActOutlineParser
@@ -292,7 +305,7 @@ async def test_parser_honors_configured_attempts(attempts: int, route: str, capl
     from models.kg_models import ActKeyEvent
     from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
 
-    monkeypatch.setattr(config, 'JSON_PARSE_RETRY_ATTEMPTS', attempts)
+    effective = EffectiveSettings(_env_file=None, JSON_PARSE_RETRY_ATTEMPTS=attempts)
     count = 0
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -308,7 +321,7 @@ async def test_parser_honors_configured_attempts(attempts: int, route: str, capl
                 content = json.dumps({'featured_items': [{'item': 'response-canary', 'role': 'featured'}]})
         return httpx.Response(200, json={'choices': [{'message': {'content': content}}]})
 
-    service = create_llm_service(HTTPClientService(client=httpx.AsyncClient(transport=httpx.MockTransport(respond))))
+    service = create_llm_service(HTTPClientService(configuration=effective, client=httpx.AsyncClient(transport=httpx.MockTransport(respond))))
     try:
         with inject_services(RunServices(service, cast(Neo4jManagerSingleton, FakeNeo4jManager()))):
             if route == 'world':

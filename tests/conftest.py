@@ -3,10 +3,13 @@ import asyncio
 import os
 import sys
 from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Any
 
 import pytest
 
+import config
+from config.settings import EffectiveSettings
 from core.service_context import get_services
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
 from tests.offline import boundary_key
@@ -17,8 +20,8 @@ if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
 
-@pytest.fixture(autouse=True)
-def run_service_context() -> Generator[None, None, None]:
+@contextmanager
+def synthetic_run(configuration: EffectiveSettings) -> Generator[None, None, None]:
     import httpx
 
     from core.db_manager import Neo4jManagerSingleton
@@ -30,12 +33,23 @@ def run_service_context() -> Generator[None, None, None]:
         raise AssertionError("Supply an explicit synthetic provider for this case")
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(unexpected_request))
-    language_model = create_llm_service(HTTPClientService(client=client))
+    language_model = create_llm_service(HTTPClientService(configuration=configuration, client=client))
     with inject_services(RunServices(language_model, Neo4jManagerSingleton())):
         try:
             yield
         finally:
             asyncio.run(language_model.aclose())
+
+
+@pytest.fixture(autouse=True)
+def run_service_context(request: pytest.FixtureRequest) -> Generator[None, None, None]:
+    if request.node.get_closest_marker("unbound_settings") is not None:
+        yield
+        return
+    marker = request.node.get_closest_marker("run_settings")
+    configuration = EffectiveSettings(_env_file=None, **marker.kwargs) if marker is not None else config.snapshot_settings()
+    with synthetic_run(configuration):
+        yield
 
 
 @pytest.fixture
@@ -60,18 +74,19 @@ def offline_graph_reads(monkeypatch: pytest.MonkeyPatch) -> FakeNeo4jManager:
 
 
 @pytest.fixture
-def offline_commit_providers(monkeypatch: pytest.MonkeyPatch) -> FakeNeo4jManager:
-    import config
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
-    database = FakeNeo4jManager()
-    monkeypatch.setattr(get_services(), 'database', database)
-    monkeypatch.setattr(get_services(), 'database', database)
+def offline_commit_providers(monkeypatch: pytest.MonkeyPatch, run_service_context: None) -> Generator[FakeNeo4jManager, None, None]:
+    enclosing = config.snapshot_settings()
+    values = {name: getattr(enclosing, name) for name in EffectiveSettings.model_fields}
+    configuration = EffectiveSettings(_env_file=None, **{**values, "EXPECTED_EMBEDDING_DIM": 2})
+    with synthetic_run(configuration):
+        database = FakeNeo4jManager()
+        monkeypatch.setattr(get_services(), 'database', database)
 
-    async def embedding_batch(texts: list[str]) -> list[list[float]]:
-        return [[0.25, 0.75] for text in texts]
+        async def embedding_batch(texts: list[str]) -> list[list[float]]:
+            return [[0.25, 0.75] for text in texts]
 
-    monkeypatch.setattr(get_services().language_model, 'async_get_embeddings_batch', embedding_batch)
-    return database
+        monkeypatch.setattr(get_services().language_model, 'async_get_embeddings_batch', embedding_batch)
+        yield database
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

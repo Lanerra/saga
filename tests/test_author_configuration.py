@@ -165,9 +165,9 @@ async def test_author_omniscient_perspective_is_not_overridden(tmp_path: Path, m
     assert state["narrative_style"] in provider.prompts[0]
 
 
+@pytest.mark.run_settings(TARGET_SCENES_MIN=0)
 async def test_invalid_requested_scene_count_stops_planning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider = record_provider(monkeypatch, json.dumps([SCENE]))
-    monkeypatch.setattr(config, "TARGET_SCENES_MIN", 0)
     result = await plan_scenes(author_state(tmp_path))
     assert result["has_fatal_error"] is True
     assert provider.prompts == []

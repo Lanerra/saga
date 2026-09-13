@@ -94,8 +94,8 @@ class TestComputeEntityEmbeddingTextHash:
 
 class TestBuildEntityEmbeddingUpdateStatements:
     @pytest.mark.asyncio
-    async def test_returns_empty_when_persistence_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    @pytest.mark.run_settings(ENABLE_ENTITY_EMBEDDING_PERSISTENCE=False)
+    async def test_returns_empty_when_persistence_disabled(self) -> None:
 
         fake_character = CharacterProfile.from_dict("Alice", {"description": "A brave warrior"})
         fake_world_item = WorldItem.from_dict("Location", "Castle", {"description": "A big castle"})
@@ -107,11 +107,8 @@ class TestBuildEntityEmbeddingUpdateStatements:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_raises_when_config_properties_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
-        monkeypatch.setattr("config.ENTITY_EMBEDDING_VECTOR_PROPERTY", "")
-        monkeypatch.setattr("config.ENTITY_EMBEDDING_TEXT_HASH_PROPERTY", "")
-        monkeypatch.setattr("config.ENTITY_EMBEDDING_MODEL_PROPERTY", "")
+    @pytest.mark.run_settings(ENABLE_ENTITY_EMBEDDING_PERSISTENCE=True, ENTITY_EMBEDDING_VECTOR_PROPERTY="", ENTITY_EMBEDDING_TEXT_HASH_PROPERTY="", ENTITY_EMBEDDING_MODEL_PROPERTY="")
+    async def test_raises_when_config_properties_missing(self) -> None:
 
         with pytest.raises(ValueError, match="entity embedding property configuration is missing"):
             await build_entity_embedding_update_statements(
@@ -120,13 +117,14 @@ class TestBuildEntityEmbeddingUpdateStatements:
             )
 
     @pytest.mark.asyncio
-    async def test_skips_entities_with_unchanged_hashes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
-        monkeypatch.setattr("config.ENTITY_EMBEDDING_VECTOR_PROPERTY", "entity_embedding_vector")
-        monkeypatch.setattr("config.ENTITY_EMBEDDING_TEXT_HASH_PROPERTY", "entity_embedding_text_hash")
-        monkeypatch.setattr("config.ENTITY_EMBEDDING_MODEL_PROPERTY", "entity_embedding_model")
-        monkeypatch.setattr("config.EMBEDDING_MODEL", "fake-model")
-        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
+    @pytest.mark.run_settings(
+        ENABLE_ENTITY_EMBEDDING_PERSISTENCE=True,
+        ENTITY_EMBEDDING_VECTOR_PROPERTY="entity_embedding_vector",
+        ENTITY_EMBEDDING_TEXT_HASH_PROPERTY="entity_embedding_text_hash",
+        ENTITY_EMBEDDING_MODEL_PROPERTY="entity_embedding_model",
+        EMBEDDING_MODEL="fake-model", EXPECTED_EMBEDDING_DIM=2,
+    )
+    async def test_skips_entities_with_unchanged_hashes(self) -> None:
 
         fake_character = CharacterProfile(name="Alice", id="", personality_description="A brave warrior")
         character_embedding_text = compute_entity_embedding_text(name="Alice", category="", description="A brave warrior")
@@ -155,9 +153,8 @@ class TestBuildEntityEmbeddingUpdateStatements:
 
 @pytest.mark.parametrize("label", ["Character", "Location", "Item", "Event"])
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=2, ENABLE_ENTITY_EMBEDDING_PERSISTENCE=True)
 async def test_embedding_updates_carry_label_and_canonical_id(label: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
     character = CharacterProfile(name="Alias", id="stable", personality_description="Synthetic")
     item = WorldItem(name="Alias", id="stable", category=label, description="Synthetic")
     reads = AsyncMock(return_value=[])
@@ -180,8 +177,8 @@ async def test_embedding_updates_carry_label_and_canonical_id(label: str, monkey
 @pytest.mark.parametrize("label", ["Character", "Location", "Item", "Event"])
 @pytest.mark.parametrize("identifier", [None, " ", 7, []])
 @pytest.mark.asyncio
+@pytest.mark.run_settings(ENABLE_ENTITY_EMBEDDING_PERSISTENCE=True)
 async def test_embedding_malformed_identity_rejected_before_io(label: str, identifier: object, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
     character = CharacterProfile(name="Synthetic").model_copy(update={"id": identifier})
     item = WorldItem(name="Synthetic", id="", category=label).model_copy(update={"id": identifier})
     reads = AsyncMock()
@@ -198,9 +195,8 @@ async def test_embedding_malformed_identity_rejected_before_io(label: str, ident
 
 @pytest.mark.parametrize("label", ["Character", "Location", "Item", "Event"])
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=2, ENABLE_ENTITY_EMBEDDING_PERSISTENCE=True)
 async def test_embedding_name_lookup_pins_resolved_id(label: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
     reads = AsyncMock(return_value=[{"key": 0, "id": "resolved-id", "existing_hash": None}])
     monkeypatch.setattr(get_services().database, 'execute_read_query', reads)
     monkeypatch.setattr(get_services().language_model, 'async_get_embeddings_batch', AsyncMock(return_value=[[0.25, 0.75]]))

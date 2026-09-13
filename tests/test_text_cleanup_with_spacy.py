@@ -84,7 +84,8 @@ def test_clean_text_conservative_with_spacy(spacy_service: SpacyService) -> None
 
     # Conservative cleaning should preserve content but normalize spaces
     # Note: the ellipsis at the end is treated as punctuation and preserved
-    assert result == "Hello, world! This is a test."
+    assert result == "Hello, world! This is a test..."
+    mock_nlp.assert_not_called()
 
 
 def test_clean_text_aggressive_with_spacy(spacy_service: SpacyService) -> None:

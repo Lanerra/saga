@@ -44,6 +44,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 timeout = 600
 markers = [
+    "unbound_settings: test owns new-run/default configuration scope; all offline guards remain active",
+    "run_settings: explicit validated synthetic run settings supplied as keyword arguments",
     "performance: marks tests as performance tests (deselect with '-m \"not performance\"')",
     "integration: marks tests as integration tests",
     "slow: marks tests as slow running tests",

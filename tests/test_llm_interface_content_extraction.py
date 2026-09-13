@@ -4,7 +4,6 @@ from typing import Any
 import numpy as np
 import pytest
 
-import config
 from core.llm_interface_refactored import CompletionService, EmbeddingService
 
 
@@ -54,8 +53,8 @@ class _DummyTextProcessor:
 
 
 @pytest.mark.asyncio
-async def test_extracts_text_from_list_of_parts_content_and_ignores_reasoning_content(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "COMPLETION_CONTENT_FORMAT", "text_parts")
+@pytest.mark.run_settings(COMPLETION_CONTENT_FORMAT="text_parts")
+async def test_extracts_text_from_list_of_parts_content_and_ignores_reasoning_content() -> None:
     svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
     text, usage = await svc.get_completion("model", "prompt")
     assert text == "Hello world"
@@ -132,11 +131,9 @@ def test_streaming_api_surface_removed() -> None:
     assert not hasattr(CompletionService, "get_streaming_completion")
 
 
-def test_embedding_rejects_numeric_list_under_non_embedding_key(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
+def test_embedding_rejects_numeric_list_under_non_embedding_key() -> None:
     """Unrelated numeric fields cannot become an embedding."""
-    # Keep the test fast and deterministic by shrinking the expected dim.
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float32")
 
     class _DummyEmbeddingClient:
         pass
@@ -150,11 +147,8 @@ def test_embedding_rejects_numeric_list_under_non_embedding_key(monkeypatch: pyt
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EMBEDDING_MAX_INPUT_TOKENS=5, EMBEDDING_MODEL="dummy-embed", EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
 async def test_get_embedding_truncates_to_configured_max_before_request(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EMBEDDING_MAX_INPUT_TOKENS", 5)
-    monkeypatch.setattr(config, "EMBEDDING_MODEL", "dummy-embed")
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float32")
 
     import core.llm_interface_refactored as llm_interface_refactored
 
@@ -200,11 +194,8 @@ async def test_get_embedding_truncates_to_configured_max_before_request(monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EMBEDDING_MAX_INPUT_TOKENS=5, EMBEDDING_MODEL="dummy-embed", EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
 async def test_get_embedding_exact_limit_can_pass_through(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EMBEDDING_MAX_INPUT_TOKENS", 5)
-    monkeypatch.setattr(config, "EMBEDDING_MODEL", "dummy-embed")
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float32")
 
     import core.llm_interface_refactored as llm_interface_refactored
 

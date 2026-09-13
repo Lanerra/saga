@@ -5,10 +5,7 @@ import pytest
 from processing.text_deduplicator import TextDeduplicator
 from tests.fakes.service_context import patch_service
 
-
-@pytest.fixture(autouse=True)
-def _configure_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("config.MAX_CONCURRENT_LLM_CALLS", 5)
+pytestmark = pytest.mark.run_settings(MAX_CONCURRENT_LLM_CALLS=5)
 
 
 @pytest.mark.asyncio
@@ -100,18 +97,16 @@ class TestExactDuplicateRemoval:
         assert result_text == "Hello world this is a test."
         assert removed_count == len(original) - len("Hello world this is a test.")
 
-    async def test_prefer_newer_true_removes_later_occurrence_in_backward_pass(self) -> None:
+    @pytest.mark.parametrize("prefer_newer", [True, False])
+    async def test_duplicate_preference_keeps_requested_occurrence(self, prefer_newer: bool) -> None:
         """
-        With prefer_newer=True the backward iteration encounters the later
-        duplicate first.  When the earlier duplicate is reached, the
-        previously-stored (later) index is evicted, so the *earlier*
-        occurrence survives.
+        The duplicate survives on the requested side of a unique middle segment.
         """
         deduplicator = TextDeduplicator(
             similarity_threshold=0.85,
             use_semantic_comparison=False,
             min_segment_length_chars=10,
-            prefer_newer=True,
+            prefer_newer=prefer_newer,
         )
         original = "Duplicate segment here.\n\nMiddle unique part.\n\nDuplicate segment here."
         segments = [
@@ -128,7 +123,10 @@ class TestExactDuplicateRemoval:
         assert removed_count > 0
         kept_duplicate_position = result_text.index("Duplicate segment here.")
         middle_position = result_text.index("Middle unique part.")
-        assert kept_duplicate_position < middle_position
+        assert (kept_duplicate_position > middle_position) is prefer_newer
+        expected = "Middle unique part.\n\nDuplicate segment here." if prefer_newer else "Duplicate segment here.\n\nMiddle unique part."
+        assert result_text == expected
+        assert removed_count == len(original) - len(expected)
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,8 @@ import config
 from core.langgraph.content_manager import ContentManager, load_embedding, save_embedding
 
 
-def test_embedding_round_trip_uses_safe_json_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float64")
+def test_embedding_round_trip_uses_safe_json_format(tmp_path: Path) -> None:
     """
     Embeddings must round-trip without pickle.
 
@@ -20,8 +21,6 @@ def test_embedding_round_trip_uses_safe_json_format(tmp_path: Path, monkeypatch:
     """
     manager = ContentManager(str(tmp_path))
 
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float64")
     embedding = [0.1, 0.2, 3.0]
     ref = save_embedding(manager, embedding, chapter=1, version=1, embedding_model=config.EMBEDDING_MODEL)
 

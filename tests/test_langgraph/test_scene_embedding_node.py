@@ -7,16 +7,14 @@ from unittest.mock import AsyncMock
 import numpy as np
 import pytest
 
-import config
 from core.langgraph.content_manager import ContentManager, ContentRef, load_scene_embeddings
 from core.langgraph.nodes.embedding_node import generate_scene_embeddings
 from tests.fakes.service_context import patch_service
 
 
 @pytest.mark.asyncio
-async def test_generate_scene_embeddings_persists_and_returns_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float32")
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
+async def test_generate_scene_embeddings_persists_and_returns_ref(tmp_path: Path) -> None:
     project_dir = str(tmp_path / "proj")
     manager = ContentManager(project_dir)
 
@@ -102,8 +100,8 @@ async def test_generate_scene_embeddings_empty_scenes_sets_last_error(tmp_path: 
 
 
 @pytest.mark.asyncio
-async def test_generate_scene_embeddings_single_scene_chapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=2)
+async def test_generate_scene_embeddings_single_scene_chapter(tmp_path: Path) -> None:
     project_dir = str(tmp_path / "proj")
     manager = ContentManager(project_dir)
 

@@ -5,7 +5,6 @@ from typing import TypedDict
 import httpx
 import pytest
 
-import config
 from core.http_client_service import (
     CompletionHTTPClient,
     EmbeddingHTTPClient,
@@ -55,9 +54,8 @@ class TestHTTPClientService:
         assert statistics["failed_requests"] == 0
         await service.aclose()
 
-    async def test_4xx_client_error_breaks_without_retrying(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 3)
-        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
+    @pytest.mark.run_settings(LLM_RETRY_ATTEMPTS=3, LLM_RETRY_DELAY_SECONDS=0.001)
+    async def test_4xx_client_error_breaks_without_retrying(self) -> None:
 
         call_count = 0
 
@@ -74,9 +72,8 @@ class TestHTTPClientService:
         assert call_count == 1
         await service.aclose()
 
-    async def test_429_rate_limit_triggers_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 2)
-        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
+    @pytest.mark.run_settings(LLM_RETRY_ATTEMPTS=2, LLM_RETRY_DELAY_SECONDS=0.001)
+    async def test_429_rate_limit_triggers_retry(self) -> None:
 
         call_count = 0
 
@@ -94,9 +91,8 @@ class TestHTTPClientService:
         assert call_count == 2
         await service.aclose()
 
-    async def test_5xx_server_error_triggers_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 2)
-        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
+    @pytest.mark.run_settings(LLM_RETRY_ATTEMPTS=2, LLM_RETRY_DELAY_SECONDS=0.001)
+    async def test_5xx_server_error_triggers_retry(self) -> None:
 
         call_count = 0
 
@@ -114,9 +110,8 @@ class TestHTTPClientService:
         assert call_count == 2
         await service.aclose()
 
-    async def test_all_retries_exhausted_raises_last_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 2)
-        monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
+    @pytest.mark.run_settings(LLM_RETRY_ATTEMPTS=2, LLM_RETRY_DELAY_SECONDS=0.001)
+    async def test_all_retries_exhausted_raises_last_exception(self) -> None:
 
         call_count = 0
 
@@ -185,8 +180,8 @@ class TestEmbeddingHTTPClient:
             await client.get_embedding("   \n\t  ", "nomic-embed-text:latest")
         await service.aclose()
 
-    async def test_valid_text_sends_correct_payload_to_correct_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(config, "EMBEDDING_API_BASE", "http://fake-embedding-host:11434")
+    @pytest.mark.run_settings(EMBEDDING_API_BASE="http://fake-embedding-host:11434")
+    async def test_valid_text_sends_correct_payload_to_correct_url(self) -> None:
 
         captured_request = {}
 
@@ -209,10 +204,8 @@ class TestEmbeddingHTTPClient:
 
 @pytest.mark.asyncio
 class TestCompletionHTTPClient:
-    async def test_sends_correct_payload_with_auth_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(config, "OPENAI_API_BASE", "http://fake-llm-host:8080/v1")
-        monkeypatch.setattr(config, "OPENAI_API_KEY", "test-api-key-123")
-        monkeypatch.setattr(config, "LLM_TOP_P", 0.9)
+    @pytest.mark.run_settings(OPENAI_API_BASE="http://fake-llm-host:8080/v1", OPENAI_API_KEY="test-api-key-123", LLM_TOP_P=0.9, TEMPERATURE_OVERRIDE=1.0)
+    async def test_sends_correct_payload_with_auth_header(self) -> None:
 
         captured_request: CapturedRequest = {}
 
@@ -235,7 +228,7 @@ class TestCompletionHTTPClient:
         assert captured_request["payload"] == {
             "model": "test-model",
             "messages": [{"role": "user", "content": "hello"}],
-            "temperature": 0.7,
+            "temperature": 1.0,
             "top_p": 0.9,
             "max_tokens": 1024,
             "stream": False,
@@ -243,10 +236,8 @@ class TestCompletionHTTPClient:
         assert result == {"choices": [{"message": {"content": "response"}}]}
         await service.aclose()
 
-    async def test_extra_kwargs_merged_into_payload(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(config, "OPENAI_API_BASE", "http://fake-llm-host:8080/v1")
-        monkeypatch.setattr(config, "OPENAI_API_KEY", "key")
-        monkeypatch.setattr(config, "LLM_TOP_P", 0.95)
+    @pytest.mark.run_settings(OPENAI_API_BASE="http://fake-llm-host:8080/v1", OPENAI_API_KEY="key", LLM_TOP_P=0.95, TEMPERATURE_OVERRIDE=1.0)
+    async def test_extra_kwargs_merged_into_payload(self) -> None:
 
         captured_payload = {}
 
@@ -271,6 +262,6 @@ class TestCompletionHTTPClient:
         assert captured_payload["frequency_penalty"] == 0.3
         assert captured_payload["presence_penalty"] == 0.1
         assert captured_payload["model"] == "test-model"
-        assert captured_payload["temperature"] == 0.5
+        assert captured_payload["temperature"] == 1.0
         assert captured_payload["max_tokens"] == 512
         await service.aclose()
