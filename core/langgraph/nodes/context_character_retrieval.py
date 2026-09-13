@@ -37,7 +37,11 @@ async def get_scene_character_context(
 
     Returns:
         Formatted character profiles block, or `None` when the scene does not specify
-        characters or no profiles are available.
+        characters or successful queries find no profiles.
+
+    Raises:
+        Exception: Propagates required profile read failures to retrieve_context's
+            fatal-error policy; a failed query is not an empty character context.
     """
     scene_characters = extract_scene_characters(current_scene)
 

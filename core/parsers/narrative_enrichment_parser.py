@@ -143,16 +143,12 @@ class NarrativeEnrichmentParser:
 
         # Pattern 1: Look for "Physical Description:" or "Appearance:" followed by text
         physical_desc_pattern = r"(Physical\s*Description|Appearance):\s*(.*?)(?=\n|\.|!|\?|$)"
-        matches = re.findall(physical_desc_pattern, self.narrative_text, re.IGNORECASE | re.DOTALL)
+        matches = re.finditer(physical_desc_pattern, self.narrative_text, re.IGNORECASE | re.DOTALL)
 
         for match in matches:
-            # match[0] is the label (Physical Description or Appearance)
-            # match[1] is the description text
-            description_text = match[1].strip()
+            description_text = match.group(2).strip()
 
-            # Try to extract character name from context
-            # Look backwards for a character name
-            context = self.narrative_text[: self.narrative_text.find(match[0])]
+            context = self.narrative_text[: match.start()]
             last_character_name = self._extract_last_mentioned_character(context, character_map)
 
             if last_character_name:
@@ -160,7 +156,7 @@ class NarrativeEnrichmentParser:
                     character_name=last_character_name,
                     extracted_description=description_text,
                     confidence=0.9,
-                    source_text=match[0] + ": " + description_text,
+                    source_text=match.group(0),
                     extraction_method="regex_pattern",
                 )
                 results.append(result)
@@ -201,15 +197,13 @@ class NarrativeEnrichmentParser:
         Returns:
             The name of the last mentioned character, or None if not found
         """
-        # Simple approach: look for capitalized words that match character names
-        words = re.findall(r"\b[A-Z][a-zA-Z']*\b", text)
-        words.reverse()  # Search from end to beginning
-
-        for word in words:
-            if word in character_map:
-                return word
-
-        return None
+        if not character_map:
+            return None
+        names = "|".join(re.escape(name) for name in sorted(character_map, key=lambda name: (-len(name), name)))
+        last_name = None
+        for match in re.finditer(rf"(?<!\w)(?:{names})(?!\w)", text):
+            last_name = match.group(0)
+        return last_name
 
     def _extract_mentioned_characters(self, text: str, character_map: dict[str, CharacterProfile]) -> list[str]:
         """Extract all mentioned character names from text.
