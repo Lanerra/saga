@@ -17,15 +17,15 @@ from core.logging_config import setup_saga_logging
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_schema_reference_does_not_publish_runtime_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config.settings_mod.settings, "NEO4J_PASSWORD", "synthetic-do-not-publish-r06")
+@pytest.mark.run_settings(NEO4J_PASSWORD="synthetic-do-not-publish-r06")
+def test_schema_reference_does_not_publish_runtime_password(tmp_path: Path) -> None:
     output = tmp_path / "schema.md"
     generate_docs(output)
     assert "synthetic-do-not-publish-r06" not in output.read_text()
 
 
-def test_schema_reference_documents_declared_not_active_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config.settings_mod.settings, "LARGE_MODEL", "synthetic-runtime-only-r06")
+@pytest.mark.run_settings(LARGE_MODEL="synthetic-runtime-only-r06")
+def test_schema_reference_documents_declared_not_active_defaults(tmp_path: Path) -> None:
     output = tmp_path / "schema.md"
     generate_docs(output)
     text = output.read_text()
@@ -41,13 +41,11 @@ def test_schema_reference_has_four_columns_for_union_types(tmp_path: Path) -> No
 
 
 @pytest.fixture
-def isolated_logging(monkeypatch: pytest.MonkeyPatch) -> Iterator[logging.Logger]:
+def isolated_logging() -> Iterator[logging.Logger]:
     root = logging.getLogger()
     original_handlers = root.handlers[:]
     original_level = root.level
     root.handlers = [logging.NullHandler()]
-    monkeypatch.setattr(config, "ENABLE_RICH_PROGRESS", False)
-    monkeypatch.setattr(config, "SIMPLE_LOGGING_MODE", False)
     try:
         yield root
     finally:
@@ -57,17 +55,16 @@ def isolated_logging(monkeypatch: pytest.MonkeyPatch) -> Iterator[logging.Logger
         root.setLevel(original_level)
 
 
-def test_logging_applies_requested_level_with_existing_handlers(isolated_logging: logging.Logger, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.run_settings(ENABLE_RICH_PROGRESS=False, SIMPLE_LOGGING_MODE=False, LOG_LEVEL_STR="DEBUG", LOG_FILE=None)
+def test_logging_applies_requested_level_with_existing_handlers(isolated_logging: logging.Logger) -> None:
     isolated_logging.setLevel(logging.WARNING)
-    monkeypatch.setattr(config, "LOG_LEVEL_STR", "DEBUG")
-    monkeypatch.setattr(config, "LOG_FILE", None)
     setup_saga_logging()
     assert isolated_logging.level == logging.DEBUG
 
 
-def test_file_logging_keeps_plain_console_without_rich(isolated_logging: logging.Logger, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(config, "LOG_FILE", "synthetic.log")
-    with config.bind_settings(EffectiveSettings(_env_file=None, BASE_OUTPUT_DIR=str(tmp_path), LOG_FILE="synthetic.log")):
+@pytest.mark.run_settings(ENABLE_RICH_PROGRESS=False, SIMPLE_LOGGING_MODE=False, LOG_FILE="synthetic.log")
+def test_file_logging_keeps_plain_console_without_rich(isolated_logging: logging.Logger, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    with config.bind_settings(config.snapshot_settings().model_copy(update={"BASE_OUTPUT_DIR": str(tmp_path)})):
         setup_saga_logging()
     isolated_logging.warning("synthetic-visible-r06")
     assert "synthetic-visible-r06" in (tmp_path / "synthetic.log").read_text()
@@ -76,8 +73,8 @@ def test_file_logging_keeps_plain_console_without_rich(isolated_logging: logging
     assert "[bold]" not in console
 
 
-def test_simple_logging_is_plain_text(isolated_logging: logging.Logger, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(config, "SIMPLE_LOGGING_MODE", True)
+@pytest.mark.run_settings(ENABLE_RICH_PROGRESS=False, SIMPLE_LOGGING_MODE=True)
+def test_simple_logging_is_plain_text(isolated_logging: logging.Logger, capsys: pytest.CaptureFixture[str]) -> None:
     setup_saga_logging()
     isolated_logging.warning("synthetic-plain-r06")
     console = capsys.readouterr().err
@@ -136,7 +133,7 @@ def test_snapshot_preserves_nested_run_scopes(monkeypatch: pytest.MonkeyPatch) -
 
     from core.embedding_contract import embedding_identity, validate_embedding
 
-    monkeypatch.setattr(config, "EMBEDDING_MODEL", "legacy-default")
+    monkeypatch.setitem(vars(config), "EMBEDDING_MODEL", "legacy-default")
     enclosing = config.get_settings()
     first = EffectiveSettings(_env_file=None, EMBEDDING_MODEL="first", EXPECTED_EMBEDDING_DIM=2, NEO4J_VECTOR_DIMENSIONS=2)
     second = EffectiveSettings(_env_file=None, EMBEDDING_MODEL="second", EXPECTED_EMBEDDING_DIM=3, NEO4J_VECTOR_DIMENSIONS=3)

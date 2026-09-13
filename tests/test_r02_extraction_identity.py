@@ -1,5 +1,6 @@
 """Exact synthetic retained traffic and adversarial scene-admission regressions."""
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -7,6 +8,7 @@ import pytest
 
 import config
 from core.http_client_service import HTTPClientService
+from core.langgraph.initialization.catalog import EntityCatalog, select_catalog
 from core.langgraph.nodes import scene_extraction
 from core.langgraph.nodes.commit_node import _build_relationship_statements
 from core.langgraph.nodes.commit_validation import _filter_invalid_relationships
@@ -16,6 +18,7 @@ from core.langgraph.nodes.scene_extraction_validation import _validate_entity_wi
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship
 from core.llm_interface_refactored import create_llm_service
 from core.service_context import get_services
+from tests.test_r08t_migration_contracts import selected_authority_state
 
 # Exact response content and corresponding request scene from retained synthetic traffic.
 # sampling-20260910T190220Z/tools/real-token-continuation/{request,response}-001..008.bin
@@ -59,45 +62,63 @@ def test_commit_rejects_invalid_batch_instead_of_dropping_a_row(name: str) -> No
     ("Mara's father waits.", "Mara's father", False),
     ("Mara seeks knowledge.", "knowledge", False),
 ])
-def test_grounding_requires_exact_named_span(monkeypatch: pytest.MonkeyPatch, enabled: bool, scene: str, name: str, expected: bool) -> None:
-    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_ENTITY_VALIDATION": enabled}))
-    assert _validate_entity_with_spacy(scene, name) is expected
+def test_grounding_requires_exact_named_span(enabled: bool, scene: str, name: str, expected: bool) -> None:
+    eligible = ("Mara", "The Hague", "King's Cross", "Father O'Brien", "St. James’ Gate", "The Rain Gauge", "Rain Gauge", "Hall of Kings")
+    with config.bind_settings(config.snapshot_settings().model_copy(update={"ENABLE_ENTITY_VALIDATION": enabled})):
+        assert _validate_entity_with_spacy(scene, name, eligible) is expected
+        assert _validate_entity_with_spacy(scene, name) is False
+
+
+def retained_catalog(tmp_path: Path) -> EntityCatalog:
+    return select_catalog(selected_authority_state(tmp_path, ("Mara", "Delphine", "Silas", "Hank", "Rosalind", "Emmett")))
 
 
 @pytest.mark.parametrize("index", [0, 1, 2, 3, 5, 6, 7])
-async def test_retained_invalid_collections_fail_closed(monkeypatch: pytest.MonkeyPatch, index: int) -> None:
+@pytest.mark.run_settings(ENABLE_ENTITY_VALIDATION=False)
+async def test_retained_invalid_collections_fail_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, index: int) -> None:
     retained = RETAINED[index]
-    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_ENTITY_VALIDATION": False}))
+    catalog = retained_catalog(tmp_path)
+    requests: list[bytes] = []
     def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request.content)
         return httpx.Response(200, json={"choices": [{"message": {"content": retained["response"]}, "finish_reason": "stop"}]})
     service = create_llm_service(HTTPClientService(client=httpx.AsyncClient(transport=httpx.MockTransport(respond))))
     monkeypatch.setattr(get_services(), "language_model", service)
     try:
         extractor = getattr(scene_extraction, f"_extract_{retained['kind']}_from_scene")
-        with pytest.raises(ValueError):
-            await extractor(retained["scene"], 0, 1, "Synthetic", "Literary Fiction", "Mara", "synthetic")
+        error = "unnamed possessive descriptor" if index in (0, 3) else "ineligible"
+        with pytest.raises(ValueError, match=error):
+            await extractor(retained["scene"], 0, 1, "Synthetic", "Literary Fiction", "Mara", "synthetic", catalog=catalog)
+        assert len(requests) == 1
+        assert retained["scene"] in json.loads(requests[0])["messages"][-1]["content"]
     finally:
         await service.aclose()
 
 
-def test_retained_named_relationships_are_preserved_without_rewriting() -> None:
+def test_retained_named_relationships_are_preserved_without_rewriting(tmp_path: Path) -> None:
     rows = json.loads(RETAINED[7]["response"])["kg_triples"]
     named_rows = [rows[1], rows[8]]
     assert parse_kg_triples({"kg_triples": named_rows}, 0, 1) == named_rows
+    eligible = [candidate["name"] for candidate in retained_catalog(tmp_path).candidates("Character")]
     for row in named_rows:
-        assert _validate_entity_with_spacy(RETAINED[7]["scene"], row["subject"])
-        assert _validate_entity_with_spacy(RETAINED[7]["scene"], row["object_entity"])
+        assert _validate_entity_with_spacy(RETAINED[7]["scene"], row["subject"], eligible)
+        assert _validate_entity_with_spacy(RETAINED[7]["scene"], row["object_entity"], eligible)
 
 
-async def test_retained_valid_character_collection_is_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_retained_valid_character_collection_is_preserved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     retained = RETAINED[4]
+    catalog = retained_catalog(tmp_path)
+    requests: list[bytes] = []
     def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request.content)
         return httpx.Response(200, json={"choices": [{"message": {"content": retained["response"]}, "finish_reason": "stop"}]})
     service = create_llm_service(HTTPClientService(client=httpx.AsyncClient(transport=httpx.MockTransport(respond))))
     monkeypatch.setattr(get_services(), "language_model", service)
     try:
-        rows = await scene_extraction._extract_characters_from_scene(retained["scene"], 1, 1, "Synthetic", "Literary Fiction", "Mara", "synthetic")
+        rows = await scene_extraction._extract_characters_from_scene(retained["scene"], 1, 1, "Synthetic", "Literary Fiction", "Mara", "synthetic", catalog=catalog)
         assert [row["name"] for row in rows] == list(json.loads(retained["response"])["character_updates"])
+        assert len(requests) == 1
+        assert retained["scene"] in json.loads(requests[0])["messages"][-1]["content"]
     finally:
         await service.aclose()
 

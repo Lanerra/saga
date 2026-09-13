@@ -15,30 +15,33 @@ from core.langgraph.nodes.scene_planning_node import _ScenePlanEntry, plan_scene
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
-from tests.test_staged_initialization import example_state
+from tests.test_r08t_migration_contracts import selected_authority_state
+
+pytestmark = pytest.mark.run_settings(TARGET_SCENES_MIN=2)
 
 
 @pytest.mark.parametrize("case", ["missing_beats", "wrong_type", "wrong_count"])
 async def test_scene_plan_must_preserve_selected_outline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     # Preserve R05's three reproductions, including the independently invalid POV.
-    state = example_state(tmp_path)
-    state["current_chapter"] = 1
-    state["target_word_count"] = 101
+    state = selected_state(tmp_path, ["Ada chooses"])
     scene: dict[str, Any] = dict(title="Harbor", pov_character="", setting="Harbor", characters=[], plot_point="Choice", conflict="Duty", outcome="Stay", beats=["Ada chooses"])
     if case == "missing_beats":
         scene["beats"] = ["Unselected new beat"]
     elif case == "wrong_type":
         scene["setting"] = 123
-    monkeypatch.setattr("config.TARGET_SCENES_MIN", 2)
     scenes = [scene] if case == "wrong_count" else [scene, {**scene, "beats": []}]
+    prompts: list[str] = []
 
     async def transport(**arguments: Any) -> tuple[str, dict[str, Any]]:
+        prompts.append(arguments["prompt"])
         return json.dumps(scenes), {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", transport)
     result = await plan_scenes(state)
     assert result.get("has_fatal_error") is True
     assert result.get("chapter_plan_ref") is None
+    assert "Scene plan contract violation" in (result["last_error"] or "")
+    assert len(prompts) == 3
 
 
 def scene(beats: list[str], characters: list[str] | None = None) -> dict[str, Any]:
@@ -46,7 +49,7 @@ def scene(beats: list[str], characters: list[str] | None = None) -> dict[str, An
 
 
 def selected_state(directory: Path, beats: Any, target: int = 101, chapters: int = 1, chapter: int = 1) -> NarrativeState:
-    state = example_state(directory)
+    state = selected_authority_state(directory, ("Ada", "Newcomer"), chapters=chapters, initial_state={"target_word_count": target})
     state["current_chapter"] = chapter
     state["target_word_count"] = target
     state["total_chapters"] = chapters
@@ -83,7 +86,6 @@ def install_producer(monkeypatch: pytest.MonkeyPatch, directory: Path, responses
     monkeypatch.setattr(get_services().database, "execute_write_query", database.execute_write_query)
     producer = Producer(responses, directory, database)
     monkeypatch.setattr(CompletionHTTPClient, "get_completion", lambda client, *args, **kwargs: producer.completion(client, *args, **kwargs))
-    monkeypatch.setattr(config, "TARGET_SCENES_MIN", 2)
     assert config.settings.SCENE_PLAN_MAX_ATTEMPTS == 3
     return producer
 
@@ -167,14 +169,15 @@ async def test_unrepresentable_selected_beats_fail_before_producer(tmp_path: Pat
     assert result["chapter_plan_ref"] is None
     assert producer.prompts == []
     assert producer.database.executed_queries == []
+    assert "validation error" in (result["last_error"] or "")
 
 
 @pytest.mark.parametrize(("target", "chapter", "expected"), [(101, 1, [12, 11, 11]), (101, 3, [11, 11, 11]), (3, 2, [1])])
+@pytest.mark.run_settings(TARGET_SCENES_MIN=3)
 async def test_computed_count_and_word_allocations_reach_drafting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: int, chapter: int, expected: list[int]) -> None:
     state = selected_state(tmp_path, ["A"], target=target, chapters=3, chapter=chapter)
     valid = [scene(["A"])] + [scene([]) for _ in expected[1:]]
     producer = install_producer(monkeypatch, tmp_path, [json.dumps(valid)])
-    monkeypatch.setattr(config, "TARGET_SCENES_MIN", 3)
     result = await plan_scenes(state)
     assert not result.get("has_fatal_error", False)
     assert result["chapter_plan_scene_count"] == len(expected)

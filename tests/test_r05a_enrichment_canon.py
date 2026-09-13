@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 
-import config
 from core.exceptions import DatabaseError, LLMServiceError
 from core.langgraph.chapter_lifecycle import ChapterLifecycle
 from core.langgraph.content_manager import ContentManager
@@ -73,12 +72,11 @@ def graph_reads(owned_graph_cache: None, monkeypatch: pytest.MonkeyPatch) -> dic
 
 @pytest.mark.parametrize("header", ["Appearance", "Physical Description", "aPpEaRaNcE"])
 @pytest.mark.parametrize("names", [("Alice", "Bob"), ("Alice Smith", "Bob Jones")])
+@pytest.mark.run_settings(ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION=True, ENABLE_CHAPTER_EMBEDDING_EXTRACTION=False)
 async def test_repeated_headers_retain_distinct_enrichment_candidates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, graph_reads: dict[str, Any], header: str, names: tuple[str, str],
 ) -> None:
     assert Path(getfile(NarrativeEnrichmentParser)).resolve() == Path(__file__).resolve().parents[1] / "core/parsers/narrative_enrichment_parser.py"
-    monkeypatch.setattr(config, "ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION", True)
-    monkeypatch.setattr(config, "ENABLE_CHAPTER_EMBEDDING_EXTRACTION", False)
     graph_reads["characters"] = [{"id": identifier, "name": name, "created_chapter": 0} for identifier, name in zip(("alice-id", "bob-id"), names, strict=True)]
     text = f"{names[0]}\n{header}: tall\n{names[1]}\n{header}: short"
     state = example_state(tmp_path)
@@ -169,8 +167,8 @@ async def test_profile_failure_propagates_through_scene_consumer(tmp_path: Path,
 
 
 @pytest.mark.parametrize("failed_read", ["profile", "relationships"])
+@pytest.mark.run_settings(DEFAULT_PROTAGONIST_NAME="Alice")
 async def test_retrieval_node_retains_critical_context_failure(tmp_path: Path, graph_reads: dict[str, Any], monkeypatch: pytest.MonkeyPatch, failed_read: str) -> None:
-    monkeypatch.setattr(config, "DEFAULT_PROTAGONIST_NAME", "Alice")
     graph_reads["fail"] = failed_read
     manager = ContentManager(str(tmp_path))
     state: NarrativeState = {

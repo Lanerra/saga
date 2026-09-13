@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 
-import config
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.relationship_normalization_node import normalize_relationships
 from core.langgraph.state import NarrativeState
@@ -82,8 +81,8 @@ async def test_by_id_does_not_treat_unresolved_id_as_display_name(monkeypatch: p
         store.connection.close()
 
 
-async def test_normalization_cannot_publish_partial_parse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "ENABLE_RELATIONSHIP_NORMALIZATION", True)
+@pytest.mark.run_settings(ENABLE_RELATIONSHIP_NORMALIZATION=True)
+async def test_normalization_cannot_publish_partial_parse(tmp_path: Path) -> None:
     manager = ContentManager(str(tmp_path))
     reference = manager.save_json([{"source_name": "Mara"}], "extracted_relationships", "chapter_1", 1)
     state: NarrativeState = {"project_dir": str(tmp_path), "current_chapter": 1, "extracted_relationships_ref": reference}

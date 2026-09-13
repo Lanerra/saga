@@ -38,7 +38,7 @@ async def test_confidence_is_typed_finite_and_bounded(confidence: Any, operation
     with inject_services(RunServices(cast(Any, object()), cast(Any, database))):
         with pytest.raises(ValidationError, match="confidence"):
             if operation == "enrich":
-                await GraphHealingService().apply_enrichment("node", {"confidence": confidence, "inferred_description": "Synthetic description"})
+                await GraphHealingService().apply_enrichment("node", {"confidence": confidence, "inferred_description": "Synthetic description", "inferred_traits": [], "inferred_role": ""})
             else:
                 await GraphHealingService().graduate_node("node", confidence)
     assert database.writes == []
@@ -48,8 +48,9 @@ async def test_confidence_is_typed_finite_and_bounded(confidence: Any, operation
 async def test_valid_confidence_retains_apply_threshold(confidence: float, expected: bool) -> None:
     database = Database()
     with inject_services(RunServices(cast(Any, object()), cast(Any, database))):
-        assert await GraphHealingService().apply_enrichment("node", {"confidence": confidence, "inferred_description": "Synthetic description"}) is expected
+        assert await GraphHealingService().apply_enrichment("node", {"confidence": confidence, "inferred_description": "Synthetic description", "inferred_traits": [], "inferred_role": ""}) is expected
     assert len(database.writes) == int(expected)
+    assert database.writes == ([{"element_id": "node", "description": "Synthetic description", "confidence": confidence}] if expected else [])
 
 
 @pytest.mark.parametrize("failure", ["enrich", "cleanup"])
