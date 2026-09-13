@@ -1,6 +1,8 @@
 [tool.ruff]
 line-length = 200
 target-version = "py312"
+# Frozen historical evidence; report its diagnostics separately, as with Mypy.
+extend-exclude = ["docs/audits/2026-09-06"]
 
 [tool.ruff.lint]
 select = ["F", "B", "I", "UP"] # flake8, flake8-bugbear, isort, pyupgrade

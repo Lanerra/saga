@@ -1,10 +1,9 @@
 # config/docs_generator.py
 """Generate configuration reference documentation from the settings model.
 
-This module renders a Markdown table from [`SagaSettings`](config/settings.py:153),
-including each field's declared type, the active settings value (from the current
-[`settings`](config/settings.py:356) singleton), and the optional Pydantic `Field`
-description.
+This module renders declared field types, defaults and descriptions from SagaSettings.
+It never publishes active settings values. Factory-backed groups are labeled rather
+than instantiated, because BaseSettings factories can consume private environment values.
 
 Side effects:
 - Writing the generated Markdown file to disk.
@@ -22,14 +21,13 @@ from pathlib import Path
 from typing import Any
 
 from .settings import SagaSettings
-from .settings import settings as current_settings
 
 
 def _format_default(value: Any) -> str:
     """Format a settings value for display in Markdown.
 
     Args:
-        value: Value from the active settings instance.
+        value: Declared field default, not a value from the active settings instance.
 
     Returns:
         A compact string representation suitable for a Markdown table cell.
@@ -75,9 +73,15 @@ def generate_docs(
     for field_name, field_info in SagaSettings.model_fields.items():
         field_type = field_info.annotation
         type_str = getattr(field_type, "__name__", str(field_type))
+        type_str = type_str.replace("|", "\\|")
 
-        default_val = getattr(current_settings, field_name, None)
-        default_str = _format_default(default_val)
+        if field_info.exclude or not field_info.repr:
+            default_str = "(redacted)"
+        elif field_info.default_factory is not None:
+            default_str = "(settings group; see declared model defaults)"
+        else:
+            default_str = _format_default(field_info.default)
+        default_str = default_str.replace("|", "\\|").replace("\n", "<br>")
 
         description = field_info.description.replace("\n", " ").strip() if field_info.description else ""
 

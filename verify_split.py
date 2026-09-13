@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify scene_extraction split imports."""
+
 import sys
 from pathlib import Path
 

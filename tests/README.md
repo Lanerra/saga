@@ -31,6 +31,9 @@ Run the process-level startup regression matrix separately from the unit guard:
 
     python tests/offline_startup_probe.py --evidence /absolute/fresh/directory
 
+Use `--startup-only` for the same collection/startup matrix without its two full-suite
+executions. Broad regression runs belong at integration milestones, not every repair.
+
 It exercises module and console entrypoints, explicit/default/nested targets,
 preconfigure configuration and external-I/O sentinels, and failed/repeated-session
 cleanup. Every child uses synthetic configuration and the real nested conftest.
@@ -38,6 +41,11 @@ An independent late audit tripwire denies any attempt escaping the repository
 guard; such an escape fails the matrix. It does not pre-seed the child's offline
 environment or preload `tests.conftest`. Logs, exact child environments, exit
 codes, import provenance, and strict checks are written to the fresh directory.
+Import provenance follows the real nested conftest's configuration, state, graph-context
+and service-context imports. Socket-method sentinels use AF_UNIX stream/datagram
+fixtures: they exercise the same Python `connect`/`sendto` guards even when the outer
+seccomp sandbox denies IPv4/IPv6 socket creation first. This is Python-hook proof,
+not a live TCP/UDP test; retain the outer sandbox's independent denial receipts.
 
 Unit language assets are deterministic:
 
@@ -53,12 +61,16 @@ Tests must mark actual external-resource obligations with `pytest.mark.integrati
 A filename containing `integration` is not sufficient: parser and graph-composition
 cases with deterministic providers are still meaningful offline units.
 
-Inventory of model/service integration exclusions:
+Inventory of explicitly provisioned integration exclusions:
 
 - `tests/test_spacy_service.py::test_installed_statistical_model_loads` needs the
   separately provisioned `en_core_web_lg` statistical model. It is not downloaded
   by pytest. It supplements, rather than replaces, the offline loading/idempotence
   tests.
+- `tests/test_parser_runner_cli.py::test_standalone_entrypoint_outcomes` has ten
+  process-level synthetic cases. The integration marker permits their subprocess
+  launch; it does not mean they require a model or a real graph. They retain a child
+  offline boundary and must also run inside the campaign filesystem/network sandbox.
 
 Inspect that inventory with:
 

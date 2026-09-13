@@ -30,7 +30,7 @@ SAGA currently has known critical issues and is **not production-ready**.
 
 Repair verification is source-level and synthetic unless explicitly stated otherwise.
 The locked Linux runtime has clean-install/dependency-check evidence, including a
-real statistical spaCy 3.8.0 pipeline installed from a retained local wheel.
+real `en_core_web_lg` 3.8.0 statistical pipeline with spaCy 3.8.7, installed from a retained local wheel.
 Disposable standalone Neo4j/APOC startup and synthetic-provider authoring through
 real graph/SQLite/files have been exercised. Original-data preservation and disposable
 restore verification are complete; they are not permission to access or reset originals.
@@ -41,13 +41,18 @@ author review is not a required signoff for that baseline.
 Writer command parsing and deterministic bootstrap/promotion/resume/export fixtures
 have been exercised offline. The `quick` entrypoint smoke covers failure propagation,
 not a successful novel. Narrative and embedding service/model selection is resolved;
-catalog/protocol checks do not prove full authoring. B28's bounded real-service
-workflow qualification is actionable and remains a separate execution gate.
+catalog/protocol checks do not prove full authoring. The retained real-service run
+`sampling-20260910T190220Z` extracted 15 relationships, discarded 13 at semantic
+admission, stored 2, and reached quality evaluation before a major contradiction.
+Revision rollback then failed because a node still had relationships. That run has
+no accepted export or completed fresh-process reopen. Its response 025 assesses
+earlier prose; it is not a new high-temperature draft. Source repairs and synthetic
+regressions are not evidence that this real-service gate has subsequently passed.
 Fresh hash-locked UV setup and the online spaCy 3.8.0 URL installation have been
 exercised in the canonical `.venv-runtime`, including dependency and statistical-load
 checks. The disposable standalone engine/APOC and configured 1,024-dimensional
 embedding path also have real read-back/reuse evidence. These do not prove completed
-live authoring. The optional Docker example is historical and unverified on this host;
+live authoring. The optional Docker example is source-checked but unverified on this host;
 the supported tested engine setup here is the standalone alternative below.
 Do not infer that all commands below passed or that the repository is release-ready.
 
@@ -225,24 +230,33 @@ alternative nor earlier engine trials prove literal Docker command coverage.
 
 ### Start disposable Neo4j (optional Docker example)
 
-The supplied Compose file is a **disposable example**, not a durable story deployment:
-it has no persistent `/data` volume and publishes ports without a loopback-only bind.
-Do not use it for real stories as-is, remove an existing container, or run it against
-an occupied service port. Operator-reviewed persistent storage, local-only binding,
-credentials and a restore-tested backup are prerequisites for real authoring.
-Historical optional recipe: the following command requires a separately installed
+The supplied Compose file is a **disposable example**, not a durable story deployment.
+It publishes Bolt on loopback only, disables HTTP/HTTPS, bounds heap/page cache and
+processor use, and does not automatically restart. No host story directory is mounted;
+container/anonymous-volume storage is not a reviewed durable data or backup policy.
+Do not use it for real stories, remove an existing container, or occupy a live service
+port. Operator-reviewed durable storage and a restore-tested backup remain prerequisites.
+The following optional command requires a separately installed
 `docker-compose` executable and has not been exercised on this host. It is not the
 supported setup path for this host; use the tested standalone distribution above.
 The Compose file remains available for operators with an appropriately isolated
-Docker environment; no Docker installation or daemon change is required for SAGA:
+Docker environment; no Docker installation or daemon change is required for SAGA.
+From a fresh synthetic working directory, select an unused `SAGA_DISPOSABLE_BOLT_PORT`,
+set a disposable `NEO4J_PASSWORD` of at least eight characters, and set
+`COMPOSE_PROJECT_NAME` to a fresh unique synthetic name. Set `COMPOSE_FILE` to the
+absolute path of this checkout's `docker-compose.yml`. Keep credentials in that
+dedicated shell; do not let Compose discover an original story's `.env`. The command
+below uses an explicit empty env file to prevent automatic dotenv discovery:
 
 ```bash
-docker-compose up -d
+docker-compose --env-file /dev/null up -d
 ```
 
-Neo4j defaults in this repo:
-- user: `neo4j`
-- password: `saga_password`
+The historical `docker-compose up -d` invocation without isolated configuration is
+not the recommended command. Compose refuses an unset/empty port or password;
+schema checks alone do not prove engine/APOC readiness or shutdown. The user is
+`neo4j`; configure SAGA with the same explicitly selected port/password. The
+application's `saga_password` placeholder is not a production credential.
 
 ### Run SAGA's bootstrap mode with a high-level plot specification
 
@@ -306,6 +320,19 @@ fail before replacing the export. Historical unreceipted prose is not silently a
 ## Configuration
 
 SAGA uses Pydantic settings loaded from `.env` (see `config/settings.py`).
+Process environment values take precedence over the current working directory's
+`.env`, including on `config.reload()`. Reload changes only validated defaults for
+future runs; active runs retain immutable snapshots. Settings import also creates
+configured output/log paths, so maintenance probes must use a synthetic cwd/output
+and must not run inside an original story or with inherited private configuration.
+
+The public example uses the shipped `qwen3-a3b` model placeholder for every text role,
+not a claim that your endpoint offers it. Replace it with exact server model IDs.
+`TEMPERATURE_OVERRIDE=1.0` overrides role-specific temperatures. The shipped provider
+wire flag is `STRUCTURED_OUTPUT_STRICT=False`; this does not disable Pydantic,
+JSON-schema, exact-ID or catalog admission. Context is 131072 tokens and the
+completion/planning/summary/extraction allowances are 65536 tokens. Allowances
+include reasoning where the provider counts it; they do not guarantee answer content.
 
 Key environment variables (examples in `.env.example`):
 
@@ -455,13 +482,31 @@ path: visualization exports replace a file at the explicitly selected destinatio
 ```bash
 python visualize_workflow.py --help
 python visualize_workflow.py --workflow full --summary
-python visualize_workflow.py --workflow full --output workflow_full.mmd
-python visualize_workflow.py --workflow full --format ascii --output workflow_full.txt
+python visualize_workflow.py --workflow full --output output/workflow_full.mmd
+python visualize_workflow.py --workflow full --format ascii --output output/workflow_full.txt
+python visualize_workflow.py --all
 ```
 
 PNG export is disabled: LangChain's default Mermaid PNG path calls an external
 renderer, not local Graphviz. No automatic renderer installation or network fallback
 is permitted. The Mermaid source or text summary is the offline deliverable.
+`--all` defaults to ignored runtime storage `output/workflows/`, not source docs.
+
+### Retained initialization acceptance and maintenance utilities
+
+`python main.py parse --project-dir /exact/project` accepts or recovers the selected
+complete frozen initialization import. It does not generate initialization, discover
+legacy files or run independent parser writes. The legacy `--parser` selector is
+retained only to return an explicit refusal. Follow the retained import's failure
+and recovery receipts rather than replaying arbitrary character/outline files.
+
+`verify_split.py` checks local extraction imports; `verify_subgraph.py` constructs
+the extraction subgraph. Neither invokes authoring nodes nor proves model or engine
+quality. Run them only with the same synthetic configuration boundary as other probes.
+The optional `config.docs_generator` utility emits declared defaults, redacts secret
+fields and labels settings-group factories without resolving private runtime values.
+Its import still has the settings side effects described above. Retired reset/cleanup
+entrypoints remain explicit refusals, not working maintenance procedures.
 
 ### Contributor checks
 
@@ -476,6 +521,8 @@ With the locked runtime selected, run from the intended repository root:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider tests/test_operational_tools.py tests/test_writer_cli.py tests/core/langgraph/test_visualization.py
 PYTHONDONTWRITEBYTECODE=1 python -m mypy .
+python -m ruff check --no-cache .
+python -m ruff format --check --no-cache .
 ```
 
 Pytest installs synthetic configuration and denies external I/O before application
@@ -483,6 +530,10 @@ imports. The repair campaign additionally requires its launcher filesystem sandb
 and OS-level network denial. Tests use disposable lane-local storage; they are not
 permission to open real stories, credentials, or a live graph. Test functions and
 files use pytest's `test_` / `test_*.py` discovery conventions.
+Ruff checks all configured `F`, `B`, `I`, and `UP` rules; a targeted `F` pass is not
+a full lint pass. Full Ruff and formatting currently have recorded debt. Keep
+maintained source/test diagnostics separate from frozen audit diagnostics; do not
+rewrite historical evidence or suppress active errors to report a green check.
 
 ### Historical references
 

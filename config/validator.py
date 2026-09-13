@@ -84,7 +84,7 @@ def validate_all() -> dict:
             issues,
             "errors",
             "MAX_CONTEXT_TOKENS",
-            (f"MAX_CONTEXT_TOKENS ({current_settings.MAX_CONTEXT_TOKENS}) must be " f"greater than MAX_GENERATION_TOKENS ({current_settings.MAX_GENERATION_TOKENS})."),
+            (f"MAX_CONTEXT_TOKENS ({current_settings.MAX_CONTEXT_TOKENS}) must be greater than MAX_GENERATION_TOKENS ({current_settings.MAX_GENERATION_TOKENS})."),
         )
 
     # Embedding dimension consistency
@@ -93,11 +93,7 @@ def validate_all() -> dict:
             issues,
             "warnings",
             "NEO4J_VECTOR_DIMENSIONS",
-            (
-                f"NEO4J_VECTOR_DIMENSIONS ({current_settings.NEO4J_VECTOR_DIMENSIONS}) "
-                f"differs from EXPECTED_EMBEDDING_DIM ({current_settings.EXPECTED_EMBEDDING_DIM}). "
-                "This may cause indexing errors."
-            ),
+            (f"NEO4J_VECTOR_DIMENSIONS ({current_settings.NEO4J_VECTOR_DIMENSIONS}) differs from EXPECTED_EMBEDDING_DIM ({current_settings.EXPECTED_EMBEDDING_DIM}). This may cause indexing errors."),
         )
 
     # Cache sizes sanity (non‑negative and reasonable upper bounds)

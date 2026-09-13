@@ -63,7 +63,9 @@ async def run_quick_mode(user_prompt: str, *, services: RunServices | None = Non
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SAGA - Autonomous Novel Generation", epilog="Generation resumes only the explicitly selected project. No command here resets checkpoints, graph data or author files.")
+    parser = argparse.ArgumentParser(
+        description="SAGA - Autonomous Novel Generation", epilog="Generation resumes only the explicitly selected project. No command here resets checkpoints, graph data or author files."
+    )
     subparsers = parser.add_subparsers(title="Commands", dest="command", required=True)
 
     # Quick mode
@@ -90,14 +92,14 @@ def main() -> None:
         "-p",
         type=str,
         required=True,
-        help="Path to the project directory containing the initialization files",
+        help="Existing project containing the selected frozen initialization import",
     )
     parser_parser.add_argument(
         "--parser",
         "-n",
         type=str,
         choices=["character_sheets", "global_outline", "act_outlines", "chapter_outlines"],
-        help="Name of the parser to run (optional; if not specified, all parsers are run)",
+        help="Legacy selector: individual parser writes are blocked; omit to accept the complete frozen import",
     )
 
     export_parser = subparsers.add_parser("export", help="Export every configured chapter from checksum-verified accepted manuscripts; no drafts")
@@ -146,7 +148,6 @@ def main() -> None:
         )
         print(f"SAGA {arguments.command} failed: {main_error}. No completion claimed; retained artifacts may include partial progress.", file=sys.stderr)
         sys.exit(1)
-
 
 
 if __name__ == "__main__":

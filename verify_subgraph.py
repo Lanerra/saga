@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify scene_extraction subgraph still works."""
+
 import sys
 from pathlib import Path
 

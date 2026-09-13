@@ -11,12 +11,12 @@ Configuration precedence and lifecycle:
   which constructs the `settings` singleton.
 - Values come from the process environment and may be sourced from a `.env` file (see
   [`config.settings`](config/settings.py:1) for import-time side effects).
-- [`reload()`](config/__init__.py:170) triggers a refresh that re-reads `.env` with override enabled,
-  then replaces this module's exported values (see [`config.loader.reload_settings()`](config/loader.py:35)).
+- `reload()` validates new defaults with process-over-file precedence. Active runs
+  retain their immutable snapshots; a failed reload publishes nothing.
 
 Notes:
-    This module intentionally duplicates values into module globals for legacy callers
-    (e.g., `config.OPENAI_API_KEY`). New code should prefer the `settings` object.
+    Legacy names such as `config.OPENAI_API_KEY` resolve through the active run scope.
+    `get_settings()` returns that scope's settings or the defaults for a future run.
 """
 
 import os
@@ -206,14 +206,17 @@ def get_settings() -> SagaSettings:
 
 
 def snapshot_settings() -> EffectiveSettings:
-    """Validate a detached snapshot before allocating any run clients."""
+    """Reuse an active immutable snapshot, or validate defaults for a new run."""
+    current = get_settings()
+    if isinstance(current, EffectiveSettings):
+        return current
     values: dict[str, Any] = {}
     for name in SagaSettings.model_fields:
-        value = globals().get(name, getattr(settings_mod.settings, name))
+        value = globals().get(name, getattr(current, name))
         if isinstance(value, BaseModel):
             value = value.model_dump()
         values[name] = value
-    return EffectiveSettings(**values)
+    return EffectiveSettings(_env_file=None, **values)
 
 
 @contextmanager

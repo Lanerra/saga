@@ -6,15 +6,14 @@ Settings are loaded at import time by constructing a [`SagaSettings`](config/set
 instance. Values come from the process environment and may be sourced from a `.env` file.
 
 Import-time side effects:
-- Read `.env` via `dotenv.load_dotenv()` (non-overriding) and via Pydantic's configured
-  `env_file=".env"`.
+- Read the current working directory's `.env` via Pydantic's configured `env_file`.
 - Create output directories under `BASE_OUTPUT_DIR`.
 - Configure structlog and attach a handler to the root logger.
 
 Notes:
     Environment variables already present in the process take precedence over values loaded
-    from `.env` during import. Reloading via [`config.loader.reload_settings()`](config/loader.py:35)
-    uses `load_dotenv(override=True)` which can overwrite existing environment variables.
+    from `.env` during import and reload. `config.reload()` validates a replacement
+    for future runs without modifying the process environment or an active run snapshot.
 """
 
 from __future__ import annotations
@@ -212,9 +211,8 @@ class SagaSettings(BaseSettings):
 
     # Entity embeddings feature flags
     #
-    # Default off to keep unit tests deterministic and to avoid introducing new
-    # embedding-service dependencies into unrelated workflows. Enable explicitly
-    # when you want entity-level semantic deduplication and merge scoring.
+    # Entity persistence, semantic deduplication and graph healing are enabled.
+    # Offline tests provide explicit synthetic embedding transports at consumers.
     ENABLE_ENTITY_EMBEDDING_PERSISTENCE: bool = True
     ENABLE_ENTITY_EMBEDDING_DEDUPLICATION: bool = True
     ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING: bool = True
