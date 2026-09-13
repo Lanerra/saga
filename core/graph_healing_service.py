@@ -22,7 +22,7 @@ from typing import Annotated, Any
 
 import numpy as np
 import structlog
-from pydantic import Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from pydantic import ValidationError as SchemaValidationError
 
 import config
@@ -30,12 +30,40 @@ from core.embedding_contract import embedding_identity, validate_embedding
 from core.exceptions import ValidationError
 from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import load_strict_json
 
 logger = structlog.get_logger(__name__)
 
 _ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE = "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
 
-_CONFIDENCE: TypeAdapter[float] = TypeAdapter(Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)])
+_HealingConfidence = Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)]
+_CONFIDENCE: TypeAdapter[float] = TypeAdapter(_HealingConfidence)
+
+
+class _EnrichmentPayload(BaseModel):
+    """The producer's four required fields; empty strings/lists mean no inference."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    inferred_description: str
+    inferred_traits: list[Annotated[str, Field(pattern=r"^[\p{L}\p{N}-]+$")]]
+    inferred_role: str
+    confidence: _HealingConfidence
+
+
+class _EnrichmentResponseError(ValidationError):
+    """Retain raw attempt evidence outside the printable/logged error message."""
+
+    def __init__(self, message: str, raw_responses: list[str]) -> None:
+        super().__init__(message)
+        self.raw_responses = tuple(raw_responses)
+
+
+def _validated_enrichment(value: Any) -> _EnrichmentPayload:
+    try:
+        return _EnrichmentPayload.model_validate(value)
+    except SchemaValidationError as error:
+        raise ValidationError("Healing enrichment payload requires exactly typed description, traits, role and finite bounded confidence fields") from error
 
 
 def _validated_confidence(value: Any) -> float:
@@ -221,8 +249,9 @@ class GraphHealingService:
                 a bounded retry loop.
 
         Notes:
-            This function expects the prompt contract to be strict JSON-only. It retries
-            JSON decoding failures with an explicit corrective instruction.
+            This function validates raw JSON against the producer schema. It retries
+            JSON decoding failures with an explicit corrective instruction; schema
+            violations fail closed. Rejected raw attempts remain in the error evidence.
         """
         # `element_id` is Neo4j-internal. Keep it internal-only.
         # For cross-module calls (data_access.*), use stable application id (`n.id`).
@@ -270,6 +299,7 @@ class GraphHealingService:
 
         prompt = base_prompt
         max_attempts = config.JSON_PARSE_RETRY_ATTEMPTS
+        raw_responses: list[str] = []
         for attempt in range(1, max_attempts + 1):
             response_text, _ = await get_services().language_model.async_call_llm(
                 prompt=prompt,
@@ -277,13 +307,20 @@ class GraphHealingService:
                 temperature=0.3,
                 max_tokens=config.MAX_GENERATION_TOKENS,
                 system_prompt=system_prompt,
+                auto_clean_response=False,
+                spacy_cleanup=False,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": "enrich_node_from_context", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": _EnrichmentPayload.model_json_schema()},
+                },
             )
+            raw_responses.append(response_text)
 
             try:
-                enriched = json.loads(response_text)
+                enriched = load_strict_json(response_text)
             except json.JSONDecodeError as error:
                 if attempt == max_attempts:
-                    raise ValidationError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE) from error
+                    raise _EnrichmentResponseError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE, raw_responses) from error
 
                 prompt = (
                     base_prompt
@@ -291,10 +328,13 @@ class GraphHealingService:
                     + "Return ONLY a single valid JSON object with no surrounding text and no markdown code fences."
                 )
                 continue
+            except ValueError as error:
+                raise _EnrichmentResponseError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE, raw_responses) from error
 
-            if not isinstance(enriched, dict):
-                raise ValidationError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE)
-            _validated_confidence(enriched.get("confidence"))
+            try:
+                enriched = _validated_enrichment(enriched).model_dump()
+            except ValidationError as error:
+                raise _EnrichmentResponseError(str(error), raw_responses) from error
             logger.info(
                 "Enrichment generated from context",
                 name=node["name"],
@@ -309,15 +349,16 @@ class GraphHealingService:
         raise AssertionError("unreachable: enrich_node_from_context retry loop did not return or raise")
 
     async def apply_enrichment(self, element_id: str, enriched: dict[str, Any]) -> bool:
-        """Apply validated enrichment fields to a Neo4j node."""
-        if not enriched:
+        """Validate the full producer payload before writes; only {} means no mentions."""
+        if isinstance(enriched, dict) and not enriched:
             logger.debug(
                 "apply_enrichment: empty enrichment payload",
                 element_id=element_id,
             )
             return False
 
-        enrichment_confidence = _validated_confidence(enriched.get("confidence"))
+        payload = _validated_enrichment(enriched)
+        enrichment_confidence = payload.confidence
         if enrichment_confidence < 0.6:
             logger.debug(
                 "apply_enrichment: enrichment confidence below apply threshold",
@@ -330,17 +371,17 @@ class GraphHealingService:
         updates: list[str] = []
         params: dict[str, Any] = {"element_id": element_id}
 
-        if enriched.get("inferred_description"):
+        if payload.inferred_description:
             updates.append("n.description = $description")
-            params["description"] = enriched["inferred_description"]
+            params["description"] = payload.inferred_description
 
-        if enriched.get("inferred_traits"):
+        if payload.inferred_traits:
             updates.append("n.traits = apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)")
-            params["new_traits"] = enriched["inferred_traits"]
+            params["new_traits"] = payload.inferred_traits
 
-        if enriched.get("inferred_role"):
+        if payload.inferred_role:
             updates.append("n.role = $role")
-            params["role"] = enriched["inferred_role"]
+            params["role"] = payload.inferred_role
 
         if not updates:
             return False
@@ -923,6 +964,7 @@ class GraphHealingService:
                             "type": "enrich_error",
                             "name": node.get("name"),
                             "error": str(enrichment_error),
+                            **({"raw_responses": list(enrichment_error.raw_responses)} if isinstance(enrichment_error, _EnrichmentResponseError) else {}),
                         }
                     )
                     continue
