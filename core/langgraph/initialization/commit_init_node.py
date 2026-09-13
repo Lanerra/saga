@@ -1,4 +1,3 @@
-# core/langgraph/initialization/commit_init_node.py
 """Commit initialization artifacts to Neo4j.
 
 This module defines the initialization persistence boundary. It converts
@@ -35,13 +34,18 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
     try:
         plan = await InitializationImport(require_project_dir(state)).prepare(state)
         return {
-            "current_node": "commit_initialization", "last_error": None,
-            "initialization_step": "initialization_prepared", "initialization_id": plan.identity,
+            "current_node": "commit_initialization",
+            "last_error": None,
+            "initialization_step": "initialization_prepared",
+            "initialization_id": plan.identity,
         }
     except Exception as error:
         return {
-            "current_node": "commit_initialization", "last_error": f"Initialization admission failed: {error}",
-            "initialization_step": "commit_failed", "has_fatal_error": True, "error_node": "commit_initialization",
+            "current_node": "commit_initialization",
+            "last_error": f"Initialization admission failed: {error}",
+            "initialization_step": "commit_failed",
+            "has_fatal_error": True,
+            "error_node": "commit_initialization",
         }
 
 
@@ -105,7 +109,7 @@ async def _parse_character_sheets_to_profiles(
             personality_description=description,
             traits=traits,
             status=status,
-            relationships=relationships,  # Now populated from pre-parsed data
+            relationships=relationships,
             created_chapter=0,  # Initialization entities created before chapters
             is_provisional=False,  # Initialization characters are canonical
             updates={

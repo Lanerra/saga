@@ -1,4 +1,3 @@
-# core/llm_interface_refactored.py
 """Provide the primary LLM client interface for SAGA.
 
 This module centralizes:
@@ -217,7 +216,8 @@ class CompletionService:
         self,
         completion_client: CompletionHTTPClient,
         text_processor: TextProcessingService,
-        *, configuration: EffectiveSettings | None = None,
+        *,
+        configuration: EffectiveSettings | None = None,
     ):
         """Initialize the completion service.
 
@@ -435,8 +435,6 @@ class CompletionService:
 
             # Compatibility: explicit non-strict mode preserves legacy sentinel return.
             return "", None
-
-    # Streaming completion path removed to simplify the API.
 
     def _extract_completion_content(self, response_data: dict[str, Any]) -> str:
         """Extract text using the configured provider contract."""

@@ -41,7 +41,7 @@ class ChapterSummaryContractError(ValueError):
 
 
 _SUMMARY_MAX_ATTEMPTS = 3
-_SUMMARY_CORRECTION_INSTRUCTION = "\n\nCORRECTION:\n" 'Return ONLY valid JSON. Output MUST be a single JSON object with exactly one key: "summary".\n' "No markdown. No code fences. No extra text.\n"
+_SUMMARY_CORRECTION_INSTRUCTION = '\n\nCORRECTION:\nReturn ONLY valid JSON. Output MUST be a single JSON object with exactly one key: "summary".\nNo markdown. No code fences. No extra text.\n'
 
 
 async def summarize_chapter(state: NarrativeState) -> NarrativeState:
@@ -95,7 +95,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "summarize",
         }
 
-    # Step 1: Build summary prompt
     prompt = render_prompt(
         "knowledge_agent/chapter_summary.j2",
         {
@@ -104,7 +103,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         },
     )
 
-    # Step 2: Generate summary using fast extraction model
     logger.info(
         "summarize_chapter: calling LLM for summary",
         chapter=state.get("current_chapter", 1),
@@ -155,13 +153,12 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             summary_length=len(summary),
         )
 
-        # Step 4: Persist to Neo4j
         await _save_summary_to_neo4j(
             chapter_number=state.get("current_chapter", 1),
             summary=summary,
         )
 
-        # Step 5: Persist per-chapter summary file (best-effort, non-fatal)
+        # Summary mirrors are best-effort; the content store retains the summary.
         try:
             _write_chapter_summary_file(
                 chapter_number=state.get("current_chapter"),
@@ -176,7 +173,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
                 exc_info=True,
             )
 
-        # Step 6: Update state with summary
         # Keep rolling window of last 5 summaries
         previous_summaries = list(get_previous_summaries(state, content_manager))[-4:]
         previous_summaries.append(summary)
@@ -249,7 +245,7 @@ def _parse_summary_response(response_text: str) -> str:
 
     if set(parsed.keys()) != {"summary"}:
         keys = ", ".join(sorted(str(k) for k in parsed.keys()))
-        raise ChapterSummaryContractError('Chapter summary JSON contract violated: expected a single JSON object with exactly one key: "summary". ' f"Found keys: {keys}")
+        raise ChapterSummaryContractError(f'Chapter summary JSON contract violated: expected a single JSON object with exactly one key: "summary". Found keys: {keys}')
 
     summary = parsed.get("summary")
     if not isinstance(summary, str):

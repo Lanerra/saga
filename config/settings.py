@@ -1,4 +1,3 @@
-# config/settings.py
 """
 Define runtime configuration for SAGA.
 
@@ -360,10 +359,7 @@ class SagaSettings(BaseSettings):
 
     MAIN_NOVEL_INFO_NODE_ID: str = "main_novel_info"
 
-    # Identifier for the root World Container node in the Neo4j graph.
-    # This constant is used throughout the codebase for bootstrapping and
-    # querying world‑level structures.  It was previously defined in the
-    # legacy ``config.py`` file; adding it here restores compatibility.
+    # Shared root identity for world initialization and queries.
     MAIN_WORLD_CONTAINER_NODE_ID: str = "world_container"
 
     # Enhanced character bootstrap settings

@@ -62,7 +62,7 @@ class TokenizerService:
             try:
                 encoder = tiktoken.encoding_for_model(model_name)
             except KeyError:
-                logger.debug(f"No direct tiktoken encoding for '{model_name}'. " f"Using default '{config.TIKTOKEN_DEFAULT_ENCODING}'.")
+                logger.debug(f"No direct tiktoken encoding for '{model_name}'. Using default '{config.TIKTOKEN_DEFAULT_ENCODING}'.")
                 encoder = tiktoken.get_encoding(config.TIKTOKEN_DEFAULT_ENCODING)
 
             self._tokenizer_cache[model_name] = encoder
@@ -70,7 +70,7 @@ class TokenizerService:
             return encoder
 
         except KeyError:
-            logger.error(f"Default tiktoken encoding '{config.TIKTOKEN_DEFAULT_ENCODING}' also not found. " f"Token counting will fall back to character-based heuristic for '{model_name}'.")
+            logger.error(f"Default tiktoken encoding '{config.TIKTOKEN_DEFAULT_ENCODING}' also not found. Token counting will fall back to character-based heuristic for '{model_name}'.")
             return None
 
         except Exception as e:
@@ -241,7 +241,7 @@ class ResponseCleaningService:
         if pattern.match(text) is None and not text.startswith(("{", "[")):
             boundary = self._patterns["think_boundary"].search(text)
             if boundary is not None:
-                text = text[boundary.end():].lstrip()
+                text = text[boundary.end() :].lstrip()
         while (opening := pattern.match(text)) is not None:
             if opening.group(1):
                 raise ValueError("Unexpected closing reasoning tag")
@@ -255,7 +255,7 @@ class ResponseCleaningService:
                 elif not self_closing:
                     stack.append(name)
                 if not stack:
-                    text = text[tag.end():].lstrip()
+                    text = text[tag.end() :].lstrip()
                     break
             else:
                 raise ValueError("Incomplete reasoning block")
@@ -313,7 +313,7 @@ class ResponseCleaningService:
             reduction_percentage = ((original_length - len(final_text)) / original_length) * 100
             if reduction_percentage > 0.5:
                 self._stats["significant_reductions"] += 1
-                logger.debug(f"Cleaning reduced text length from {original_length} to {len(final_text)} " f"({reduction_percentage:.1f}% reduction).")
+                logger.debug(f"Cleaning reduced text length from {original_length} to {len(final_text)} ({reduction_percentage:.1f}% reduction).")
 
         return final_text
 
@@ -329,7 +329,7 @@ class ResponseCleaningService:
         }
 
 
-# Streaming processing removed; only non-streaming responses are supported.
+# Provider responses are processed as complete messages.
 
 
 class TextProcessingService:
