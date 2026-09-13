@@ -7,9 +7,9 @@ from typing import Any
 import httpx
 import pytest
 
-import config
 from core.http_client_service import HTTPClientService
 from core.langgraph.content_manager import ContentManager
+from core.langgraph.initialization.catalog import select_catalog
 from core.langgraph.nodes.scene_extraction import _extract_relationships_from_scene, extract_from_scenes
 from core.langgraph.nodes.scene_extraction_parsing import parse_kg_triples
 from core.langgraph.state import NarrativeState
@@ -17,6 +17,7 @@ from core.llm_interface_refactored import create_llm_service
 from core.service_context import get_services
 from models.kg_constants import RELATIONSHIP_TYPES
 from prompts.prompt_renderer import render_prompt
+from tests.test_r08g_catalog_fixtures import catalog_state
 
 ROW = {"subject": "Elara", "predicate": "LOCATED_AT", "object_entity": "Library", "description": "Elara enters the Library."}
 
@@ -34,8 +35,9 @@ def test_scene_prompt_examples_and_guidance_use_only_canonical_predicates() -> N
 
 
 @pytest.mark.parametrize("mode", ["success", "json_retry", "fallback", "exhausted_json", "exhausted_fallback"])
-async def test_scene_schema_reaches_every_wire_attempt(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
-    monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", 1)
+@pytest.mark.run_settings(LLM_RETRY_ATTEMPTS=1)
+async def test_scene_schema_reaches_every_wire_attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+    catalog = select_catalog(catalog_state(tmp_path, characters=("Elara",), locations=("Library",)))
     bodies: list[dict[str, Any]] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -51,9 +53,9 @@ async def test_scene_schema_reaches_every_wire_attempt(monkeypatch: pytest.Monke
         if mode.startswith("exhausted"):
             from core.exceptions import LLMServiceError
             with pytest.raises((ValueError, LLMServiceError)):
-                await _extract_relationships_from_scene("Elara enters the Library.", 0, 1, "Synthetic", "Fantasy", "Elara", "synthetic")
+                await _extract_relationships_from_scene("Elara enters the Library.", 0, 1, "Synthetic", "Fantasy", "Elara", "synthetic", catalog=catalog)
         else:
-            assert await _extract_relationships_from_scene("Elara enters the Library.", 0, 1, "Synthetic", "Fantasy", "Elara", "synthetic") == []
+            assert await _extract_relationships_from_scene("Elara enters the Library.", 0, 1, "Synthetic", "Fantasy", "Elara", "synthetic", catalog=catalog) == []
         assert len(bodies) == (1 if mode == "success" else 2)
         contract = bodies[0]["response_format"]
         assert all(body["response_format"] == contract for body in bodies)
@@ -108,9 +110,8 @@ def invalid_response(defect: str) -> str:
     "duplicate_row_key", "duplicate_wrapper",
 ])
 async def test_invalid_scene_relationship_blocks_persistence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defect: str) -> None:
-    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_ENTITY_VALIDATION": False}))
     manager = ContentManager(str(tmp_path))
-    state: NarrativeState = {"project_dir": str(tmp_path), "current_chapter": 1, "title": "Synthetic", "genre": "Fantasy", "protagonist_name": "Elara"}
+    state: NarrativeState = catalog_state(tmp_path, characters=("Elara",), locations=("Library",))
     state["scene_drafts_ref"] = manager.save_list_of_texts(["Elara enters the Library."], "scenes", "chapter_1", 1)
     replies = iter([json.dumps({"character_updates": {}}), json.dumps({"world_updates": {"Location": {}}}), json.dumps({"world_updates": {"Event": {}}}), invalid_response(defect)])
     bodies: list[dict[str, Any]] = []
