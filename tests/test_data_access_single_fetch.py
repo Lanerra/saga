@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import utils
 from core.service_context import get_services
 from data_access import character_queries, world_queries
 from data_access.cache_coordinator import clear_all_data_access_caches
@@ -103,7 +102,7 @@ async def test_sync_world_items_populates_name_to_id(monkeypatch: pytest.MonkeyP
 
     world_queries.WORLD_NAME_TO_ID.clear()
     await world_queries.sync_world_items(world_data, 1)
-    assert world_queries.WORLD_NAME_TO_ID[utils._normalize_for_id("City")] == world_item.id
+    assert world_queries.WORLD_NAME_TO_ID == {"City": world_item.id}
 
 
 @pytest.mark.asyncio
@@ -137,4 +136,4 @@ async def test_get_world_building_from_db_populates_name_to_id(monkeypatch: pyte
     city = next((w for w in world_items if w.name == "City"), None)
     assert city is not None
     assert city.id == "places_city"
-    assert world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City")) == "places_city"
+    assert world_queries.WORLD_NAME_TO_ID == {"City": "places_city"}

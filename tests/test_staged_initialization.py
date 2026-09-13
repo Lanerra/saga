@@ -305,7 +305,7 @@ def test_short_act_prompt_roles_cover_the_complete_story(total_acts: int, roles:
 
 @pytest.mark.parametrize("total_chapters", [1, 2, 3, 4, 5, 20])
 async def test_generated_outline_nodes_reach_strict_admission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, total_chapters: int) -> None:
-    from config.settings import settings
+    import config
 
     seed = example_state(tmp_path / "seed")
     seed_manager = ContentManager(seed["project_dir"])
@@ -324,24 +324,25 @@ async def test_generated_outline_nodes_reach_strict_admission(tmp_path: Path, mo
     async def text_response(*, prompt: str, **keywords: Any) -> tuple[str, dict[str, int]]:
         prompts.append(prompt)
         if "## Chapter\n" in prompt:
-            return json.dumps({"scene_description": "Ada explores", "key_beats": ["Ada chooses"], "plot_point": "Choice"}), {}
+            return json.dumps({"scene_description": "Ada explores", "key_beats": ["Ada departs", "Ada explores", "Ada chooses"], "plot_point": "Choice"}), {}
         return prompt.split("```json\n", 1)[1].split("```", 1)[0], {}
 
     async def act_response(*, prompt: str, **keywords: Any) -> tuple[dict[str, Any], dict[str, int]]:
         prompts.append(prompt)
         identity = re.search(r"Act: (\d+) of (\d+)", prompt)
-        allocation = re.search(r"Chapters in act: ~(\d+)", prompt)
+        allocation = re.search(r"Chapters in act: (\d+)", prompt)
         role = re.search(r"Role in structure: (.+)", prompt)
         assert identity and allocation and role
         return {"act_number": int(identity[1]), "total_acts": int(identity[2]), "act_role": role[1], "chapters_in_act": int(allocation[1]), "sections": sections}, {}
 
-    monkeypatch.setattr(settings, "GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT", True)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", text_response)
     monkeypatch.setattr(get_services().language_model, "async_call_llm_json_object", act_response)
-    for node in (generate_global_outline, generate_act_outlines, all_chapter_outlines_node.generate_all_chapter_outlines):
-        update = await node(state)
-        assert update.get("last_error") is None
-        state = {**state, **update}
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT": True})
+    with config.bind_settings(effective):
+        for node in (generate_global_outline, generate_act_outlines, all_chapter_outlines_node.generate_all_chapter_outlines):
+            update = await node(state)
+            assert update.get("last_error") is None
+            state = {**state, **update}
     selected = select_snapshot(state)
     assert selected.total_chapters == total_chapters
     assert selected.total_acts == min(total_chapters, 3)

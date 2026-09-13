@@ -1,5 +1,6 @@
 # tests/core/langgraph/nodes/test_scene_extraction.py
 import json
+from pathlib import Path
 from typing import Any, get_type_hints
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ import pytest
 from pydantic import BaseModel
 
 from tests.fakes.service_context import patch_service
+from tests.test_r08g_catalog_fixtures import catalog_state
 
 
 def test_character_parser_returns_named_info_pairs() -> None:
@@ -43,6 +45,7 @@ def _assert_json_serializable(value: Any) -> None:
 @pytest.mark.asyncio
 async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
     """Scene-level extraction produces characters, world items, and relationships."""
+    from core.langgraph.initialization.catalog import select_catalog
     from core.langgraph.nodes.scene_extraction import extract_from_scene
 
     scene_text = "Elara walked into the Sunken Library and found the ancient map."
@@ -97,6 +100,7 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
             novel_genre="Fantasy",
             protagonist_name="Elara",
             model_name="test-model",
+            catalog=select_catalog(catalog_state(tmp_path, locations=("Sunken Library",))),
         )
 
     assert "characters" in result
@@ -183,6 +187,7 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
         "Scene 1: Elara enters the library.",
         "Scene 2: She meets Marcus at the tower.",
     ]
+    state.update(catalog_state(Path(project_dir), characters=("Elara", "Marcus"), existing=state))
     state["scene_drafts_ref"] = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
     state["current_chapter"] = 1
 
@@ -256,6 +261,7 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
     )
 
     content_manager = ContentManager(project_dir)
+    state.update(catalog_state(Path(project_dir), characters=("Elara", "Marcus"), existing=state))
     state["scene_drafts_ref"] = content_manager.save_list_of_texts(
         ["Scene 1: Elara enters the library."],
         "scenes",
@@ -342,5 +348,9 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
             "confidence": 0.8,
             "source_type": None,
             "target_type": None,
+            "source_id": None,
+            "target_id": None,
+            "scene_index": None,
+            "scene_assertions": None,
         }
     ]

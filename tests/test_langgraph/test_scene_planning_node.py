@@ -1,25 +1,36 @@
 # tests/test_langgraph/test_scene_planning_node.py
 import json
 from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import config
 from core.langgraph.nodes.scene_planning_node import plan_scenes
 from core.langgraph.state import NarrativeState
 from tests.fakes.service_context import patch_service
+from tests.test_r08g_catalog_fixtures import catalog_state
+
+
+@pytest.fixture(autouse=True)
+def one_scene_settings() -> Iterator[None]:
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "TARGET_SCENES_MIN": 1})
+    with config.bind_settings(effective):
+        yield
 
 
 @pytest.fixture
-def base_state() -> NarrativeState:
-    return {
-        "project_dir": "/tmp/test-project",
+def base_state(tmp_path: Path) -> NarrativeState:
+    state: NarrativeState = {
+        "project_dir": str(tmp_path),
         "title": "Test Novel",
         "genre": "Fantasy",
         "theme": "Adventure",
         "large_model": "test-model",
         "current_chapter": 1,
     }
+    return catalog_state(tmp_path, characters=("Hero", "Mentor"), locations=("Castle",), events=("Beat 1", "Beat 2"), existing=state)
 
 
 @pytest.fixture
@@ -75,7 +86,7 @@ def _valid_scene_list() -> list[dict[str, object]]:
             "plot_point": "Quest begins",
             "conflict": "Doubt vs duty",
             "outcome": "Hero departs",
-            "beats": "Hero accepts the call to adventure",
+            "beats": ["Beat 1", "Beat 2"],
         }
     ]
 

@@ -72,11 +72,11 @@ async def test_database_closes_when_language_model_creation_fails() -> None:
     assert database.closed == 1
 
 
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=2)
 async def test_parser_consumes_injected_embedding_interface(monkeypatch: pytest.MonkeyPatch) -> None:
     import httpx
     import numpy as np
 
-    import config
     from core.parsers.narrative_enrichment_parser import NarrativeEnrichmentParser
     from core.service_context import RunServices, inject_services
 
@@ -88,7 +88,6 @@ async def test_parser_consumes_injected_embedding_interface(monkeypatch: pytest.
     async def unexpected_transport(*arguments: Any, **keywords: Any) -> None:
         raise AssertionError("Injected parser must not use a global HTTP client")
 
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
     monkeypatch.setattr(httpx.AsyncClient, "post", unexpected_transport)
     language_model: Any = Embeddings()
     database: Any = ExampleDatabase()

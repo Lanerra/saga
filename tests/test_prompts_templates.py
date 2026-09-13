@@ -338,6 +338,7 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
                 "act_number": 1,
                 "chapter_in_act": 1,
                 "global_outline": "Outline",
+                "chapter_target_word_count": 3000,
                 "act_outline": "Act",
                 "character_context": "Context",
                 "previous_context": "None",

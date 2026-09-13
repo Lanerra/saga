@@ -5,6 +5,7 @@ import json
 import os
 import runpy
 import sys
+from collections.abc import Iterator
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -37,11 +38,12 @@ from core.service_context import managed_services
 from core.spacy_service import get_spacy_service
 from orchestration.langgraph_orchestrator import LangGraphOrchestrator
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.test_r08g_catalog_fixtures import catalog_state
 
 SCENE = {
     "title": "Arrival", "pov_character": "Hero", "setting": "Room",
     "characters": ["Hero"], "plot_point": "Arrival", "conflict": "Locked door",
-    "outcome": "Door opens", "beats": "Hero opens the door",
+    "outcome": "Door opens", "beats": ["Open door"],
 }
 ROLLBACK: RevisionRollbackFailure = {
     "chapter_number": 1, "iteration_count": 1, "error": "rollback acknowledgement failed",
@@ -58,6 +60,7 @@ class ProviderBoundary:
         self.plan_calls = 0
         self.draft_calls = 0
         self.embedding_calls = 0
+        self.finalized_chapters: list[dict[str, Any]] = []
 
     async def completion(self, client: CompletionHTTPClient, model: str, messages: list[dict[str, str]], temperature: float, max_tokens: int, **keywords: Any) -> dict[str, Any]:
         prompt = messages[-1]["content"]
@@ -85,6 +88,9 @@ def boundaries(monkeypatch: pytest.MonkeyPatch) -> tuple[ProviderBoundary, FakeN
     provider = ProviderBoundary()
     database = FakeNeo4jManager()
     database.configure_response(r"RETURN c.name AS name", [{"name": "Hero"}])
+    database.configure_response(
+        r"\A\s*MATCH \(c:Chapter\)\s+RETURN c.number AS chapter_number,\s+c.generation_status AS generation_status,\s+c.is_provisional AS is_provisional\s*\Z", provider.finalized_chapters,
+    )
     monkeypatch.setattr(neo4j_manager, "execute_read_query", database.execute_read_query)
     monkeypatch.setattr(neo4j_manager, "execute_cypher_batch", database.execute_cypher_batch)
     monkeypatch.setattr(neo4j_manager, "execute_write_query", database.execute_write_query)
@@ -96,8 +102,25 @@ def boundaries(monkeypatch: pytest.MonkeyPatch) -> tuple[ProviderBoundary, FakeN
     pipeline = spacy.blank("en")
     pipeline.add_pipe("sentencizer")
     monkeypatch.setattr(get_spacy_service(), "_nlp", pipeline)
-    monkeypatch.setattr(config, "ENABLE_RICH_PROGRESS", False)
     return provider, database
+
+
+@pytest.fixture(autouse=True)
+def one_scene_settings() -> Iterator[None]:
+    import logging
+
+    import structlog
+
+    root_logger = logging.getLogger()
+    handlers, level, structured = list(root_logger.handlers), root_logger.level, structlog.get_config()
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "TARGET_SCENES_MIN": 1, "ENABLE_RICH_PROGRESS": False})
+    with config.bind_settings(effective):
+        try:
+            yield
+        finally:
+            root_logger.handlers[:] = handlers
+            root_logger.setLevel(level)
+            structlog.configure(**structured)
 
 
 def seeded_state(directory: Path) -> NarrativeState:
@@ -107,6 +130,7 @@ def seeded_state(directory: Path) -> NarrativeState:
     state["chapter_outlines_ref"] = manager.save_json({"1": {"scene_description": "Arrival", "key_beats": ["Open door"], "version": 1}}, "chapter_outlines", "all", 1)
     state["chapter_plan_ref"] = manager.save_json([SCENE], "chapter_plan", "chapter_1", 1)
     state["chapter_plan_scene_count"] = 1
+    state.update(catalog_state(directory, characters=("Hero",), locations=("Room",), events=("Open door",), existing=state))
     return state
 
 
@@ -187,8 +211,10 @@ async def test_empty_draft_is_terminal(tmp_path: Path, boundaries: tuple[Provide
 
 async def test_generation_success_advances_each_scene(tmp_path: Path, boundaries: tuple[ProviderBoundary, FakeNeo4jManager]) -> None:
     provider, _ = boundaries
-    provider.plan_responses = [json.dumps([SCENE, SCENE])]
-    result = await create_generation_subgraph().ainvoke(seeded_state(tmp_path), {"recursion_limit": 12})
+    provider.plan_responses = [json.dumps([SCENE, {**SCENE, "beats": []}])]
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "TARGET_SCENES_MIN": 2})
+    with config.bind_settings(effective):
+        result = await create_generation_subgraph().ainvoke(seeded_state(tmp_path), {"recursion_limit": 12})
     assert result["has_fatal_error"] is False
     assert result["current_scene_index"] == 2
     assert get_scene_drafts(result, ContentManager(str(tmp_path))) == [provider.draft_response, provider.draft_response]
@@ -414,13 +440,13 @@ async def test_transport_retry_budget_does_not_restart_draft(tmp_path: Path, mon
         return httpx.Response(200, request=httpx.Request("POST", url), json={"choices": [{"message": {"content": "Hero opened the door."}}]})
 
     monkeypatch.setattr(httpx.AsyncClient, "post", post)
-    monkeypatch.setattr(config, "LLM_RETRY_ATTEMPTS", attempts)
-    monkeypatch.setattr(config, "LLM_RETRY_DELAY_SECONDS", 0.001)
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "LLM_RETRY_ATTEMPTS": attempts, "LLM_RETRY_DELAY_SECONDS": 0.001})
     pipeline = spacy.blank("en")
     pipeline.add_pipe("sentencizer")
     monkeypatch.setattr(get_spacy_service(), "_nlp", pipeline)
-    async with managed_services():
-        result = await draft_scene(seeded_state(tmp_path))
+    with config.bind_settings(effective):
+        async with managed_services():
+            result = await draft_scene(seeded_state(tmp_path))
     assert calls == attempts
     assert result.get("has_fatal_error", False) is (not succeed)
     if succeed:
@@ -487,7 +513,7 @@ def test_cli_terminal_invocation_reports_actual_manuscripts_without_reinitializi
     if complete:
         store = ManuscriptStore(directory)
         store.accept(store.prepare(1, "Synthetic retained prose.  \r\n"))
-        database.configure_response(r"RETURN c.number AS chapter_number", [{"chapter_number": 1, "generation_status": "finalized", "is_provisional": False}])
+        provider.finalized_chapters.append({"chapter_number": 1, "generation_status": "finalized", "is_provisional": False})
     configuration = {"configurable": {"thread_id": "saga_synthetic"}}
 
     async def seed_terminal() -> Any:

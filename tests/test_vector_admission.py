@@ -14,6 +14,7 @@ from core.service_context import get_services
 from data_access.chapter_queries import build_chapter_upsert_statement, find_semantic_context_native
 from models.kg_models import CharacterProfile
 
+pytestmark = pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, NEO4J_VECTOR_DIMENSIONS=3, EMBEDDING_DTYPE="float32", EMBEDDING_MODEL="synthetic-vector-a")
 
 class EmbeddingProvider:
     def __init__(self) -> None:
@@ -26,10 +27,7 @@ class EmbeddingProvider:
 
 @pytest.fixture
 def vector_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, 'EXPECTED_EMBEDDING_DIM', 3)
-    monkeypatch.setattr(config, 'NEO4J_VECTOR_DIMENSIONS', 3)
-    monkeypatch.setattr(config, 'EMBEDDING_DTYPE', 'float32')
-    monkeypatch.setattr(config, 'EMBEDDING_MODEL', 'synthetic-vector-a')
+    assert config.snapshot_settings().EXPECTED_EMBEDDING_DIM == 3
 
 
 @pytest.mark.asyncio
@@ -40,9 +38,10 @@ async def test_cache_identity_tracks_producer_contract(vector_configuration: Non
     provider = EmbeddingProvider()
     first = EmbeddingService(provider)  # type: ignore[arg-type]
     original = await first.get_embedding('same synthetic text')
-    monkeypatch.setattr(config, field, value)
-    second = EmbeddingService(provider)  # type: ignore[arg-type]
-    changed = await second.get_embedding('same synthetic text')
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), field: value})
+    with config.bind_settings(effective):
+        second = EmbeddingService(provider)  # type: ignore[arg-type]
+        changed = await second.get_embedding('same synthetic text')
     assert original is not None and changed is not None
     assert original.tolist() == [1.0, 0.25, 0.5]
     assert changed.tolist() == [2.0, 0.25, 0.5]
@@ -124,8 +123,8 @@ def test_scene_artifact_cannot_cross_model(vector_configuration: None, monkeypat
     manager = ContentManager(str(tmp_path))
     reference = save_scene_embeddings(manager, [[1.0, 2.0, 3.0]], 1, embedding_model=config.EMBEDDING_MODEL)
     assert load_scene_embeddings(manager, reference) == [[1.0, 2.0, 3.0]]
-    monkeypatch.setattr(config, 'EMBEDDING_MODEL', 'synthetic-vector-b')
-    with pytest.raises(ValueError, match='identity|model'):
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "EMBEDDING_MODEL": "synthetic-vector-b"})
+    with config.bind_settings(effective), pytest.raises(ValueError, match='identity|model'):
         load_scene_embeddings(manager, reference)
 
 

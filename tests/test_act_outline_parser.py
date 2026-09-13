@@ -349,13 +349,16 @@ async def test_create_event_relationships_happens_before(sample_act_outline: dic
         events_in_act = [e for e in act_events if e.act_number == act_num]
         for i in range(len(events_in_act)):
             for j in range(i + 1, len(events_in_act)):
+                assert events_in_act[i].id != events_in_act[j].id
                 expected_happens_before_count += 1
 
     # We should have relationships for events in same acts
     assert expected_happens_before_count > 0
+    assert len(cypher_queries) == expected_happens_before_count
 
     # Verify that relationships reference valid event IDs
     for query, params in cypher_queries:
+        assert "MERGE (a)-[r:HAPPENS_BEFORE]->(b)" in query
         assert "event_a_id" in params
         assert "event_b_id" in params
         assert params["event_a_id"].startswith("event_")

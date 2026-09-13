@@ -1,14 +1,24 @@
 # tests/core/langgraph/nodes/test_scene_planning_node.py
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import config
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.scene_planning_node import _parse_scene_plan_json_from_llm_response, plan_scenes
 from core.langgraph.state import create_initial_state
 from tests.fakes.service_context import patch_service
+from tests.test_r08g_catalog_fixtures import catalog_state
+
+
+@pytest.fixture(autouse=True)
+def one_scene_settings() -> Iterator[None]:
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "TARGET_SCENES_MIN": 1})
+    with config.bind_settings(effective):
+        yield
 
 
 def _valid_scene_plan_json() -> str:
@@ -22,7 +32,7 @@ def _valid_scene_plan_json() -> str:
                 "plot_point": "Start",
                 "conflict": "None",
                 "outcome": "Next",
-                "beats": "Hero discovers something unexpected",
+                "beats": ["Beat 1", "Beat 2"],
             }
         ]
     )
@@ -67,7 +77,7 @@ def test_parse_scene_plan_with_beats_field_passes() -> None:
         "plot_point": "Start",
         "conflict": "None",
         "outcome": "Next",
-        "beats": "Hero discovers something unexpected",
+        "beats": ["Hero discovers something unexpected"],
     }
     response = json.dumps([scene_with_beats])
 
@@ -75,7 +85,7 @@ def test_parse_scene_plan_with_beats_field_passes() -> None:
 
     assert isinstance(parsed, list)
     assert len(parsed) == 1
-    assert parsed[0]["beats"] == "Hero discovers something unexpected"
+    assert parsed[0]["beats"] == ["Hero discovers something unexpected"]
 
 
 def test_parse_scene_plan_valid_top_level_array_passes() -> None:
@@ -107,6 +117,7 @@ async def test_plan_scenes_retries_on_invalid_then_succeeds(tmp_path: Path) -> N
     content_manager = ContentManager(project_dir)
     chapter_outlines = {1: {"scene_description": "Test Chapter", "key_beats": ["Beat 1", "Beat 2"]}}
     state["chapter_outlines_ref"] = content_manager.save_json(chapter_outlines, "chapter_outlines", "all", 1)
+    state.update(catalog_state(tmp_path, characters=("Hero",), events=("Beat 1", "Beat 2"), existing=state))
 
     invalid_first_response = json.dumps({"scenes": json.loads(_valid_scene_plan_json())})
     valid_second_response = _valid_scene_plan_json()

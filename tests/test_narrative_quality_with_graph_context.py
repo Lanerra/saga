@@ -187,6 +187,10 @@ class TestNarrativeWithEventContext:
 
         for indicator, event_type in sequence_indicators:
             assert indicator.lower() in narrative.lower(), f"Event '{event_type}' not found in narrative"
+        assert [event["sequence"] for event in events] == [1, 2, 3]
+        assert [str(event["name"]).lower() for event in events] == [event_type for _, event_type in sequence_indicators]
+        positions = [narrative.lower().index(indicator) for indicator, _ in sequence_indicators]
+        assert positions == sorted(positions)
 
 
 @pytest.mark.asyncio

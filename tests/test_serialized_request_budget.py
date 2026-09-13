@@ -13,8 +13,8 @@ from core.text_processing_service import TokenizerService
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('extra', [{}, {'response_format': {'type': 'json_schema', 'json_schema': {'description': '海' * 300}}}])
+@pytest.mark.run_settings(MAX_CONTEXT_TOKENS=220)
 async def test_complete_request_rejects_unfit_system_and_options(extra: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, 'MAX_CONTEXT_TOKENS', 220)
     requests: list[httpx.Request] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -51,21 +51,21 @@ async def test_options_cannot_override_request_contract(options: dict[str, Any])
 @pytest.mark.asyncio
 async def test_exact_serialized_boundary_and_no_input_mutation(monkeypatch: pytest.MonkeyPatch) -> None:
     messages = [{'role': 'system', 'content': '海'}, {'role': 'user', 'content': 'u'}]
-    payload = {'model': 'synthetic', 'messages': messages, 'temperature': 0.5, 'top_p': config.LLM_TOP_P, 'max_tokens': 10, 'stream': False}
+    payload = {'model': 'synthetic', 'messages': messages, 'temperature': 1.0, 'top_p': config.LLM_TOP_P, 'max_tokens': 10, 'stream': False}
     encoder = tiktoken.get_encoding(config.TIKTOKEN_DEFAULT_ENCODING)
     measured = len(encoder.encode(json.dumps(payload, ensure_ascii=False, separators=(',', ':'), allow_nan=False), disallowed_special=()))
     # Explicit framing allowance on top of the entire serialized payload.
     limit = measured + 8 * len(messages) + 3 + 10
     requests: list[httpx.Request] = []
     for budget, admitted in [(limit, True), (limit - 1, False)]:
-        monkeypatch.setattr(config, 'MAX_CONTEXT_TOKENS', budget)
+        effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "MAX_CONTEXT_TOKENS": budget})
         requests.clear()
 
         def respond(request: httpx.Request) -> httpx.Response:
             requests.append(request)
             return httpx.Response(200, json={'choices': [{'message': {'content': 'answer'}}]})
 
-        service = HTTPClientService(client=httpx.AsyncClient(transport=httpx.MockTransport(respond)))
+        service = HTTPClientService(configuration=effective, client=httpx.AsyncClient(transport=httpx.MockTransport(respond)))
         try:
             if admitted:
                 await CompletionHTTPClient(service).get_completion('synthetic', messages, 0.5, 10)

@@ -18,6 +18,7 @@ from core.service_context import get_services
 from tests.fakes.quality import example_quality_state
 from tests.test_langgraph.test_chapter_lifecycle import DriverExample, Rows, TransactionExample, example_state
 
+pytestmark = pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, NEO4J_VECTOR_DIMENSIONS=3, ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION=True, ENABLE_CHAPTER_EMBEDDING_EXTRACTION=True)
 
 @pytest.mark.parametrize("late_failure", [False, True])
 async def test_candidate_enrichment_preserves_graph(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, late_failure: bool) -> None:
@@ -42,10 +43,6 @@ async def test_candidate_enrichment_preserves_graph(tmp_path: Path, monkeypatch:
     async def embed(text: str) -> list[float]:
         return [1.0, 0.0, 0.0]
 
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 3)
-    monkeypatch.setattr(config, "ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION", True)
-    monkeypatch.setattr(config, "ENABLE_CHAPTER_EMBEDDING_EXTRACTION", True)
     monkeypatch.setattr(get_services().database, "execute_read_query", read)
     monkeypatch.setattr(get_services().database, "execute_cypher_batch", batch)
     monkeypatch.setattr(get_services().database, "execute_write_query", write)
@@ -63,7 +60,8 @@ class EnrichmentTransaction(TransactionExample):
         self.description = driver.description
         self.embedding = driver.embedding.copy()
 
-    def run(self, query: str, parameters: Any = None) -> Rows:
+    def run(self, query: str, parameters: Any = None, **keywords: Any) -> Rows:
+        parameters = parameters or keywords
         if "RETURN c," in query or "RETURN c\n" in query:
             return Rows([{"c": {"id": "alice", "name": "Alice", "created_chapter": 0, "physical_description": self.description}, "traits": [], "relationships": []}])
         if "c.number AS number" in query:
@@ -126,10 +124,6 @@ async def test_acceptance_owns_enrichment(tmp_path: Path, monkeypatch: pytest.Mo
     database.bind_project(state["graph_project_id"])
     driver = EnrichmentDriver(state["graph_project_id"])
     monkeypatch.setattr(database, "driver", driver)
-    for name in ("EXPECTED_EMBEDDING_DIM", "NEO4J_VECTOR_DIMENSIONS"):
-        monkeypatch.setattr(config, name, 3)
-    monkeypatch.setattr(config, "ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION", True)
-    monkeypatch.setattr(config, "ENABLE_CHAPTER_EMBEDDING_EXTRACTION", True)
     provider_calls: list[str] = []
 
     async def embed(text: str) -> list[float]:

@@ -1,6 +1,8 @@
 # tests/test_chapter_outline_json_parsing.py
 """Test for chapter outline JSON parsing fix."""
 
+import pytest
+
 from core.langgraph.initialization.chapter_outline_node import _parse_chapter_outline
 
 
@@ -29,48 +31,30 @@ def test_parse_chapter_outline_with_object() -> None:
 
 
 def test_parse_chapter_outline_with_array_fallback() -> None:
-    """Test that _parse_chapter_outline handles array responses gracefully via fallback parsing."""
-    # Simulate an array response (which shouldn't happen with the fixed prompt)
-    # but test that the fallback parsing doesn't crash
+    """An array must not be salvaged into a fabricated chapter outline."""
     response = """[
         "The protagonist enters the dark forest",
         "They hear rustling in the bushes",
         "A shadowy figure appears"
     ]"""
 
-    result = _parse_chapter_outline(response, 1, 1)
-
-    assert isinstance(result, dict)
-    assert result["chapter_number"] == 1
-    assert result["act_number"] == 1
-    # Fallback should use the full response as scene_description
-    assert result["raw_text"] == response
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 1, 1)
 
 
 def test_parse_chapter_outline_with_invalid_json() -> None:
-    """Test that _parse_chapter_outline handles invalid JSON gracefully."""
+    """Free text cannot replace the required structured outline."""
     response = "This is not valid JSON but contains some text about a scene."
 
-    result = _parse_chapter_outline(response, 1, 1)
-
-    assert isinstance(result, dict)
-    assert result["chapter_number"] == 1
-    assert result["act_number"] == 1
-    # Fallback should use the full response as scene_description
-    assert result["scene_description"] == response
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 1, 1)
 
 
 def test_parse_chapter_outline_missing_keys() -> None:
-    """Test that _parse_chapter_outline handles missing keys with defaults."""
+    """Missing required fields fail instead of receiving invented defaults."""
     response = """{
         "scene_description": "A scene description"
     }"""
 
-    result = _parse_chapter_outline(response, 1, 1)
-
-    assert isinstance(result, dict)
-    assert result["chapter_number"] == 1
-    assert result["act_number"] == 1
-    assert result["scene_description"] == "A scene description"
-    assert result["key_beats"] == []
-    assert "Chapter 1 events" in result["plot_point"]
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 1, 1)

@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 import pytest
 from neo4j.exceptions import ServiceUnavailable
 
-import utils
 from core.exceptions import DatabaseError
 from core.service_context import get_services
 from data_access import character_queries
@@ -208,7 +207,8 @@ class TestSyncCharacters:
 
         # Existing entries are preserved; new entries are added.
         assert character_queries.CHAR_NAME_TO_CANONICAL["existing"] == "Existing"
-        assert character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice")) == "Alice"
+        assert character_queries.CHAR_NAME_TO_CANONICAL.get("Alice") == "Alice"
+        assert "alice" not in character_queries.CHAR_NAME_TO_CANONICAL
 
     async def test_sync_characters_multiple(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Syncing multiple characters persists without error."""
@@ -282,7 +282,8 @@ class TestGetCharacterProfiles:
         assert result[0].name == "Alice"
 
         assert "stale" not in character_queries.CHAR_NAME_TO_CANONICAL
-        assert character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice")) == "Alice"
+        assert character_queries.CHAR_NAME_TO_CANONICAL.get("Alice") == "Alice"
+        assert "alice" not in character_queries.CHAR_NAME_TO_CANONICAL
 
 
 @pytest.mark.asyncio

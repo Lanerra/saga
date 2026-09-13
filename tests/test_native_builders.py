@@ -10,7 +10,7 @@ class TestCharacterUpsertCypher:
 
     def test_character_upsert_basic(self) -> None:
         """Test basic character upsert Cypher."""
-        profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]})
+        profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"], "relationships": {"Bob": {"type": "FRIEND_OF", "description": "A declared friend"}}})
 
         cypher, params = NativeCypherBuilder.character_upsert_cypher(profile, 1)
 
@@ -21,7 +21,9 @@ class TestCharacterUpsertCypher:
 
         # Contract: builder-created relationships must be visible to profile reads
         # that filter by r.source_profile_managed.
-        assert "source_profile_managed: true" in cypher
+        assert len(params["relationship_data"]) == 1
+        assert params["relationship_data"][0]["properties"]["source_profile_managed"] is True
+        assert "rel_data.properties" in cypher
         # Contract: traits are now stored as node properties
         assert "SET c.traits = $trait_data" in cypher
 

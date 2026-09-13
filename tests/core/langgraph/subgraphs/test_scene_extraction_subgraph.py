@@ -9,6 +9,7 @@ from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import create_initial_state
 from core.service_context import get_services
 from tests.fakes.service_context import patch_service
+from tests.test_r08g_catalog_fixtures import catalog_state
 
 
 @pytest.mark.asyncio
@@ -34,6 +35,7 @@ async def test_scene_extraction_subgraph_runs_extraction_and_consolidation(tmp_p
 
     content_manager = ContentManager(project_dir)
     scenes = ["Elara enters the library.", "She finds the map."]
+    state.update(catalog_state(Path(project_dir), existing=state))
     state["scene_drafts_ref"] = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
     state["current_chapter"] = 1
 
@@ -70,8 +72,9 @@ def extraction_state(tmp_path: Path) -> Any:
         project_dir=str(tmp_path), protagonist_name="Elara",
     )
     manager = ContentManager(str(tmp_path))
+    state.update(catalog_state(tmp_path, events=("Arrival", "Departure"), existing=state))
     state["scene_drafts_ref"] = manager.save_list_of_texts(
-        ["Elara enters the Library.", "Elara leaves the Library."], "scenes", "chapter_1", 1,
+        ["Elara enters the Library for the Arrival ceremony.", "Elara leaves the Library after the Departure ceremony."], "scenes", "chapter_1", 1,
     )
     state["chapter_plan_scene_count"] = 2
     return state
@@ -221,7 +224,6 @@ async def test_provider_boundary_preserves_nonempty_completeness(
     from core.http_client_service import CompletionHTTPClient
     from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph
 
-    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_ENTITY_VALIDATION": False}))
     extraction_state["extraction_model"] = "synthetic-primary"
     calls: list[str] = []
     slot = 0
@@ -247,7 +249,9 @@ async def test_provider_boundary_preserves_nonempty_completeness(
         return {"choices": [{"message": {"content": json.dumps(response)}}]}
 
     monkeypatch.setattr(CompletionHTTPClient, "get_completion", completion)
-    result = await create_scene_extraction_subgraph().ainvoke(extraction_state)
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "ENABLE_ENTITY_VALIDATION": False})
+    with config.bind_settings(effective):
+        result = await create_scene_extraction_subgraph().ainvoke(extraction_state)
     manager = ContentManager(extraction_state["project_dir"])
     if mode in ("late_failure", "all_failure"):
         assert result["extraction_status"] == "failed"
@@ -274,18 +278,31 @@ async def test_provider_boundary_preserves_nonempty_completeness(
     assert result["extraction_status"] == "complete"
     assert [outcome["item_count"] for outcome in result["extraction_outcomes"]] == [1] * 8
     assert calls == ["synthetic-primary"] * (9 if mode == "json_recovery" else 8)
-    assert manager.load_json(result["extracted_entities_ref"]) == {
-        "characters": [{"name": "Elara", "type": "Character", "description": "A curious scout", "first_appearance_chapter": 1, "scene_index": 1,
-                        "attributes": {"traits": [], "status": "active", "relationships": {}}}],
-        "world_items": [
-            {"name": "Library", "type": "Location", "description": "Old", "first_appearance_chapter": 1, "scene_index": 0,
-             "attributes": {"category": "Structure", "goals": [], "rules": [], "key_elements": []}},
-            {"name": "Arrival", "type": "Event", "description": "Movement", "first_appearance_chapter": 1, "scene_index": 0,
-             "attributes": {"category": "Travel", "goals": [], "rules": [], "key_elements": []}},
-            {"name": "Departure", "type": "Event", "description": "Movement", "first_appearance_chapter": 1, "scene_index": 1,
-             "attributes": {"category": "Travel", "goals": [], "rules": [], "key_elements": []}},
-        ],
-    }
-    assert manager.load_json(result["extracted_relationships_ref"]) == [
-        {"source_name": "Elara", "target_name": "Library", "relationship_type": "LOCATED_AT", "description": "Inside", "chapter": 1, "scene_index": 0, "confidence": 0.8},
+    from core.langgraph.initialization.catalog import select_catalog
+
+    catalog = select_catalog(extraction_state)
+    expected: dict[str, list[dict[str, Any]]] = {"characters": [], "world_items": []}
+    for label, name, descriptions, indexes, attributes in (
+        ("Character", "Elara", ["A scout", "A curious scout"], [0, 1], {"traits": [], "status": "active", "relationships": {}}),
+        ("Location", "Library", ["Old", "Old"], [0, 1], {"category": "Structure", "goals": [], "rules": [], "key_elements": []}),
+        ("Event", "Arrival", ["Movement"], [0], {"category": "Travel", "goals": [], "rules": [], "key_elements": []}),
+        ("Event", "Departure", ["Movement"], [1], {"category": "Travel", "goals": [], "rules": [], "key_elements": []}),
+    ):
+        candidates = [candidate for candidate in catalog.candidates(label) if candidate["name"] == name]
+        assert len(candidates) == 1
+        observations: list[dict[str, Any]] = [
+            {"name": name, "type": label, "description": description, "first_appearance_chapter": 1,
+             "scene_index": index, "attributes": {**attributes, "id": candidates[0]["id"]}}
+            for description, index in zip(descriptions, indexes, strict=True)
+        ]
+        final_observation = observations[-1]
+        if len(observations) > 1:
+            final_observation = {**final_observation, "attributes": {**final_observation["attributes"], "scene_assertions": observations}}
+        expected["characters" if label == "Character" else "world_items"].append(final_observation)
+    assert manager.load_json(result["extracted_entities_ref"]) == expected
+    relationships = [
+        {"source_name": "Elara", "target_name": "Library", "relationship_type": "LOCATED_AT", "description": "Inside", "chapter": 1, "scene_index": scene, "confidence": 0.8,
+         "source_id": expected["characters"][0]["attributes"]["id"], "target_id": expected["world_items"][0]["attributes"]["id"], "source_type": "Character", "target_type": "Location"}
+        for scene in range(2)
     ]
+    assert manager.load_json(result["extracted_relationships_ref"]) == [{**relationships[-1], "scene_assertions": relationships}]

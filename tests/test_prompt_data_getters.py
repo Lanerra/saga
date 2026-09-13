@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import config
+from core.exceptions import DatabaseError
 from models import CharacterProfile, WorldItem
 from models.agent_models import SceneDetail
 from prompts import prompt_data_getters
@@ -468,11 +469,10 @@ class TestGetCharacterProfilesDictWithNotes:
     @pytest.mark.asyncio
     async def test_handles_query_exception(self) -> None:
         with patch("data_access.character_queries.get_character_profile_by_name") as mock_get:
-            mock_get.side_effect = Exception("Database error")
+            mock_get.side_effect = DatabaseError("Database error")
 
-            result = await prompt_data_getters._get_character_profiles_dict_with_notes(["Alice"], up_to_chapter_inclusive=5)
-
-            assert result == {}
+            with pytest.raises(DatabaseError, match="Database error"):
+                await prompt_data_getters._get_character_profiles_dict_with_notes(["Alice"], up_to_chapter_inclusive=5)
 
     @pytest.mark.asyncio
     async def test_processes_multiple_characters(self) -> None:
@@ -898,19 +898,15 @@ class TestApplyProtagonistProximityFiltering:
         with patch("data_access.kg_queries.get_shortest_path_length_between_entities") as mock_path:
 
             async def raise_error(*args: object, **kwargs: object) -> Never:
-                raise Exception("Query failed")
+                raise DatabaseError("Query failed")
 
             mock_path.side_effect = raise_error
 
-            result = await prompt_data_getters._apply_protagonist_proximity_filtering(
-                characters_of_interest={"Alice", "Bob", "Charlie", "David"},
-                protagonist_name="Alice",
-            )
-
-            assert "Alice" in result
-            assert "Bob" not in result
-            assert "Charlie" not in result
-            assert "David" not in result
+            with pytest.raises(DatabaseError, match="Query failed"):
+                await prompt_data_getters._apply_protagonist_proximity_filtering(
+                    characters_of_interest={"Alice", "Bob", "Charlie", "David"},
+                    protagonist_name="Alice",
+                )
 
     @pytest.mark.asyncio
     async def test_includes_close_characters(self) -> None:
@@ -980,10 +976,11 @@ class TestGatherNovelInfoFacts:
     @pytest.mark.asyncio
     async def test_handles_query_exceptions(self) -> None:
         with patch("data_access.kg_queries.get_novel_info_property_from_db") as mock_query:
-            mock_query.side_effect = Exception("Query failed")
+            mock_query.side_effect = DatabaseError("Query failed")
 
             facts: list[str] = []
-            await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=10)
+            with pytest.raises(DatabaseError, match="Query failed"):
+                await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=10)
 
             assert len(facts) == 0
 
@@ -1102,8 +1099,8 @@ class TestGatherCharacterFacts:
                     mock_info.return_value = None
                     mock_value.return_value = None
                     mock_rel.return_value = [
-                        {"predicate": "ally_of", "object": "Bob"},
-                        {"predicate": "enemy_of", "object": "Charlie"},
+                        {"subject": "Alice", "predicate": "ALLIES_WITH", "object": "Bob"},
+                        {"subject": "Alice", "predicate": "CONFLICTS_WITH", "object": "Charlie"},
                     ]
 
                     facts: list[str] = []
@@ -1116,8 +1113,7 @@ class TestGatherCharacterFacts:
                         protagonist_name="Alice",
                     )
 
-                    assert any("relationship" in fact.lower() for fact in facts)
-                    assert any("Bob" in fact for fact in facts)
+                    assert facts == ["- Alice ALLIES WITH Bob.", "- Alice CONFLICTS WITH Charlie."]
 
     @pytest.mark.asyncio
     async def test_respects_max_facts_per_char(self) -> None:
@@ -1127,8 +1123,8 @@ class TestGatherCharacterFacts:
                     mock_info.return_value = {"current_status": "alive"}
                     mock_value.return_value = "Castle"
                     mock_rel.return_value = [
-                        {"predicate": "ally_of", "object": "Bob"},
-                        {"predicate": "enemy_of", "object": "Charlie"},
+                        {"subject": "Alice", "predicate": "ALLIES_WITH", "object": "Bob"},
+                        {"subject": "Alice", "predicate": "CONFLICTS_WITH", "object": "Charlie"},
                     ]
 
                     facts: list[str] = []
@@ -1173,7 +1169,7 @@ class TestGatherCharacterFacts:
                     mock_value.return_value = None
                     mock_rel.return_value = [
                         {"predicate": "uninteresting_rel", "object": "Bob"},
-                        {"predicate": "ally_of", "object": "Charlie"},
+                        {"subject": "Alice", "predicate": "ALLIES_WITH", "object": "Charlie"},
                     ]
 
                     facts: list[str] = []
@@ -1188,25 +1184,27 @@ class TestGatherCharacterFacts:
 
                     assert any("Charlie" in fact for fact in facts)
                     assert not any("Bob" in fact for fact in facts)
+                    assert facts == ["- Alice ALLIES WITH Charlie."]
 
     @pytest.mark.asyncio
     async def test_handles_query_exceptions(self) -> None:
         with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
             with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
                 with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                    mock_info.side_effect = Exception("Query failed")
-                    mock_value.side_effect = Exception("Query failed")
-                    mock_rel.side_effect = Exception("Query failed")
+                    mock_info.side_effect = DatabaseError("Query failed")
+                    mock_value.side_effect = DatabaseError("Query failed")
+                    mock_rel.side_effect = DatabaseError("Query failed")
 
                     facts: list[str] = []
-                    await prompt_data_getters._gather_character_facts(
-                        characters_of_interest={"Alice"},
-                        kg_chapter_limit=5,
-                        facts_list=facts,
-                        max_facts_per_char=3,
-                        max_total_facts=10,
-                        protagonist_name="Alice",
-                    )
+                    with pytest.raises(DatabaseError, match="Query failed"):
+                        await prompt_data_getters._gather_character_facts(
+                            characters_of_interest={"Alice"},
+                            kg_chapter_limit=5,
+                            facts_list=facts,
+                            max_facts_per_char=3,
+                            max_total_facts=10,
+                            protagonist_name="Alice",
+                        )
 
                     assert len(facts) == 0
 
@@ -1307,7 +1305,7 @@ class TestGetReliableKGFactsForDraftingPrompt:
 
     @pytest.mark.asyncio
     async def test_deduplicates_and_sorts_facts(self) -> None:
-        relationship = {"predicate": "ally_of", "object": "Bob"}
+        relationship = {"subject": "Alice", "predicate": "ALLIES_WITH", "object": "Bob"}
         with (
             patch("data_access.kg_queries.get_novel_info_property_from_db", side_effect=["Theme B", "Theme A"]),
             patch("data_access.character_queries.get_character_info_for_snippet_from_db", return_value={}),
@@ -1317,7 +1315,7 @@ class TestGetReliableKGFactsForDraftingPrompt:
             result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=2, protagonist_name="Alice")
         facts = [line for line in result.splitlines() if line.startswith("-")]
         assert facts == [
-            "- Alice has a key relationship (ally of) with: Bob.",
+            "- Alice ALLIES WITH Bob.",
             "- The main conflict summary: Theme A.",
             "- The novel's central theme is: Theme B.",
         ]

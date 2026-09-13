@@ -251,18 +251,15 @@ class TestChooseActRanges:
         assert result[1] == ActRange(act_number=1, chapters_start=1, chapters_end=6)
         assert result[2] == ActRange(act_number=2, chapters_start=7, chapters_end=10)
 
-    def test_falls_back_to_balanced_when_explicit_incomplete(self) -> None:
+    def test_rejects_incomplete_explicit_partition(self) -> None:
         outline = {
             "act_count": 3,
             "acts": [
                 {"act_number": 1, "chapters_start": 1, "chapters_end": 4},
             ],
         }
-        result = choose_act_ranges(outline, total_chapters=12)
-        assert len(result) == 3
-        assert result[1] == ActRange(act_number=1, chapters_start=1, chapters_end=4)
-        assert result[2] == ActRange(act_number=2, chapters_start=5, chapters_end=8)
-        assert result[3] == ActRange(act_number=3, chapters_start=9, chapters_end=12)
+        with pytest.raises(ValueError, match="Selected acts must match act_count"):
+            choose_act_ranges(outline, total_chapters=12)
 
     def test_falls_back_to_balanced_when_no_acts(self) -> None:
         outline: dict = {"act_count": 3}
@@ -309,20 +306,20 @@ class TestDetermineActForChapter:
         result = determine_act_for_chapter(outline, total_chapters=9, chapter_number=9)
         assert result == 3
 
-    def test_chapter_beyond_range_clamps_to_last_act(self) -> None:
+    def test_chapter_beyond_range_is_rejected(self) -> None:
         outline = {"act_count": 3}
-        result = determine_act_for_chapter(outline, total_chapters=9, chapter_number=100)
-        assert result == 3
+        with pytest.raises(ValueError, match="outside the selected topology"):
+            determine_act_for_chapter(outline, total_chapters=9, chapter_number=100)
 
-    def test_chapter_zero_clamps_to_first_act(self) -> None:
+    def test_chapter_zero_is_rejected(self) -> None:
         outline = {"act_count": 3}
-        result = determine_act_for_chapter(outline, total_chapters=9, chapter_number=0)
-        assert result == 1
+        with pytest.raises(ValueError, match="outside the selected topology"):
+            determine_act_for_chapter(outline, total_chapters=9, chapter_number=0)
 
-    def test_negative_chapter_clamps_to_first_act(self) -> None:
+    def test_negative_chapter_is_rejected(self) -> None:
         outline = {"act_count": 3}
-        result = determine_act_for_chapter(outline, total_chapters=9, chapter_number=-5)
-        assert result == 1
+        with pytest.raises(ValueError, match="outside the selected topology"):
+            determine_act_for_chapter(outline, total_chapters=9, chapter_number=-5)
 
     def test_with_explicit_ranges(self) -> None:
         outline = {

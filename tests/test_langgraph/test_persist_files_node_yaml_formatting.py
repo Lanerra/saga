@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from core.langgraph.content_manager import ContentManager
+from core.langgraph.content_manager import ContentManager, get_character_sheets
 from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
@@ -124,8 +124,10 @@ async def test_persist_initialization_files_yaml_prose_formatting(tmp_path: Path
                 # No stray literal "\n" sequences
                 assert "\\n" not in text
 
-    # Also ensure serialized YAML for characters does not contain "\n" escapes for prose
-    assert "\\n" not in character_yaml_text
+    # Preserve archival input separately from the normalized prose projection.
+    selected_sheets = get_character_sheets(state, ContentManager(str(project_dir)))
+    assert character_data["selected_sheet"] == selected_sheets["Test Protagonist"]
+    assert "\\n" not in character_data["description"]
 
     # 2) outline/structure.yaml
     structure_path = project_dir / "outline" / "structure.yaml"

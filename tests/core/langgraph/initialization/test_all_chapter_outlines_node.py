@@ -37,7 +37,7 @@ def _fake_outline(chapter_number: int) -> dict[str, object]:
 class TestGenerateAllChapterOutlines:
     """Tests for the generate_all_chapter_outlines node."""
 
-    async def test_config_disabled_skips(self, tmp_path: Path) -> None:
+    async def test_config_disabled_rejects_unsupported_initialization(self, tmp_path: Path) -> None:
         state = _make_state(str(tmp_path))
 
         with config.bind_settings(config.snapshot_settings().model_copy(update={"GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT": False})):
@@ -45,7 +45,9 @@ class TestGenerateAllChapterOutlines:
             result = await generate_all_chapter_outlines(state)
 
         assert result["current_node"] == "all_chapter_outlines"
-        assert result["initialization_step"] == "all_chapter_outlines_skipped"
+        assert result["initialization_step"] == "all_chapter_outlines_failed"
+        assert result["has_fatal_error"] is True
+        assert result["last_error"] == "Initialization requires GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT=True; on-demand-only initialization is unsupported"
         assert "chapter_outlines_ref" not in result
 
     async def test_successful_generation(self, tmp_path: Path) -> None:

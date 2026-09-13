@@ -29,8 +29,8 @@ RESPONSE_BYTES = (FIXTURES / "llama_cpp_response.json").read_bytes()
 RECORDED_REQUEST = json.loads((FIXTURES / "llama_cpp_request.json").read_bytes())["request"]
 COUNT_FIELDS = ("cache_n", "prompt_n", "predicted_n", "draft_n", "draft_n_accepted")
 MEASUREMENT_FIELDS = ("prompt_ms", "prompt_per_token_ms", "prompt_per_second", "predicted_ms", "predicted_per_token_ms", "predicted_per_second")
-# The production conservative spaCy cleanup inserts spaces at these token boundaries.
-PERSISTED_DRAFT = "The brass key slides home. I turn it. The mechanism grinds, then releases. Behind me, Iven 's shoes scratch the flagstones— he waits, outside. The door swings. Cold air rolls out to meet me. I cross the threshold, the brass still warm in my palm. Dawn is hours off. After that, the ferry."
+# Retained prose must match the frozen provider content without token-spacing corruption.
+PERSISTED_DRAFT = json.loads(RESPONSE_BYTES)["choices"][0]["message"]["content"]
 
 
 def test_frozen_response_schema_preserves_metadata() -> None:

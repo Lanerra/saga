@@ -5,6 +5,7 @@ Tests for LangGraph commit node (Step 1.2.1).
 Tests the commit_to_graph node and its helper functions.
 """
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import get_type_hints
 from unittest.mock import AsyncMock, patch
@@ -24,17 +25,20 @@ from core.langgraph.state import ExtractedEntity, ExtractedRelationship
 from core.service_context import get_services
 from models.kg_models import CharacterProfile, WorldItem
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.fakes.service_context import configure_empty_entity_names
 from tests.test_langgraph import InlineExtractionState, LegacyEmbeddingRef
 
 
 @pytest.fixture(autouse=True)
-def synthetic_entity_embeddings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float64")
+def synthetic_entity_embeddings(monkeypatch: pytest.MonkeyPatch, fake_neo4j: FakeNeo4jManager) -> Iterator[None]:
+    configure_empty_entity_names(fake_neo4j)
     async def embedding_batch(texts: list[str]) -> list[list[float]]:
         return [[0.25, 0.75, 0.0] for text in texts]
 
     monkeypatch.setattr(get_services().language_model, 'async_get_embeddings_batch', embedding_batch)
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "EXPECTED_EMBEDDING_DIM": 3, "EMBEDDING_DTYPE": "float64"})
+    with config.bind_settings(effective):
+        yield
 
 
 def test_persistence_builder_annotations_resolve() -> None:
@@ -399,7 +403,10 @@ class TestCommitToGraph:
             ):
                 result = await commit_to_graph(state)
 
-                assert result["last_error"] is None
+                assert result["has_fatal_error"] is True
+                assert result["last_error"] == "Commit to graph failed: Conflicting same-name entity inputs"
+                assert fake_neo4j.batch_statements == []
+                mock_builder.world_item_upsert_cypher.assert_not_called()
 
 
 class TestConvertToCharacterProfiles:
@@ -586,12 +593,8 @@ class TestDeduplicateEntityList:
             ),
         ]
 
-        result = _deduplicate_entity_list(entities)
-
-        assert len(result) == 2
-        assert result[0].name == "Alice"
-        assert result[0].description == "First Alice"
-        assert result[1].name == "Bob"
+        with pytest.raises(ValueError, match="Conflicting same-name entity inputs"):
+            _deduplicate_entity_list(entities)
 
     def test_empty_list(self) -> None:
         """Test with empty list."""

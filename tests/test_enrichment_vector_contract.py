@@ -17,15 +17,12 @@ from data_access import chapter_queries
 from models.kg_models import CharacterProfile
 from tests.test_langgraph.test_chapter_lifecycle import Rows
 
+pytestmark = pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, NEO4J_VECTOR_DIMENSIONS=3, EMBEDDING_DTYPE="float32", ENABLE_CHAPTER_EMBEDDING_EXTRACTION=True, ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION=False)
 
 @pytest.fixture
 def configured(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Path(chapter_queries.__file__).resolve().parents[1] == Path(__file__).resolve().parents[1]
-    monkeypatch.setattr(config, 'EXPECTED_EMBEDDING_DIM', 3)
-    monkeypatch.setattr(config, 'NEO4J_VECTOR_DIMENSIONS', 3)
-    monkeypatch.setattr(config, 'EMBEDDING_DTYPE', 'float32')
-    monkeypatch.setattr(config, 'ENABLE_CHAPTER_EMBEDDING_EXTRACTION', True)
-    monkeypatch.setattr(config, 'ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION', False)
+    assert config.snapshot_settings().EXPECTED_EMBEDDING_DIM == 3
 
 
 @pytest.mark.asyncio
@@ -134,11 +131,10 @@ async def test_extracted_identity_cannot_cross_runs(configured: None, monkeypatc
     assert len(results) == 1
     assert results[0].embedding_model == config.EMBEDDING_MODEL
     assert results[0].embedding_identity == embedding_identity()
-    if contract_change == "model":
-        monkeypatch.setattr(config, "EMBEDDING_MODEL", "another-synthetic-model")
-    else:
-        monkeypatch.setattr(config, "EMBEDDING_API_BASE", "http://synthetic.invalid:2")
-    assert await parser.update_chapter_embeddings(results) is False
+    override = {"EMBEDDING_MODEL": "another-synthetic-model"} if contract_change == "model" else {"EMBEDDING_API_BASE": "http://synthetic.invalid:2"}
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), **override})
+    with config.bind_settings(effective):
+        assert await parser.update_chapter_embeddings(results) is False
     assert writes == []
 
 

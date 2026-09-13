@@ -21,9 +21,14 @@ from data_access import character_queries, kg_queries, world_queries
 from data_access.cypher_builders.native_builders import NativeCypherBuilder, chapter_assertion_delete_statement
 from models.kg_models import CharacterProfile, WorldItem
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
-from tests.fakes.service_context import patch_service
+from tests.fakes.service_context import configure_empty_entity_names, patch_service
 
 pytestmark = pytest.mark.usefixtures("offline_commit_providers")
+
+
+@pytest.fixture(autouse=True)
+def known_entity_names(offline_commit_providers: FakeNeo4jManager) -> None:
+    configure_empty_entity_names(offline_commit_providers)
 
 
 @pytest.mark.parametrize(
@@ -111,6 +116,7 @@ class ChapterTransaction:
         self.finished = False
 
     def run(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        from tests.fakes.graph_ownership import OwnershipRows
         from tests.fakes.schema_catalog import schema_catalog
 
         catalog = schema_catalog()
@@ -118,6 +124,9 @@ class ChapterTransaction:
             return catalog[query]
         if query == OWNER_QUERY:
             return [{"key": "exclusive", "project_id": "11111111-1111-4111-8111-111111111111", "version": 1}]
+        if query == "MATCH (owner:SagaGraphOwner {key: 'exclusive', project_id: $project_id}) SET owner.version = owner.version":
+            assert parameters == {"project_id": "11111111-1111-4111-8111-111111111111"}
+            return OwnershipRows([])
         assert parameters is not None
         statement = " ".join(query.split())
         if statement == "MATCH (n) WHERE n:Character OR n:Location OR n:Event OR n:Item RETURN DISTINCT toLower(n.name) AS name":
@@ -392,13 +401,15 @@ class TestCommitNodeEntityPersistence:
             with patch("utils.text_processing.generate_entity_id") as mock_generate_id:
                 mock_generate_id.side_effect = lambda name, category: f"id_{name}"
 
-                with patch_service('database.execute_cypher_batch'):
-                    await commit_to_graph(mock_state)  # type: ignore[arg-type]
+                with patch_service('database.execute_cypher_batch') as batch:
+                    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+                    assert result["has_fatal_error"] is False
+                    batch.assert_awaited_once()
+                    assert any(parameters.get("name") == "Sword" for _, parameters in batch.await_args.args[0])
 
-                    # Verify generate_entity_id was called for world items only
-                    # Characters use their names as identifiers, world items get stable IDs
-                    # 1 world item = 1 call
-                    assert mock_generate_id.call_count == 1
+                    # Name-only entities now go through exact graph resolution,
+                    # never punctuation-normalizing Python ID generation.
+                    mock_generate_id.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_commit_to_graph_handles_empty_extractions(self) -> None:
@@ -418,7 +429,7 @@ class TestCommitNodeEntityPersistence:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.return_value = {
+            mock_cm.load_json_strict.return_value = {
                 "characters": [],
                 "world_items": [],
             }
@@ -442,7 +453,7 @@ class TestCommitNodeEntityPersistence:
     async def test_commit_to_graph_deduplicates_entities(self) -> None:
         """Test that commit_to_graph performs entity deduplication."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -456,10 +467,10 @@ class TestCommitNodeEntityPersistence:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.return_value = {
+            mock_cm.load_json_strict.return_value = {
                 "characters": [
-                    {"name": "Alice", "entity_type": "character"},
-                    {"name": "Alice", "entity_type": "character"},  # Duplicate
+                    {"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 1},
+                    {"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 1},  # Duplicate
                 ],
                 "world_items": [],
             }
@@ -478,7 +489,7 @@ class TestCommitNodeRelationshipPersistence:
     async def test_commit_to_graph_creates_relationships(self) -> None:
         """Test that commit_to_graph creates relationships between entities."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -499,16 +510,18 @@ class TestCommitNodeRelationshipPersistence:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.side_effect = [
+            mock_cm.load_json_strict.side_effect = [
                 {
-                    "characters": [{"name": "Alice", "entity_type": "character"}],
+                    "characters": [{"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 1}],
                     "world_items": [],
                 },
                 [
                     {
                         "source_name": "Alice",
                         "target_name": "Bob",
-                        "relationship_type": "knows",
+                        "relationship_type": "KNOWS",
+                        "description": "Acquaintance",
+                        "chapter": 1,
                         "confidence": 0.9,
                     },
                 ],
@@ -534,7 +547,7 @@ class TestCommitNodeRelationshipPersistence:
     async def test_commit_to_graph_handles_missing_relationships(self) -> None:
         """Test that commit_to_graph handles missing relationship data."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -549,8 +562,8 @@ class TestCommitNodeRelationshipPersistence:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.return_value = {
-                "characters": [{"name": "Alice", "entity_type": "character"}],
+            mock_cm.load_json_strict.return_value = {
+                "characters": [{"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 1}],
                 "world_items": [],
             }
             mock_cm.load_text_strict.return_value = "Test draft text"
@@ -578,7 +591,7 @@ class TestCommitNodeChapterPersistence:
     async def test_commit_to_graph_creates_chapter_node(self) -> None:
         """Test that commit_to_graph creates a chapter node."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -592,7 +605,7 @@ class TestCommitNodeChapterPersistence:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.return_value = {
+            mock_cm.load_json_strict.return_value = {
                 "characters": [],
                 "world_items": [],
             }
@@ -617,7 +630,7 @@ class TestCommitNodeChapterPersistence:
     async def test_commit_to_graph_links_chapter_to_entities(self) -> None:
         """Test that commit_to_graph links the chapter to created entities."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -631,8 +644,8 @@ class TestCommitNodeChapterPersistence:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.return_value = {
-                "characters": [{"name": "Alice", "entity_type": "character"}],
+            mock_cm.load_json_strict.return_value = {
+                "characters": [{"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 1}],
                 "world_items": [],
             }
             mock_cm.load_text_strict.return_value = "Test draft text"
@@ -660,7 +673,7 @@ class TestCommitNodeErrorHandling:
     async def test_commit_to_graph_handles_database_errors(self) -> None:
         """Test that commit_to_graph handles database errors gracefully."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -674,8 +687,8 @@ class TestCommitNodeErrorHandling:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.return_value = {
-                "characters": [{"name": "Alice", "entity_type": "character"}],
+            mock_cm.load_json_strict.return_value = {
+                "characters": [{"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 1}],
                 "world_items": [],
             }
 
@@ -692,7 +705,7 @@ class TestCommitNodeErrorHandling:
     async def test_commit_to_graph_handles_missing_content(self) -> None:
         """Test that commit_to_graph handles missing content references."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             # No extracted_entities_ref
         }
@@ -711,7 +724,7 @@ class TestCommitNodeStateManagement:
     async def test_commit_to_graph_updates_state(self) -> None:
         """Test that commit_to_graph updates the state correctly."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -725,8 +738,8 @@ class TestCommitNodeStateManagement:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.return_value = {
-                "characters": [{"name": "Alice", "entity_type": "character"}],
+            mock_cm.load_json_strict.return_value = {
+                "characters": [{"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 1}],
                 "world_items": [],
             }
 
@@ -740,7 +753,7 @@ class TestCommitNodeStateManagement:
     async def test_commit_to_graph_preserves_existing_state(self) -> None:
         """Test that commit_to_graph preserves existing state fields."""
         mock_state = {
-            "chapter": 1,
+            "current_chapter": 1,
             "project_dir": "/tmp/test_project",
             "some_existing_field": "preserve_this",
             "extracted_entities_ref": {
@@ -755,7 +768,7 @@ class TestCommitNodeStateManagement:
         with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
             mock_cm = MagicMock()
             mock_cm_class.return_value = mock_cm
-            mock_cm.read_json.return_value = {
+            mock_cm.load_json_strict.return_value = {
                 "characters": [],
                 "world_items": [],
             }

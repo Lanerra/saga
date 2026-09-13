@@ -225,10 +225,9 @@ class TestNarrativeEnrichmentNode:
                 # Verify success
                 assert isinstance(result, EnrichmentCandidate)
 
+    @pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, NEO4J_VECTOR_DIMENSIONS=3)
     async def test_chapter_embedding_extraction(self, sample_narrative_text: str, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test extraction of chapter embeddings from narrative text."""
-        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-        monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 3)
         node = NarrativeEnrichmentNode()
 
         # Mock the parser
@@ -305,10 +304,9 @@ class TestNarrativeEnrichmentNode:
                 # Verify success
                 assert isinstance(result, EnrichmentCandidate)
 
+    @pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, NEO4J_VECTOR_DIMENSIONS=3)
     async def test_chapter_enrichment_with_embedding(self, sample_narrative_text: str, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test enrichment of chapter with embedding."""
-        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-        monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 3)
         node = NarrativeEnrichmentNode()
 
         # Mock the parser
@@ -474,10 +472,9 @@ class TestNarrativeEnrichmentNode:
 class TestNarrativeEnrichmentNodeIntegration:
     """Integration tests for NarrativeEnrichmentNode."""
 
+    @pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=4, NEO4J_VECTOR_DIMENSIONS=4)
     async def test_full_pipeline_stage_5(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test full Stage 5 pipeline from narrative text to enrichment."""
-        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 4)
-        monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 4)
         node = NarrativeEnrichmentNode()
         narrative_text = """
         Chapter 1: The Beginning
@@ -837,10 +834,9 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 assert [(item.character_id, item.description) for item in result.descriptions] == [("char_001", "Tall woman with long brown hair")]
                 mock_sync_chars.assert_not_called()
 
+    @pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, NEO4J_VECTOR_DIMENSIONS=3)
     async def test_embedding_candidate_retained(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Candidate chapter embeddings remain available for acceptance."""
-        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-        monkeypatch.setattr(config, "NEO4J_VECTOR_DIMENSIONS", 3)
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
 

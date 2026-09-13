@@ -256,7 +256,7 @@ def test_determine_act_for_chapter_five_act() -> None:
 
 
 def test_determine_act_for_chapter_boundary() -> None:
-    """Verify act determination doesn't exceed act count."""
+    """Reject chapters outside the selected topology."""
     with patch("core.langgraph.initialization.chapter_outline_node.ContentManager") as mock_cm:
         instance = MagicMock()
         mock_cm.return_value = instance
@@ -266,7 +266,9 @@ def test_determine_act_for_chapter_boundary() -> None:
 
             state: NarrativeState = {"total_chapters": 20, "project_dir": "/tmp"}
 
-            assert _determine_act_for_chapter(state, 99) == 3
+            assert _determine_act_for_chapter(state, 20) == 3
+            with pytest.raises(ValueError, match="outside the selected topology"):
+                _determine_act_for_chapter(state, 99)
 
 
 def test_determine_act_for_chapter_uses_explicit_ranges() -> None:
@@ -313,8 +315,8 @@ def test_determine_act_for_chapter_act_count_greater_than_chapters_no_crash() ->
 
             assert _determine_act_for_chapter(state, 1) == 1
             assert _determine_act_for_chapter(state, 2) == 2
-            # Out-of-range chapters clamp to last act
-            assert _determine_act_for_chapter(state, 99) == 5
+            with pytest.raises(ValueError, match="outside the selected topology"):
+                _determine_act_for_chapter(state, 99)
 
 
 @pytest.mark.asyncio
@@ -423,24 +425,25 @@ def test_parse_chapter_outline_valid_json() -> None:
 
 
 def test_parse_chapter_outline_json_with_markdown() -> None:
-    """Verify parsing of JSON wrapped in markdown code blocks."""
+    """Reject Markdown wrappers even around an otherwise valid outline."""
     response = """```json
 {
     "scene_description": "Test scene",
-    "key_beats": ["Beat 1"],
+    "key_beats": ["Beat 1", "Beat 2", "Beat 3"],
     "plot_point": "Test plot"
 }
 ```"""
 
-    result = _parse_chapter_outline(response, 1, 1)
-
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 1, 1)
+    result = _parse_chapter_outline(response.removeprefix("```json\n").removesuffix("\n```"), 1, 1)
     assert result["scene_description"] == "Test scene"
-    assert result["key_beats"] == ["Beat 1"]
+    assert result["key_beats"] == ["Beat 1", "Beat 2", "Beat 3"]
     assert result["plot_point"] == "Test plot"
 
 
 def test_parse_chapter_outline_invalid_json_fallback() -> None:
-    """Verify fallback parsing when JSON is invalid."""
+    """Reject free-text scene/beat headings instead of salvaging them."""
     response = """Scene: The hero enters the castle
 
 Beats:
@@ -450,28 +453,20 @@ Beats:
 
 Plot Point: The adventure begins"""
 
-    result = _parse_chapter_outline(response, 3, 1)
-
-    assert result["chapter_number"] == 3
-    assert result["act_number"] == 1
-    assert result["raw_text"] == response
-    assert result["scene_description"] == response
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 3, 1)
 
 
 def test_parse_chapter_outline_empty_response() -> None:
-    """Verify parsing handles empty response."""
+    """Reject an empty response without inventing beats or scene content."""
     response = ""
 
-    result = _parse_chapter_outline(response, 1, 1)
-
-    assert result["chapter_number"] == 1
-    assert result["act_number"] == 1
-    assert result["scene_description"] == ""
-    assert result["key_beats"] == []
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 1, 1)
 
 
 def test_parse_chapter_outline_limits_beats() -> None:
-    """Verify parsing limits key beats to 10."""
+    """Reject overlong beat lists rather than silently truncating content."""
     response = json.dumps(
         {
             "scene_description": "Test",
@@ -480,13 +475,12 @@ def test_parse_chapter_outline_limits_beats() -> None:
         }
     )
 
-    result = _parse_chapter_outline(response, 1, 1)
-
-    assert len(result["key_beats"]) == 10
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 1, 1)
 
 
 def test_parse_chapter_outline_text_with_beats() -> None:
-    """Verify text parsing extracts beats correctly."""
+    """Free-text beat lists do not satisfy the JSON contract."""
     response = """Scene Description: Opening scene
 
 Key Beats:
@@ -496,20 +490,16 @@ Key Beats:
 
 Plot Point: The journey begins"""
 
-    result = _parse_chapter_outline(response, 1, 1)
-
-    assert len(result["key_beats"]) == 3
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 1, 1)
 
 
 def test_parse_chapter_outline_fallback_uses_full_text() -> None:
-    """Verify fallback uses full text when no structure found."""
+    """Reject unstructured prose instead of forging a partial outline."""
     response = "Just a plain text outline with no structure."
 
-    result = _parse_chapter_outline(response, 1, 1)
-
-    assert result["scene_description"] == response[:500]
-    assert result["chapter_number"] == 1
-    assert result["act_number"] == 1
+    with pytest.raises(ValueError):
+        _parse_chapter_outline(response, 1, 1)
 
 
 @pytest.mark.asyncio

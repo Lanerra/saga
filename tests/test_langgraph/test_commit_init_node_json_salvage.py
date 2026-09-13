@@ -64,7 +64,7 @@ def test_world_items_extraction_parses_json_only_response() -> None:
     assert items[0].category == "location"
 
 
-def test_world_items_extraction_salvages_embedded_json_array() -> None:
+def test_world_items_extraction_rejects_embedded_json_array() -> None:
     embedded = json.dumps(
         [
             {
@@ -75,9 +75,8 @@ def test_world_items_extraction_salvages_embedded_json_array() -> None:
         ]
     )
     response = "Some commentary before.\n\n" + embedded + "\n\nSome commentary after."
-    items = _parse_world_items_extraction(response)
-    assert len(items) == 1
-    assert items[0].name == "Castle Blackstone"
+    with pytest.raises(json.JSONDecodeError):
+        _parse_world_items_extraction(response)
 
 
 def test_world_items_extraction_invalid_json_still_raises() -> None:

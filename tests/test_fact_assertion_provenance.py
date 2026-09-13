@@ -47,7 +47,7 @@ def test_native_writer_preserves_source_and_target_identity() -> None:
     _, parameters = NativeCypherBuilder.character_upsert_cypher(character, 2)
     assert parameters["id"] == "canonical-source"
     assert parameters["assertion_origin"] == "profile"
-    assert parameters["relationship_data"] == [{"target_name": "Renamed target", "target_id": "canonical-target", "rel_type": "KNOWS", "description": "Profile"}]
+    assert parameters["relationship_data"] == [{"target_name": "Renamed target", "target_id": "canonical-target", "target_label": "Character", "rel_type": "KNOWS", "description": "Profile", "chapter_added": 2, "assertion_origin": "profile", "properties": {"type": "KNOWS", "description": "Profile", "source_profile_managed": True}}]
     world = WorldItem(id="canonical-world", name="Renamed world", category="Location")
     _, parameters = NativeCypherBuilder.world_item_upsert_cypher(world, 2)
     assert (parameters["id"], parameters["primary_label"], parameters["assertion_origin"]) == ("canonical-world", "Location", "profile")
@@ -96,11 +96,10 @@ async def test_public_admission_rejects_malformed_explicit_identity(
 
 
 @pytest.mark.parametrize("label", ["Character", "Location", "Item", "Event"])
+@pytest.mark.run_settings(ENABLE_ENTITY_EMBEDDING_PERSISTENCE=True, EXPECTED_EMBEDDING_DIM=2)
 async def test_public_alias_keeps_profile_upsert_out_of_embedding_batch(
     label: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
-    monkeypatch.setattr("config.EXPECTED_EMBEDDING_DIM", 2)
     manager = ContentManager(str(tmp_path))
     entity = {"name": "Alias", "type": label, "description": "Scene description",
               "first_appearance_chapter": 2, "attributes": {"id": "canonical", "category": label,

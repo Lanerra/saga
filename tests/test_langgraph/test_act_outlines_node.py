@@ -54,7 +54,7 @@ def mock_llm_service() -> Iterator[MagicMock]:
             prompt = kwargs.get("prompt", "")
             assert isinstance(prompt, str)
             act_match = re.search(r"Act:\s*(\d+)\s*of\s*(\d+)", prompt)
-            chapters_match = re.search(r"Chapters in act:\s*~(\d+)", prompt)
+            chapters_match = re.search(r"Chapters in act:\s*(\d+)", prompt)
 
             if not act_match:
                 raise ValueError("Test fixture expected act_number in prompt")
@@ -186,8 +186,13 @@ async def test_generate_act_outlines_single_act_fails(base_state: NarrativeState
 
     result = await generate_act_outlines(state)
 
-    assert result["initialization_step"] == "act_outlines_complete"
+    assert result["initialization_step"] == "act_outlines_failed"
     assert result["current_node"] == "act_outlines"
+    assert result["has_fatal_error"] is True
+    assert result["last_error"] == "Failed to generate required act outline: 2"
+    assert "act_outlines_ref" not in result
+    assert mock_llm_service.async_call_llm_json_object.call_count == 2
+    mock_content_manager.return_value.save_json.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -201,7 +206,11 @@ async def test_generate_act_outlines_all_fail(base_state: NarrativeState, mock_c
 
     assert result["initialization_step"] == "act_outlines_failed"
     assert result["last_error"] is not None
-    assert "Failed to generate any act outlines" in result["last_error"]
+    assert result["last_error"] == "Failed to generate required act outline: 1"
+    assert result["has_fatal_error"] is True
+    assert "act_outlines_ref" not in result
+    assert mock_llm_service.async_call_llm_json_object.call_count == 1
+    mock_content_manager.return_value.save_json.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -713,7 +722,7 @@ async def test_generate_act_outlines_stores_all_acts(base_state: NarrativeState,
                     "act_number": act_number,
                     "total_acts": 3,
                     "act_role": _get_act_role(act_number, 3),
-                    "chapters_in_act": 7,
+                    "chapters_in_act": [7, 7, 6][act_number - 1],
                     "sections": {
                         "act_summary": "Summary.",
                         "opening_situation": "Opening.",

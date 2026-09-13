@@ -45,79 +45,73 @@ def mock_text_processing_service() -> Generator[MagicMock, None, None]:
         yield mock_service
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_validate_entity_with_spacy_enabled(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test entity validation when enabled."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
-
-    result = _validate_entity_with_spacy("John works at Google", "John")
-
-    assert result is True
-    mock_text_processing_service.spacy_service.verify_entity_presence.assert_called_once()
+@pytest.fixture(autouse=True, params=[False, True])
+def entity_validation_settings(request: pytest.FixtureRequest) -> Generator[None, None, None]:
+    effective = config.EffectiveSettings.model_validate({**config.snapshot_settings().model_dump(), "ENABLE_ENTITY_VALIDATION": request.param})
+    with config.bind_settings(effective):
+        yield
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_validate_entity_with_spacy_disabled(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test entity validation when disabled."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = False
+def test_validate_entity_with_spacy_enabled(mock_text_processing_service: MagicMock) -> None:
+    """Exact spans are mandatory with either optional NLP setting."""
 
-    result = _validate_entity_with_spacy("John works at Google", "John")
+    result = _validate_entity_with_spacy("John works at Google", "John", {"John"})
+    assert _validate_entity_with_spacy("John works at Google", "John") is False
 
     assert result is True
-    # Should not call spaCy service when disabled
+    assert _validate_entity_with_spacy("John works at Google", "Jane") is False
     mock_text_processing_service.spacy_service.verify_entity_presence.assert_not_called()
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_validate_entity_with_spacy_not_loaded(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
+def test_validate_entity_with_spacy_disabled(mock_text_processing_service: MagicMock) -> None:
+    """Disabling optional NLP cannot admit an absent name."""
+
+    result = _validate_entity_with_spacy("John works at Google", "John", {"John"})
+
+    assert result is True
+    assert _validate_entity_with_spacy("John works at Google", "Jane") is False
+    mock_text_processing_service.spacy_service.verify_entity_presence.assert_not_called()
+
+
+def test_validate_entity_with_spacy_not_loaded(mock_text_processing_service: MagicMock) -> None:
     """Test entity validation when spaCy model not loaded."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
     mock_text_processing_service.spacy_service.is_loaded.return_value = False
 
-    result = _validate_entity_with_spacy("John works at Google", "John")
+    result = _validate_entity_with_spacy("John works at Google", "John", {"John"})
 
     assert result is True  # Should return True when model not loaded
     mock_text_processing_service.spacy_service.verify_entity_presence.assert_not_called()
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_validate_entity_with_spacy_not_found(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
+def test_validate_entity_with_spacy_not_found(mock_text_processing_service: MagicMock) -> None:
     """Test entity validation when entity not found."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
     mock_text_processing_service.spacy_service.verify_entity_presence.return_value = False
 
-    result = _validate_entity_with_spacy("John works at Google", "Jane")
+    result = _validate_entity_with_spacy("John works at Google", "Jane", {"Jane"})
 
     assert result is False
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_get_normalized_entity_key_with_spacy(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test entity key normalization with spaCy."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
+def test_get_normalized_entity_key_with_spacy(mock_text_processing_service: MagicMock) -> None:
+    """Statistical normalization cannot rewrite exact identity."""
 
     result = _get_normalized_entity_key("The Dark Tower")
 
-    assert result == "dark tower"
-    mock_text_processing_service.spacy_service.normalize_entity_name.assert_called_once_with("The Dark Tower")
-
-
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_get_normalized_entity_key_fallback(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test entity key normalization fallback."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = False
-
-    result = _get_normalized_entity_key("The Dark Tower")
-
-    assert result == "the dark tower"
-    # Should not call spaCy service when disabled
+    assert result == "The Dark Tower"
     mock_text_processing_service.spacy_service.normalize_entity_name.assert_not_called()
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_consolidate_scene_extractions_with_spacy(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test scene consolidation using spaCy normalization."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
+def test_get_normalized_entity_key_fallback(mock_text_processing_service: MagicMock) -> None:
+    """Literal identity needs no fallback normalization."""
+
+    result = _get_normalized_entity_key("The Dark Tower")
+
+    assert result == "The Dark Tower"
+    mock_text_processing_service.spacy_service.normalize_entity_name.assert_not_called()
+
+
+def test_consolidate_scene_extractions_with_spacy(mock_text_processing_service: MagicMock) -> None:
+    """Consolidation preserves identity without statistical normalization."""
 
     scene_results = [
         {
@@ -137,19 +131,16 @@ def test_consolidate_scene_extractions_with_spacy(mock_config: MagicMock, mock_t
 
     result = consolidate_scene_extractions(scene_results)
 
-    # Should use spaCy normalization for deduplication
+
     assert len(result["characters"]) == 2
     assert len(result["world_items"]) == 2
     assert len(result["relationships"]) == 1
 
-    # Verify spaCy was called for normalization
-    assert mock_text_processing_service.spacy_service.normalize_entity_name.call_count >= 4
+    mock_text_processing_service.spacy_service.normalize_entity_name.assert_not_called()
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_consolidate_scene_extractions_fallback(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test scene consolidation with fallback normalization."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = False
+def test_consolidate_scene_extractions_fallback(mock_text_processing_service: MagicMock) -> None:
+    """Case-distinct identities must not merge."""
 
     scene_results = [
         {
@@ -164,24 +155,20 @@ def test_consolidate_scene_extractions_fallback(mock_config: MagicMock, mock_tex
 
     result = consolidate_scene_extractions(scene_results)
 
-    # Should deduplicate using simple case-insensitive matching
-    assert len(result["characters"]) == 1
-    assert result["characters"][0]["description"] == "Alternative description"
+    assert result["characters"] == scene_results[0]["characters"]
 
     # Should not call spaCy service when disabled
     mock_text_processing_service.spacy_service.normalize_entity_name.assert_not_called()
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_consolidate_scene_extractions_keep_longest_description(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test that consolidation keeps the longest description."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
+def test_consolidate_scene_extractions_keeps_latest_description_and_history(mock_text_processing_service: MagicMock) -> None:
+    """Later shorter assertions supersede prose without discarding history."""
 
     scene_results = [
         {
             "characters": [
-                {"name": "John", "description": "Short desc"},
                 {"name": "John", "description": "Much longer description with more details"},
+                {"name": "John", "description": "Short desc"},
             ],
             "world_items": [],
             "relationships": [],
@@ -191,13 +178,12 @@ def test_consolidate_scene_extractions_keep_longest_description(mock_config: Mag
     result = consolidate_scene_extractions(scene_results)
 
     assert len(result["characters"]) == 1
-    assert result["characters"][0]["description"] == "Much longer description with more details"
+    assert result["characters"][0]["description"] == "Short desc"
+    assert result["characters"][0]["attributes"]["scene_assertions"] == scene_results[0]["characters"]
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_consolidate_scene_extractions_relationship_deduplication(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test relationship deduplication using spaCy normalization."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
+def test_consolidate_scene_extractions_relationship_deduplication(mock_text_processing_service: MagicMock) -> None:
+    """Case-distinct endpoint triples must remain distinct."""
 
     scene_results = [
         {
@@ -205,21 +191,18 @@ def test_consolidate_scene_extractions_relationship_deduplication(mock_config: M
             "world_items": [],
             "relationships": [
                 {"source_name": "John", "target_name": "The Dark Tower", "relationship_type": "VISITS"},
-                {"source_name": "john", "target_name": "dark tower", "relationship_type": "VISITS"},  # Should deduplicate
+                {"source_name": "john", "target_name": "dark tower", "relationship_type": "VISITS"},
             ],
         }
     ]
 
     result = consolidate_scene_extractions(scene_results)
 
-    # Should deduplicate relationships using spaCy normalization
-    assert len(result["relationships"]) == 1
+    assert result["relationships"] == scene_results[0]["relationships"]
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_consolidate_scene_extractions_multiple_scenes(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
+def test_consolidate_scene_extractions_multiple_scenes(mock_text_processing_service: MagicMock) -> None:
     """Test consolidation across multiple scenes."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
 
     scene_results = [
         {
@@ -231,7 +214,7 @@ def test_consolidate_scene_extractions_multiple_scenes(mock_config: MagicMock, m
         },
         {
             "characters": [
-                {"name": "John", "description": "Scene 2 longer description"},
+                {"name": "John", "description": "Later"},
             ],
             "world_items": [],
             "relationships": [],
@@ -240,17 +223,17 @@ def test_consolidate_scene_extractions_multiple_scenes(mock_config: MagicMock, m
 
     result = consolidate_scene_extractions(scene_results)
 
-    # Should merge and keep the longest description
+    # Chronology, not description length, decides the current snapshot.
     assert len(result["characters"]) == 1
-    assert result["characters"][0]["description"] == "Scene 2 longer description"
+    assert result["characters"][0]["description"] == "Later"
+    assert result["characters"][0]["attributes"]["scene_assertions"] == [scene["characters"][0] for scene in scene_results]
 
 
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("category_in_attributes", [False, True])
 def test_consolidation_preserves_equal_names_in_distinct_categories(
-    monkeypatch: pytest.MonkeyPatch, reverse: bool, category_in_attributes: bool
+    reverse: bool, category_in_attributes: bool
 ) -> None:
-    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_ENTITY_VALIDATION": False}))
     location: dict[str, Any] = {
         "name": "Crossing",
         "type": "Location",
@@ -285,9 +268,8 @@ def test_consolidation_preserves_equal_names_in_distinct_categories(
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("equal_length", [False, True])
 def test_consolidation_preserves_world_item_duplicate_selection(
-    monkeypatch: pytest.MonkeyPatch, reverse: bool, equal_length: bool
+    reverse: bool, equal_length: bool
 ) -> None:
-    monkeypatch.setitem(vars(config), "settings", config.settings.model_copy(update={"ENABLE_ENTITY_VALIDATION": False}))
     first: dict[str, Any] = {
         "name": "Crossing",
         "type": "Location",
@@ -305,33 +287,33 @@ def test_consolidation_preserves_world_item_duplicate_selection(
         "attributes": {"id": "second-crossing", "category": "place", "key_elements": ["Village gate"]},
     }
     items = [second, first] if reverse else [first, second]
-    selected = items[0] if equal_length else second
+
 
     result = consolidate_scene_extractions([{"world_items": [item]} for item in items])
 
-    assert result == {"characters": [], "world_items": [selected], "relationships": []}
-    assert result["world_items"][0] is selected
+    assert result == {"characters": [], "world_items": items, "relationships": []}
+    for index, item in enumerate(items):
+        assert result["world_items"][index] is item
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_validate_entity_with_spacy_exception_handling(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test entity validation exception handling."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
+def test_validate_entity_with_spacy_exception_handling(mock_text_processing_service: MagicMock) -> None:
+    """A broken optional NLP service cannot change exact span validation."""
     mock_text_processing_service.spacy_service.verify_entity_presence.side_effect = Exception("Test error")
 
-    # Should fallback to substring matching on exception
-    result = _validate_entity_with_spacy("John works at Google", "John")
 
-    assert result is True  # Should use fallback
+    result = _validate_entity_with_spacy("John works at Google", "John", {"John"})
+
+    assert result is True
+    assert _validate_entity_with_spacy("John works at Google", "Jane") is False
+    mock_text_processing_service.spacy_service.verify_entity_presence.assert_not_called()
 
 
-@patch("core.langgraph.nodes.scene_extraction_validation.config")
-def test_get_normalized_entity_key_exception_handling(mock_config: MagicMock, mock_text_processing_service: MagicMock) -> None:
-    """Test entity key normalization exception handling."""
-    mock_config.settings.ENABLE_ENTITY_VALIDATION = True
+def test_get_normalized_entity_key_exception_handling(mock_text_processing_service: MagicMock) -> None:
+    """A broken optional normalizer cannot rewrite identity."""
     mock_text_processing_service.spacy_service.normalize_entity_name.side_effect = Exception("Test error")
 
-    # Should fallback to simple normalization on exception
+
     result = _get_normalized_entity_key("The Dark Tower")
 
-    assert result == "the dark tower"  # Should use fallback
+    assert result == "The Dark Tower"
+    mock_text_processing_service.spacy_service.normalize_entity_name.assert_not_called()

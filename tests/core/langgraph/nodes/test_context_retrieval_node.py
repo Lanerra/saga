@@ -206,7 +206,7 @@ class TestSmartTruncateScene:
 class TestRetrieveContext:
     """Integration-level tests for the retrieve_context main flow."""
 
-    async def test_invalid_scene_index_returns_current_node(self, tmp_path: Path) -> None:
+    async def test_invalid_scene_index_returns_fatal_error(self, tmp_path: Path) -> None:
         state: NarrativeState = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
@@ -226,8 +226,13 @@ class TestRetrieveContext:
 
             result = await retrieve_context(state)
 
-        assert result["current_node"] == "retrieve_context"
-        assert "has_fatal_error" not in result
+        assert result == {
+            "current_node": "retrieve_context",
+            "has_fatal_error": True,
+            "error_node": "retrieve_context",
+            "last_error": "Invalid scene index for context retrieval",
+            "hybrid_context_ref": None,
+        }
 
     async def test_successful_context_build(self, tmp_path: Path) -> None:
         state: NarrativeState = {

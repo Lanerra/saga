@@ -16,12 +16,11 @@ from core.service_context import get_services
 from data_access import chapter_queries
 from data_access.cache_coordinator import clear_chapter_read_caches
 
+pytestmark = pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
 
 @pytest.fixture(autouse=True)
 def clear_caches(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Clear chapter read caches before each test."""
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", "float32")
     clear_chapter_read_caches()
     yield
     clear_chapter_read_caches()
@@ -218,10 +217,10 @@ class TestGetChapterData:
 class TestGetEmbedding:
     """Tests for getting chapter embedding."""
 
+    @pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=5, EMBEDDING_DTYPE="float32")
     async def test_get_embedding_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test getting embedding when found."""
         embedding_list = [0.1, 0.2, 0.3, 0.4, 0.5]
-        monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 5)
         mock_read = AsyncMock(return_value=[{"embedding_vector": embedding_list, "embedding_model": config.EMBEDDING_MODEL, "embedding_identity": embedding_identity()}])
         monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 

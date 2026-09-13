@@ -112,7 +112,7 @@ async def test_chapter_outline_updates_preserve_prior_checkpoint(tmp_path: Path,
         state["chapter_outlines_ref"] = manager.save_json({"1": {"version": 0, "act_number": 1}, "2": {"version": 0, "act_number": 1}}, "chapter_outlines", "all", 0)
 
     async def answer(**keywords: Any) -> tuple[str, dict[str, int]]:
-        return '{"scene_description": "A traveler returns", "key_beats": ["arrival"], "plot_point": "Return"}', {}
+        return '{"scene_description": "A traveler returns", "key_beats": ["arrival", "recognition", "reunion"], "plot_point": "Return"}', {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", answer)
     first_update = await generate_chapter_outline(state)
@@ -132,11 +132,13 @@ async def test_relationship_storage_uses_its_own_version_counter(tmp_path: Path,
     from core.langgraph.nodes.extraction_nodes import consolidate_extraction
     from core.langgraph.nodes.scene_extraction import extract_from_scenes
     from core.langgraph.state import NarrativeState
+    from tests.test_r08g_catalog_fixtures import catalog_state
     
 
     manager = ContentManager(str(tmp_path))
     previous = manager.save_json([{"retained": "earlier normalization"}], "extracted_relationships", "chapter_1", 1)
     state = cast(NarrativeState, {"project_dir": str(tmp_path), "current_chapter": 1, "scene_drafts_ref": manager.save_list_of_texts(["Synthetic room."], "scenes", "chapter_1")})
+    state.update(catalog_state(tmp_path, existing=state))
 
     async def answer(**keywords: Any) -> tuple[dict[str, Any], None]:
         if "response_format" in keywords:

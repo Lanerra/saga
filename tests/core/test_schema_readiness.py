@@ -29,7 +29,10 @@ class CatalogTransport:
     def run(self, query: str, parameters: Any = None) -> OwnershipRows:
         if query == OWNER_QUERY:
             return OwnershipRows([{"key": "exclusive", "project_id": PROJECT_ID, "version": 1}])
-        if query.startswith("SHOW "):
+        if query == "MATCH (owner:SagaGraphOwner {key: 'exclusive', project_id: $project_id}) SET owner.version = owner.version":
+            assert parameters == {"project_id": PROJECT_ID}
+            return OwnershipRows([])
+        if query in schema_catalog():
             return OwnershipRows(self.catalog.get(query, []))
         if query == "CALL db.awaitIndexes(60)":
             return OwnershipRows([])

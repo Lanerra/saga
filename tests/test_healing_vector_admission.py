@@ -11,9 +11,8 @@ from core.service_context import get_services
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('kind', ['valid', 'stale_model', 'stale_identity', 'nan', 'rank', 'dimensions'])
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING=True)
 async def test_healing_admits_only_current_finite_vectors(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, 'EXPECTED_EMBEDDING_DIM', 3)
-    monkeypatch.setattr(config, 'ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING', True)
 
     async def candidates(**kwargs: Any) -> list[dict[str, Any]]:
         return [{'id1': 'a', 'id2': 'b', 'name1': 'A', 'name2': 'B', 'similarity': 0.5, 'labels1': ['Character']}]

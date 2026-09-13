@@ -17,10 +17,10 @@ from core.langgraph.nodes import context_scene_retrieval
 from core.service_context import get_services
 from data_access import chapter_queries
 
+pytestmark = pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=2)
 
 @pytest.fixture
 async def production_query(monkeypatch: pytest.MonkeyPatch) -> tuple[str, dict[str, Any]]:
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
     captured: list[tuple[str, dict[str, Any]]] = []
 
     async def read(query: str, parameters: dict[str, Any]) -> list[dict[str, Any]]:
@@ -57,7 +57,6 @@ def test_production_predicate_truth_table(
 
 
 async def test_scene_caller_uses_non_provisional_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
     captured: list[dict[str, Any]] = []
 
     async def embedding(text: str) -> np.ndarray:
@@ -79,7 +78,6 @@ async def test_scene_caller_uses_non_provisional_default(monkeypatch: pytest.Mon
 
 @pytest.mark.parametrize("include_provisional", [False, True])
 async def test_requested_boolean_reaches_query(monkeypatch: pytest.MonkeyPatch, include_provisional: bool) -> None:
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 2)
     captured: list[dict[str, Any]] = []
 
     async def read(query: str, parameters: dict[str, Any]) -> list[dict[str, Any]]:

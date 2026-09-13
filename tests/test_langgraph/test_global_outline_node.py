@@ -89,7 +89,13 @@ def sample_outline_json() -> dict[str, object]:
                 "starting_state": "Naive",
                 "ending_state": "Wise",
                 "key_moments": ["First failure", "Learning from mentor"],
-            }
+            },
+            {
+                "character_name": "Mentor",
+                "starting_state": "Guarded",
+                "ending_state": "Trusting",
+                "key_moments": ["Meets Hero", "Shares knowledge"],
+            },
         ],
         "thematic_progression": "From innocence to experience",
         "pacing_notes": "Fast-paced action throughout",
@@ -168,9 +174,10 @@ async def test_generate_global_outline_exception(base_state: NarrativeState, moc
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_without_characters(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_character_sheets: MagicMock) -> None:
+async def test_generate_global_outline_without_characters(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_character_sheets: MagicMock, sample_outline_json: dict[str, object]) -> None:
     """Verify generation works without character sheets."""
     mock_get_character_sheets.return_value = {}
+    mock_llm_service.async_call_llm.return_value = (json.dumps({**sample_outline_json, "character_arcs": []}), {})
 
     state: NarrativeState = {**base_state}
 
@@ -400,22 +407,20 @@ def test_parse_global_outline_valid_json(base_state: NarrativeState, sample_outl
 
 
 def test_parse_global_outline_with_markdown(base_state: NarrativeState, sample_outline_json: dict[str, object]) -> None:
-    """Verify parsing of JSON wrapped in markdown."""
+    """Reject Markdown wrappers around otherwise valid JSON."""
     response = f"""```json
 {json.dumps(sample_outline_json)}
 ```"""
 
-    result = _parse_global_outline(response, base_state)
-
-    assert result["act_count"] == 3
-    assert len(result["acts"]) == 3
+    with pytest.raises(json.JSONDecodeError):
+        _parse_global_outline(response, base_state)
 
 
 def test_parse_global_outline_invalid_json_raises(base_state: NarrativeState) -> None:
     """Invalid JSON with no parseable structure raises ValueError."""
     response = "This is not valid JSON but contains Act 1, Act 2, and Act 3"
 
-    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+    with pytest.raises(json.JSONDecodeError):
         _parse_global_outline(response, base_state)
 
 

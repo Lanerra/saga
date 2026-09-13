@@ -5,16 +5,14 @@ from typing import Any
 import httpx
 import pytest
 
-import config
 from core.http_client_service import HTTPClientService
 from core.llm_interface_refactored import create_llm_service
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('phase', ['transport', 'backoff', 'semaphore'])
+@pytest.mark.run_settings(HTTPX_TIMEOUT=0.02, LLM_RETRY_DELAY_SECONDS=1.0)
 async def test_deadline_cancels_entire_http_operation(phase: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, 'HTTPX_TIMEOUT', 0.02)
-    monkeypatch.setattr(config, 'LLM_RETRY_DELAY_SECONDS', 1.0)
     attempts = 0
     cancelled = asyncio.Event()
 
@@ -48,9 +46,8 @@ async def test_deadline_cancels_entire_http_operation(phase: str, monkeypatch: p
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('kind', ['fallback', 'object', 'array'])
+@pytest.mark.run_settings(HTTPX_TIMEOUT=0.04, LLM_RETRY_ATTEMPTS=1)
 async def test_composed_operations_share_one_deadline(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, 'HTTPX_TIMEOUT', 0.04)
-    monkeypatch.setattr(config, 'LLM_RETRY_ATTEMPTS', 1)
     attempts = 0
 
     async def respond(request: httpx.Request) -> httpx.Response:

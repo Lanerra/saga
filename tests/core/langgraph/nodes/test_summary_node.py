@@ -124,7 +124,7 @@ async def test_summarize_chapter_raises_after_retry_exhaustion(tmp_path: Path) -
         with pytest.raises(ChapterSummaryContractError) as exc:
             await summarize_chapter(state)
 
-        assert str(exc.value) == ("Chapter summary JSON contract violated: could not parse a JSON object from the model response.")
+        assert str(exc.value) == "Chapter summary JSON contract violated: expected one unambiguous JSON object."
 
         assert mock_llm.call_count == 3
         mock_save_summary.assert_not_awaited()

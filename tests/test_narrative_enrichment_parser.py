@@ -132,9 +132,9 @@ async def test_extract_physical_descriptions(sample_narrative_text: str, sample_
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=5)
 async def test_extract_chapter_embeddings(sample_narrative_text: str, sample_chapter_data: Chapter, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test chapter embedding extraction from narrative text."""
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 5)
     parser = NarrativeEnrichmentParser(sample_narrative_text, chapter_number=1)
 
     # Mock the get_chapter_data_from_db function
@@ -237,9 +237,9 @@ async def test_update_character_physical_descriptions(sample_character_data: lis
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=5)
 async def test_update_chapter_embeddings(sample_chapter_data: Chapter, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test updating chapter embeddings."""
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 5)
     parser = NarrativeEnrichmentParser("Test narrative", chapter_number=1)
 
     # Create mock extraction results

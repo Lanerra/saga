@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import utils
 from core.exceptions import DatabaseError
 from core.service_context import get_services
 from data_access import world_queries
@@ -24,10 +23,11 @@ class TestWorldNameResolution:
     def test_resolve_world_name_exists(self) -> None:
         """Test resolving world name that exists."""
         world_queries.WORLD_NAME_TO_ID.clear()
-        world_queries.WORLD_NAME_TO_ID["castle"] = "locations_castle"
+        world_queries.WORLD_NAME_TO_ID["Castle"] = "locations_castle"
 
         result = world_queries.resolve_world_name("Castle")
         assert result == "locations_castle"
+        assert world_queries.resolve_world_name("castle") is None
 
     def test_resolve_world_name_missing(self) -> None:
         """Test resolving world name that doesn't exist."""
@@ -48,7 +48,7 @@ class TestWorldItemByName:
     def test_get_world_item_by_name_found(self) -> None:
         """Test getting world item by name when found."""
         world_queries.WORLD_NAME_TO_ID.clear()
-        world_queries.WORLD_NAME_TO_ID["castle"] = "locations_castle"
+        world_queries.WORLD_NAME_TO_ID["Castle"] = "locations_castle"
 
         castle_item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle"})
         castle_item.id = "locations_castle"
@@ -66,17 +66,18 @@ class TestWorldItemByName:
         result = world_queries.get_world_item_by_name(world_data, "Unknown")
         assert result is None
 
-    def test_get_world_item_by_name_case_insensitive(self) -> None:
-        """Test getting world item by name case insensitive."""
+    def test_get_world_item_by_name_preserves_case(self) -> None:
+        """A case variant is not an alias for a known literal name."""
         world_queries.WORLD_NAME_TO_ID.clear()
-        world_queries.WORLD_NAME_TO_ID["castle"] = "locations_castle"
+        world_queries.WORLD_NAME_TO_ID["Castle"] = "locations_castle"
 
         castle_item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle"})
         castle_item.id = "locations_castle"
         world_data = {"Locations": {"Castle": castle_item}}
 
         result = world_queries.get_world_item_by_name(world_data, "castle")
-        assert result is not None
+        assert result is None
+        assert world_queries.get_world_item_by_name(world_data, "Castle") is castle_item
 
 
 @pytest.mark.asyncio
@@ -106,7 +107,7 @@ class TestSyncWorldItems:
         item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle"})
         await world_queries.sync_world_items([item], 1)
 
-        assert utils._normalize_for_id("Castle") in world_queries.WORLD_NAME_TO_ID
+        assert world_queries.WORLD_NAME_TO_ID == {"Castle": item.id}
 
     async def test_sync_world_items_multiple(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Syncing multiple world items persists and updates name map."""
@@ -208,15 +209,15 @@ class TestGetWorldItemById:
         result = await world_queries.get_world_item_by_id("unknown_id")
         assert result is None
 
-    async def test_get_world_item_by_id_with_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test getting world item by ID with name fallback."""
+    async def test_get_world_item_by_id_requires_explicit_name_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A by-ID miss cannot silently become a name lookup."""
         world_queries.get_world_item_by_id.cache_clear()
 
         world_queries.WORLD_NAME_TO_ID.clear()
-        world_queries.WORLD_NAME_TO_ID["castle"] = "locations_castle"
+        world_queries.WORLD_NAME_TO_ID["Castle"] = "locations_castle"
 
         async def fake_read(query: str, params: dict[str, object] | None = None) -> list[dict[str, object]]:
-            # Simulate first lookup by "id" miss, then second lookup by resolved canonical id hit.
+            # The literal ID misses; an explicitly resolved ID succeeds.
             if "RETURN we" in query and params and params.get("id") == "Castle":
                 return []
             if "RETURN we" in query and params and params.get("id") == "locations_castle":
@@ -230,13 +231,21 @@ class TestGetWorldItemById:
                         }
                     }
                 ]
-            # Traits / elaborations can be empty under this mock; we only validate the ID used.
-            return []
+            if "ELABORATED_IN_CHAPTER" in query:
+                assert params and params["we_id_param"] == "locations_castle"
+                return []
+            raise AssertionError(f"Unexpected query: {query}")
 
         mock_read = AsyncMock(side_effect=fake_read)
         monkeypatch.setattr(get_services().database, "execute_read_query", mock_read)
 
         result = await world_queries.get_world_item_by_id("Castle")
+        assert result is None
+        assert mock_read.await_count == 1
+        assert mock_read.call_args.args[1]["id"] == "Castle"
+        resolved_id = world_queries.resolve_world_name("Castle")
+        assert resolved_id == "locations_castle"
+        result = await world_queries.get_world_item_by_id(resolved_id)
         assert result is not None
         assert result.id == "locations_castle"
 
@@ -319,8 +328,7 @@ class TestGetWorldBuilding:
         world_queries.WORLD_NAME_TO_ID.clear()
         result = await world_queries.get_world_building()
         assert len(result) == 2
-        assert world_queries.WORLD_NAME_TO_ID["castle"] == "locations_castle"
-        assert world_queries.WORLD_NAME_TO_ID["sword"] == "items_sword"
+        assert world_queries.WORLD_NAME_TO_ID == {"Castle": "locations_castle", "Sword": "items_sword"}
 
 
 @pytest.mark.asyncio

@@ -111,7 +111,7 @@ async def test_resume_rejects_missing_prefix_or_finalized_ahead(tmp_path: Path, 
     chapter_rows.rows = [chapter(number) for number in numbers]
     orchestrator = LangGraphOrchestrator()
     orchestrator.project_dir = tmp_path
-    state: NarrativeState = {"project_id": "synthetic", "current_chapter": current_chapter}
+    state: NarrativeState = {"project_id": "synthetic", "project_dir": str(tmp_path), "current_chapter": current_chapter}
     with pytest.raises(CheckpointResumeConflictError):
         await orchestrator._validate_resume_state_or_raise_async(checkpoint_state=state, requested_project_id="synthetic")
 
@@ -120,7 +120,7 @@ async def test_resume_accepts_prefix_and_future_plans(tmp_path: Path, chapter_ro
     chapter_rows.rows = [chapter(3, "planned"), chapter(1), chapter(2, "staged")]
     orchestrator = LangGraphOrchestrator()
     orchestrator.project_dir = tmp_path
-    state: NarrativeState = {"project_id": "synthetic", "current_chapter": 2}
+    state: NarrativeState = {"project_id": "synthetic", "project_dir": str(tmp_path), "current_chapter": 2}
     await orchestrator._validate_resume_state_or_raise_async(checkpoint_state=state, requested_project_id="synthetic")
 
 
