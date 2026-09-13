@@ -10,6 +10,7 @@ from core.exceptions import handle_database_error
 from core.schema_validator import validate_kg_object
 from core.service_context import get_services
 from models import CharacterProfile
+from models.kg_models import project_relationships_by_target
 
 from .cache_coordinator import guard_graph_cache
 from .cypher_builders.native_builders import NativeCypherBuilder
@@ -213,23 +214,7 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
 
         rels_by_target[target_name].append(rel_props_cleaned)
 
-    # Deterministic/stable output:
-    # - sort targets
-    # - sort multi-relationship lists within each target
-    relationships: dict[str, Any] = {}
-    for target_name in sorted(rels_by_target.keys()):
-        rel_list = rels_by_target[target_name]
-        rel_list_sorted = sorted(
-            rel_list,
-            key=lambda r: (
-                str(r.get("type", "")),
-                str(r.get("description", "")),
-                str(r.get("chapter_added", "")),
-            ),
-        )
-        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
-
-    profile["relationships"] = relationships
+    profile["relationships"] = project_relationships_by_target(rels_by_target)
 
     return CharacterProfile.from_dict(name, profile)
 
@@ -348,22 +333,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
         rels_by_target[target_name].append(rel_props_cleaned)
 
-    # Build final relationships dict with consistent shape:
-    # - Single relationship: dict
-    # - Multiple relationships: list
-    relationships: dict[str, Any] = {}
-    for target_name in sorted(rels_by_target.keys()):
-        rel_list = rels_by_target[target_name]
-        rel_list_sorted = sorted(
-            rel_list,
-            key=lambda r: (
-                str(r.get("type", "")),
-                str(r.get("description", "")),
-                str(r.get("chapter_added", "")),
-            ),
-        )
-        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
-    profile["relationships"] = relationships
+    profile["relationships"] = project_relationships_by_target(rels_by_target)
 
     return CharacterProfile.from_dict(name, profile)
 

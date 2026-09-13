@@ -8,13 +8,15 @@ isolated, avoiding eager spaCy model loading at import time.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from collections.abc import Collection
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 import config
 
 if TYPE_CHECKING:
+    from core.langgraph.initialization.catalog import EntityCatalog
     from core.text_processing_service import TextProcessingService
 
 logger = structlog.get_logger(__name__)
@@ -33,7 +35,7 @@ def _get_text_processing_service() -> TextProcessingService:
     return _text_processing_service
 
 
-def validate_named_entity(entity_name: str) -> str:
+def validate_lexical_entity_name(entity_name: str) -> str:
     """Reject explicit unnamed/abstract descriptors without rewriting identity.
 
     These are lexical exclusions, not a classifier or proof of narrative meaning.
@@ -63,17 +65,52 @@ def validate_named_entity(entity_name: str) -> str:
     return entity_name
 
 
-def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
-    """Require an exact named span; optional NLP must not authorize fuzzy aliases.
+def validate_named_entity(entity_name: str, eligible_names: Collection[str] = ()) -> str:
+    """Require explicit eligibility; capitalization is not named-identity evidence.
+
+    Production eligibility comes from the selected catalog, not from a relationship
+    response or statistical name guessing. Missing context authorizes no names.
+    """
+    validate_lexical_entity_name(entity_name)
+    if entity_name not in eligible_names:
+        raise ValueError("Entity name is not an eligible scene identity")
+    return entity_name
+
+
+def _validate_entity_with_spacy(scene_text: str, entity_name: str, eligible_names: Collection[str] = ()) -> bool:
+    """Require an eligible exact span; optional NLP cannot authorize identities.
 
     Keep the historical entry point for callers. This identity check does not
     depend on statistical model availability or ENABLE_ENTITY_VALIDATION.
     """
     try:
-        validate_named_entity(entity_name)
+        validate_named_entity(entity_name, eligible_names)
     except ValueError:
         return False
     return re.search(r"(?<!\w)" + re.escape(entity_name) + r"(?!\w)", scene_text) is not None
+
+
+def scene_identity_candidates(catalog: EntityCatalog | None, scene_text: str) -> dict[str, dict[str, Any]]:
+    """Project a validated catalog onto literal scene names, failing on ambiguity.
+
+    The catalog is an explicit identity authority, not proof that arbitrary prose
+    is named. Novel scene identities require upstream catalog admission; entity
+    and relationship responses cannot enlarge this closed set. Catalog selection
+    and project/checksum verification belong to select_catalog at the entrypoint.
+    """
+    if catalog is None:
+        raise ValueError("Scene extraction requires an eligible identity catalog")
+    candidates: dict[str, dict[str, Any]] = {}
+    for candidate in catalog.candidates("Character", "Location", "Item", "Event"):
+        name = candidate["name"]
+        if not isinstance(name, str) or not name or name != name.strip():
+            raise ValueError("Catalog candidate requires an exact nonblank name")
+        if re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", scene_text) is None:
+            continue
+        if name in candidates:
+            raise ValueError("Ambiguous eligible scene identity; name selects multiple catalog IDs")
+        candidates[name] = {"name": name, "id": candidate["id"], "label": candidate["label"]}
+    return candidates
 
 
 def _get_normalized_entity_key(name: str) -> str:

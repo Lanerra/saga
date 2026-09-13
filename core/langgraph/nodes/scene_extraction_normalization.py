@@ -6,6 +6,7 @@ This module handles merging results from multiple scenes using exact names.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 import structlog
@@ -19,7 +20,7 @@ logger = structlog.get_logger(__name__)
 
 
 def _merge_entity_identity(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
-    """Select descriptive prose without losing or conflicting with explicit identity."""
+    """Apply scene-ordered assertions, retaining original evidence and exact identity."""
     identifiers: set[str] = set()
     for record in (existing, incoming):
         attributes = record.get("attributes", {})
@@ -30,10 +31,16 @@ def _merge_entity_identity(existing: dict[str, Any], incoming: dict[str, Any]) -
             identifiers.add(identifier)
     if len(identifiers) > 1 or existing.get("type") != incoming.get("type"):
         raise ValueError("Conflicting entity identity during consolidation")
-    selected = incoming if len(incoming.get("description", "")) > len(existing.get("description", "")) else existing
-    if not identifiers:
-        return selected
-    return {**selected, "attributes": {**selected.get("attributes", {}), "id": next(iter(identifiers))}}
+    attributes = {**deepcopy(existing.get("attributes", {})), **deepcopy(incoming.get("attributes", {}))}
+    history = deepcopy(existing.get("attributes", {}).get("scene_assertions", [existing]))
+    history.extend(deepcopy(incoming.get("attributes", {}).get("scene_assertions", [incoming])))
+    attributes["scene_assertions"] = history
+    if identifiers:
+        attributes["id"] = next(iter(identifiers))
+    selected = {**deepcopy(existing), **deepcopy(incoming), "attributes": attributes}
+    if "first_appearance_chapter" in existing and "first_appearance_chapter" in incoming:
+        selected["first_appearance_chapter"] = min(existing["first_appearance_chapter"], incoming["first_appearance_chapter"])
+    return selected
 
 
 def consolidate_scene_extractions(
@@ -42,9 +49,10 @@ def consolidate_scene_extractions(
     """Merge and deduplicate extraction results from multiple scenes.
 
     Deduplication strategy:
-    - Characters: Dedupe by exact name, retain explicit identity and longest description
-    - World items: Dedupe by canonical category and exact name, retain explicit identity
-    - Relationships: Dedupe by exact (source, target, type) tuple
+    - Input scenes are chronological, as supplied by extract_from_scenes.
+    - Entity snapshots use the latest explicit fields, not description length.
+    - Original assertions/provenance remain in attributes.scene_assertions.
+    - Repeated relationships retain their latest fields and source assertions.
 
     Args:
         scene_results: List of extraction results from individual scenes.
@@ -54,8 +62,7 @@ def consolidate_scene_extractions(
     """
     characters_map: dict[str, dict[str, Any]] = {}
     world_items_map: dict[tuple[str, str], dict[str, Any]] = {}
-    relationships_set: set[tuple[str, str, str]] = set()
-    relationships: list[dict[str, Any]] = []
+    relationships_map: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     for scene_result in scene_results:
         for character in scene_result.get("characters", []):
@@ -90,12 +97,19 @@ def consolidate_scene_extractions(
 
             relationship_key = (source_key, target_key, rel_type_key)
 
-            if relationship_key not in relationships_set:
-                relationships_set.add(relationship_key)
-                relationships.append(relationship)
+            if relationship_key in relationships_map:
+                previous = relationships_map[relationship_key]
+                for identity_field in ("source_id", "target_id", "source_type", "target_type"):
+                    if previous.get(identity_field) and relationship.get(identity_field) and previous[identity_field] != relationship[identity_field]:
+                        raise ValueError("Conflicting relationship identity during consolidation")
+                history = deepcopy(previous.get("scene_assertions", [previous]))
+                history.extend(deepcopy(relationship.get("scene_assertions", [relationship])))
+                relationships_map[relationship_key] = {**deepcopy(previous), **deepcopy(relationship), "scene_assertions": history}
+            else:
+                relationships_map[relationship_key] = deepcopy(relationship)
 
     return {
         "characters": list(characters_map.values()),
         "world_items": list(world_items_map.values()),
-        "relationships": relationships,
+        "relationships": list(relationships_map.values()),
     }

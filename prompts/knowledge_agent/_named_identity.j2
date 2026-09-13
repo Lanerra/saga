@@ -1,4 +1,11 @@
 NAMED IDENTITY CONTRACT:
+{% if eligible_entities is defined %}
+ELIGIBLE SCENE IDENTITIES (closed set, selected catalog IDs and semantic labels):
+{{ eligible_entities | tojson }}
+- Entity keys and BOTH relationship endpoints must copy a name from this list exactly. IDs are supplied context, not output fields; never invent or rewrite them.
+- Sentence capitalization and a matching source span do not authorize another identity. Do not add crowds, descriptors or newly coined names to this list.
+- This task selects existing identities; it does not discover new ones. If the list is empty, return the specified empty collection. Examples and protagonist metadata cannot extend the list.
+{% endif %}
 - Copy exact spelling, capitalization and punctuation from a complete name in the chapter text, including articles and apostrophes. The Hague, King's Cross and Father O'Brien are valid names when the text names them that way.
 - Do not invent names, titles, event labels, aliases or IDs from descriptions. Capitalizing "the rain gauge", "the community hall", "the valley" or "her father" does not make a named entity. A name mentioned only in the context/title or these examples is not evidence in the chapter.
 - Exclude unnamed people/groups, generic objects/places, abstract concepts, goals/actions and possessive attributes from BOTH relationship endpoints and entity keys. "Mara's father" and "Mara's decision" are descriptors, unlike the proper name "King's Cross".

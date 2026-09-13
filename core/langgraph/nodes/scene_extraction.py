@@ -22,6 +22,7 @@ import config
 from core.exceptions import LLMServiceError
 from core.langgraph.chapter_lifecycle import extraction_binding
 from core.langgraph.content_manager import ContentManager, get_scene_drafts, require_project_dir
+from core.langgraph.initialization.catalog import EntityCatalog, select_catalog
 from core.langgraph.nodes.scene_extraction_normalization import consolidate_scene_extractions
 from core.langgraph.nodes.scene_extraction_parsing import (
     SceneRelationships,
@@ -33,7 +34,7 @@ from core.langgraph.nodes.scene_extraction_parsing import (
 )
 from core.langgraph.nodes.scene_extraction_validation import (
     _validate_entity_with_spacy,
-    load_spacy_model_if_enabled,
+    scene_identity_candidates,
 )
 from core.langgraph.state import NarrativeState, SceneExtractionOutcome, SceneExtractionType
 from core.service_context import get_services
@@ -51,6 +52,8 @@ async def extract_from_scene(
     novel_genre: str,
     protagonist_name: str,
     model_name: str,
+    *,
+    catalog: EntityCatalog | None = None,
 ) -> dict[str, Any]:
     """Extract entities and relationships from a single scene.
 
@@ -79,6 +82,7 @@ async def extract_from_scene(
     try:
         if not scene_text.strip():
             raise ValueError("Scene text must not be blank")
+        scene_identity_candidates(catalog, scene_text)
     except Exception as error:
         preprocessing_error = str(error)
         preprocessing_error_type = type(error).__name__
@@ -106,6 +110,7 @@ async def extract_from_scene(
                 items = await extractor(
                     scene_text, scene_index, chapter_number, novel_title,
                     novel_genre, protagonist_name, model_name,
+                    catalog=catalog,
                 )
                 payloads[extraction_type] = items
                 outcome["status"] = "succeeded"
@@ -135,6 +140,8 @@ async def _extract_characters_from_scene(
     novel_genre: str,
     protagonist_name: str,
     model_name: str,
+    *,
+    catalog: EntityCatalog | None = None,
 ) -> list[dict[str, Any]]:
     """Extract characters from scene text.
 
@@ -150,9 +157,11 @@ async def _extract_characters_from_scene(
     Returns:
         List of character entity dicts with scene_index field.
     """
+    candidates = {name: candidate for name, candidate in scene_identity_candidates(catalog, scene_text).items() if candidate["label"] == "Character"}
     prompt = render_prompt(
         "knowledge_agent/extract_characters.j2",
         {
+            "eligible_entities": list(candidates.values()),
             "protagonist": protagonist_name,
             "chapter_number": chapter_number,
             "novel_title": novel_title,
@@ -179,13 +188,13 @@ async def _extract_characters_from_scene(
         for name, info in parsed:
             character_name = str(name)
 
-            is_validated = _validate_entity_with_spacy(scene_text, character_name)
+            is_validated = _validate_entity_with_spacy(scene_text, character_name, candidates)
 
             if not is_validated:
-                raise ValueError("Character extraction contains an ungrounded or unnamed entity")
+                raise ValueError("Character extraction contains an ineligible scene identity")
             for target_name in info.get("relationships", {}):
-                if not _validate_entity_with_spacy(scene_text, target_name):
-                    raise ValueError("Character relationship contains an ungrounded or unnamed endpoint")
+                if not _validate_entity_with_spacy(scene_text, target_name, candidates):
+                    raise ValueError("Character relationship contains an ineligible scene identity")
 
             characters.append(
                 {
@@ -195,6 +204,7 @@ async def _extract_characters_from_scene(
                     "first_appearance_chapter": chapter_number,
                     "scene_index": scene_index,
                     "attributes": {
+                        "id": candidates[character_name]["id"],
                         "traits": list(info.get("traits", [])),
                         "status": str(info.get("status", "")),
                         "relationships": dict(info.get("relationships", {})),
@@ -238,6 +248,8 @@ async def _extract_locations_from_scene(
     novel_genre: str,
     protagonist_name: str,
     model_name: str,
+    *,
+    catalog: EntityCatalog | None = None,
 ) -> list[dict[str, Any]]:
     """Extract locations from scene text.
 
@@ -253,9 +265,11 @@ async def _extract_locations_from_scene(
     Returns:
         List of location entity dicts with scene_index field.
     """
+    candidates = {name: candidate for name, candidate in scene_identity_candidates(catalog, scene_text).items() if candidate["label"] == "Location"}
     prompt = render_prompt(
         "knowledge_agent/extract_locations.j2",
         {
+            "eligible_entities": list(candidates.values()),
             "protagonist": protagonist_name,
             "chapter_number": chapter_number,
             "novel_title": novel_title,
@@ -279,11 +293,10 @@ async def _extract_locations_from_scene(
 
         locations: list[dict[str, Any]] = []
         for name, info in parsed:
-            # Validate entity presence using spaCy
-            is_validated = _validate_entity_with_spacy(scene_text, str(name))
+            is_validated = _validate_entity_with_spacy(scene_text, str(name), candidates)
 
             if not is_validated:
-                raise ValueError("Location extraction contains an ungrounded or unnamed entity")
+                raise ValueError("Location extraction contains an ineligible scene identity")
 
             category = str(info.get("category", "Location")).strip()
             locations.append(
@@ -294,6 +307,7 @@ async def _extract_locations_from_scene(
                     "first_appearance_chapter": chapter_number,
                     "scene_index": scene_index,
                     "attributes": {
+                        "id": candidates[name]["id"],
                         "category": category or "location",
                         "goals": list(info.get("goals", [])),
                         "rules": list(info.get("rules", [])),
@@ -338,6 +352,8 @@ async def _extract_events_from_scene(
     novel_genre: str,
     protagonist_name: str,
     model_name: str,
+    *,
+    catalog: EntityCatalog | None = None,
 ) -> list[dict[str, Any]]:
     """Extract events from scene text.
 
@@ -353,9 +369,11 @@ async def _extract_events_from_scene(
     Returns:
         List of event entity dicts with scene_index field.
     """
+    candidates = {name: candidate for name, candidate in scene_identity_candidates(catalog, scene_text).items() if candidate["label"] == "Event"}
     prompt = render_prompt(
         "knowledge_agent/extract_events.j2",
         {
+            "eligible_entities": list(candidates.values()),
             "protagonist": protagonist_name,
             "chapter_number": chapter_number,
             "novel_title": novel_title,
@@ -379,11 +397,10 @@ async def _extract_events_from_scene(
 
         events: list[dict[str, Any]] = []
         for name, info in parsed:
-            # Validate entity presence using spaCy
-            is_validated = _validate_entity_with_spacy(scene_text, str(name))
+            is_validated = _validate_entity_with_spacy(scene_text, str(name), candidates)
 
             if not is_validated:
-                raise ValueError("Event extraction contains an ungrounded or unnamed entity")
+                raise ValueError("Event extraction contains an ineligible scene identity")
 
             category = str(info.get("category", "Event")).strip()
             events.append(
@@ -394,6 +411,7 @@ async def _extract_events_from_scene(
                     "first_appearance_chapter": chapter_number,
                     "scene_index": scene_index,
                     "attributes": {
+                        "id": candidates[name]["id"],
                         "category": category or "event",
                         "goals": list(info.get("goals", [])),
                         "rules": list(info.get("rules", [])),
@@ -438,6 +456,8 @@ async def _extract_relationships_from_scene(
     novel_genre: str,
     protagonist_name: str,
     model_name: str,
+    *,
+    catalog: EntityCatalog | None = None,
 ) -> list[dict[str, Any]]:
     """Extract relationships from scene text.
 
@@ -453,9 +473,11 @@ async def _extract_relationships_from_scene(
     Returns:
         List of relationship dicts with scene_index field.
     """
+    candidates = scene_identity_candidates(catalog, scene_text)
     prompt = render_prompt(
         "knowledge_agent/extract_relationships.j2",
         {
+            "eligible_entities": list(candidates.values()),
             "protagonist": protagonist_name,
             "chapter_number": chapter_number,
             "novel_title": novel_title,
@@ -476,7 +498,7 @@ async def _extract_relationships_from_scene(
             max_attempts=2,
             auto_clean_response=False,
             reject_duplicate_keys=True,
-            response_format=SceneRelationships.response_format(),
+            response_format=SceneRelationships.response_format(candidates),
         )
 
         parsed = parse_kg_triples(data, scene_index, chapter_number)
@@ -485,18 +507,21 @@ async def _extract_relationships_from_scene(
         for triple in parsed:
             subject_text, target_text, predicate_text, description = normalize_triple_entities(triple)
 
-            # Validate entity presence using spaCy for both subjects and targets
-            subject_validated = _validate_entity_with_spacy(scene_text, subject_text)
-            target_validated = _validate_entity_with_spacy(scene_text, target_text)
+            subject_validated = _validate_entity_with_spacy(scene_text, subject_text, candidates)
+            target_validated = _validate_entity_with_spacy(scene_text, target_text, candidates)
 
             if not subject_validated or not target_validated:
-                raise ValueError("Relationship extraction contains an ungrounded or unnamed endpoint")
+                raise ValueError("Relationship extraction contains an ineligible scene identity")
 
             if subject_text and target_text and predicate_text:
                 relationships.append(
                     {
                         "source_name": subject_text,
                         "target_name": target_text,
+                        "source_id": candidates[subject_text]["id"],
+                        "target_id": candidates[target_text]["id"],
+                        "source_type": candidates[subject_text]["label"],
+                        "target_type": candidates[target_text]["label"],
                         "relationship_type": predicate_text,
                         "description": description,
                         "chapter": chapter_number,
@@ -574,8 +599,9 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         planned_count = state.get("chapter_plan_scene_count", 0)
         if planned_count > 0 and len(scene_drafts) != planned_count:
             raise ValueError(f"Expected {planned_count} scene drafts, received {len(scene_drafts)}")
+        catalog = select_catalog(state)
     except Exception as e:
-        error_msg = f"Failed to load scene drafts: {e}"
+        error_msg = f"Failed to load scene extraction inputs: {e}"
         logger.error("extract_from_scenes: fatal error", error=error_msg)
         return {**failure_update, "last_error": error_msg}
 
@@ -584,9 +610,6 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     novel_genre = state.get("genre", "")
     protagonist_name = state.get("protagonist_name", "")
     model_name = state.get("extraction_model", config.MEDIUM_MODEL)
-
-    # Load spaCy model for entity validation if enabled
-    load_spacy_model_if_enabled()
 
     logger.info(
         "extract_from_scenes: processing scenes",
@@ -605,6 +628,7 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
             novel_genre=novel_genre,
             protagonist_name=protagonist_name,
             model_name=model_name,
+            catalog=catalog,
         )
         scene_results.append(scene_result)
         outcomes.extend(scene_result["extraction_outcomes"])

@@ -7,6 +7,7 @@ Extracted from commit_node.py as part of the module-split refactor (I4).
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import structlog
@@ -85,7 +86,7 @@ def _convert_to_character_profiles(
                 relationships=relationships,
                 created_chapter=entity.first_appearance_chapter,
                 is_provisional=False,  # Entities from finalized draft are not provisional
-                updates={},  # Empty updates for new extraction
+                updates={"scene_assertions": entity.attributes["scene_assertions"]} if "scene_assertions" in entity.attributes else {},
             )
         )
 
@@ -138,6 +139,9 @@ def _convert_to_world_items(
 
         # Collect additional properties
         additional_properties = {k: v for k, v in entity.attributes.items() if k not in {"category", "id", "goals", "rules", "key_elements"}}
+        if "scene_assertions" in additional_properties:
+            # Neo4j properties cannot contain nested assertion records.
+            additional_properties["scene_assertions"] = json.dumps(additional_properties["scene_assertions"], ensure_ascii=False, allow_nan=False)
 
         items.append(
             WorldItem(

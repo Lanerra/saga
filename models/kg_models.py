@@ -16,7 +16,9 @@ Notes:
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Mapping
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -27,6 +29,22 @@ from utils.text_processing import validate_world_item_fields
 
 if TYPE_CHECKING:
     import neo4j
+
+
+def project_relationships_by_target(rels_by_target: Mapping[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """Use the single-profile contract: one dict or a stable list per exact target."""
+    relationships: dict[str, Any] = {}
+    for target_name in sorted(rels_by_target):
+        rel_list_sorted = sorted(
+            deepcopy(rels_by_target[target_name]),
+            key=lambda relationship: (
+                str(relationship.get("type", "")),
+                str(relationship.get("description", "")),
+                str(relationship.get("chapter_added", "")),
+            ),
+        )
+        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
+    return relationships
 
 
 class CharacterProfile(BaseModel):
@@ -134,16 +152,15 @@ class CharacterProfile(BaseModel):
         """
         node = record["c"]  # Assuming 'c' is the character node alias
 
-        # Extract relationships if available
-        relationships = {}
-        rels = record.get("relationships")
-        if rels:
-            for rel in rels:
-                if rel and rel.get("target_name"):
-                    relationships[rel["target_name"]] = {
-                        "type": rel.get("type", ""),
-                        "description": rel.get("description", ""),
-                    }
+        rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for rel in record.get("relationships") or []:
+            if rel and rel.get("target_name"):
+                rels_by_target[rel["target_name"]].append({
+                    **{key: value for key, value in rel.items() if key != "target_name"},
+                    "type": rel.get("type", ""),
+                    "description": rel.get("description", ""),
+                })
+        relationships = project_relationships_by_target(rels_by_target)
 
         # Extract traits from node property (new format) or from record field (old format for backward compatibility)
         node_dict = node if isinstance(node, dict) else dict(node)
@@ -383,16 +400,15 @@ class WorldItem(BaseModel):
         # Extract additional properties using shared utility
         additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
 
-        # Extract relationships if available
-        relationships = {}
-        rels = record.get("relationships")
-        if rels:
-            for rel in rels:
-                if rel and rel.get("target_name"):
-                    relationships[rel["target_name"]] = {
-                        "type": rel.get("type", "RELATED_TO"),
-                        "description": rel.get("description", ""),
-                    }
+        rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for rel in record.get("relationships") or []:
+            if rel and rel.get("target_name"):
+                rels_by_target[rel["target_name"]].append({
+                    **{key: value for key, value in rel.items() if key != "target_name"},
+                    "type": rel.get("type", "RELATED_TO"),
+                    "description": rel.get("description", ""),
+                })
+        relationships = project_relationships_by_target(rels_by_target)
 
         # Extract traits from node property (new format) or from record field (old format for backward compatibility)
         node_dict = node if isinstance(node, dict) else dict(node)

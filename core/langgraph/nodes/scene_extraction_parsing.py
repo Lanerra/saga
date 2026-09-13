@@ -7,12 +7,13 @@ focused on the extraction flow while the parsing logic lives here.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 import config
-from core.langgraph.nodes.scene_extraction_validation import validate_named_entity
+from core.langgraph.nodes.scene_extraction_validation import validate_lexical_entity_name
 from models.kg_constants import RELATIONSHIP_TYPES
 
 
@@ -28,7 +29,7 @@ class SceneRelationship(BaseModel):
     @field_validator("subject", "object_entity")
     @classmethod
     def named_endpoint(cls, value: str) -> str:
-        return validate_named_entity(value)
+        return validate_lexical_entity_name(value)
 
     @field_validator("predicate")
     @classmethod
@@ -45,9 +46,17 @@ class SceneRelationships(BaseModel):
     kg_triples: list[SceneRelationship] = Field(max_length=15)
 
     @classmethod
-    def response_format(cls) -> dict[str, Any]:
+    def response_format(cls, eligible_names: Collection[str] = ()) -> dict[str, Any]:
+        schema = cls.model_json_schema()
+        properties = schema["$defs"]["SceneRelationship"]["properties"]
+        for endpoint in ("subject", "object_entity"):
+            properties[endpoint]["enum"] = sorted(eligible_names)
+        if not eligible_names:
+            schema["properties"]["kg_triples"]["maxItems"] = 0
+            for endpoint in ("subject", "object_entity"):
+                del properties[endpoint]["enum"]
         return {"type": "json_schema", "json_schema": {
-            "name": "extract_scene_relationships", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": cls.model_json_schema(),
+            "name": "extract_scene_relationships", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": schema,
         }}
 
 
@@ -58,7 +67,7 @@ def _require_named_updates(value: Any, field: str) -> list[tuple[str, dict[str, 
     for name, information in value.items():
         if not isinstance(name, str) or not name.strip() or not isinstance(information, dict):
             raise ValueError(f"{field} entries must map nonblank names to objects")
-        validate_named_entity(name)
+        validate_lexical_entity_name(name)
         for key in ("description", "status", "category"):
             if key in information and not isinstance(information[key], str):
                 raise ValueError(f"{field}.{name}.{key} must be a string")
@@ -71,7 +80,7 @@ def _require_named_updates(value: Any, field: str) -> list[tuple[str, dict[str, 
         if "relationships" in information and not isinstance(information["relationships"], dict):
             raise ValueError(f"{field}.{name}.relationships must be an object")
         for target_name, relationship in information.get("relationships", {}).items():
-            validate_named_entity(target_name)
+            validate_lexical_entity_name(target_name)
             if not isinstance(relationship, dict) or relationship.get("type") not in RELATIONSHIP_TYPES:
                 raise ValueError(f"{field}.{name}.relationships must use canonical relationship types")
     return list(value.items())

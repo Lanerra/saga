@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from core.langgraph.nodes.scene_extraction_validation import validate_named_entity
+from core.langgraph.nodes.scene_extraction_validation import validate_lexical_entity_name
 from core.langgraph.state import ExtractedEntity
 
 if TYPE_CHECKING:
@@ -30,8 +30,8 @@ def _filter_invalid_relationships(
     to scene extraction; this boundary enforces the same lexical exclusions.
     """
     for relationship in relationships:
-        validate_named_entity(relationship.source_name)
-        validate_named_entity(relationship.target_name)
+        validate_lexical_entity_name(relationship.source_name)
+        validate_lexical_entity_name(relationship.target_name)
     return relationships
 
 
