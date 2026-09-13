@@ -20,6 +20,72 @@ from tests.test_initialization_catalog import SyntheticSelector, selected_state
 from tests.test_staged_initialization import example_state, with_catalog
 
 
+def wire_accepts(schema: dict[str, Any], value: Any) -> bool:
+    """Evaluate the selector's JSON Schema subset without optional dependencies."""
+    assert set(schema) <= {"type", "enum", "oneOf", "properties", "required", "additionalProperties", "items", "maxItems"}
+    if "oneOf" in schema and sum(wire_accepts(branch, value) for branch in schema["oneOf"]) != 1:
+        return False
+    if "enum" in schema and value not in schema["enum"]:
+        return False
+    types = {"string": isinstance(value, str), "null": value is None, "object": isinstance(value, dict), "array": isinstance(value, list)}
+    if "type" in schema:
+        allowed = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
+        if not any(types[name] for name in allowed):
+            return False
+    if isinstance(value, dict):
+        properties = schema.get("properties", {})
+        if not set(schema.get("required", [])).issubset(value):
+            return False
+        if schema.get("additionalProperties") is False and not set(value).issubset(properties):
+            return False
+        if not all(wire_accepts(properties[name], item) for name, item in value.items() if name in properties):
+            return False
+    if isinstance(value, list):
+        if "maxItems" in schema and len(value) > schema["maxItems"]:
+            return False
+        if "items" in schema and not all(wire_accepts(schema["items"], item) for item in value):
+            return False
+    return True
+
+
+@pytest.mark.parametrize("endpoint", ["source", "target"])
+async def test_relationship_wire_couples_literal_identity_and_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str) -> None:
+    state = cast(NarrativeState, await selected_state(tmp_path, monkeypatch, SyntheticSelector()))
+    catalog = select_catalog(state)
+    schema = catalog.response_format("extract_outline_relationships")["json_schema"]["schema"]
+    candidates = catalog.candidates("Character", "Location", "Item", "Event")
+    serialized = json.dumps(schema)
+    # A bounded label vocabulary must not expand into per-entity-pair alternatives.
+    assert all(serialized.count(json.dumps(candidate["id"])) <= 8 for candidate in candidates)
+    for source in candidates:
+        for target in candidates:
+            row = {"source_id": source["id"], "source_label": source["label"], "target_id": target["id"], "target_label": target["label"], "relationship_type": "OWNS", "description": "Synthetic assertion"}
+            assert wire_accepts(schema, {"kg_triples": [row]})
+            for wrong_label in {"Character", "Location", "Item", "Event"} - {row[endpoint + "_label"]}:
+                bad = row | {endpoint + "_label": wrong_label}
+                with pytest.raises(ValueError, match="Unknown catalog ID or wrong label"):
+                    catalog.endpoint(bad[endpoint + "_id"], wrong_label)
+                assert not wire_accepts(schema, {"kg_triples": [bad]}), bad
+    assert wire_accepts(schema, {"kg_triples": []})
+    for candidate in catalog.candidates("Chapter", "Scene"):
+        assert not wire_accepts(schema, {"kg_triples": [row | {endpoint + "_id": candidate["id"]}]})
+
+
+async def test_location_prompt_projection_omits_world_storage_discriminator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = cast(NarrativeState, await selected_state(tmp_path, monkeypatch, SyntheticSelector()))
+    catalog = select_catalog(state)
+    before = catalog.model_dump_json()
+    original = catalog.candidates("Location")[0]
+    assert original["label"] == "Location"
+    assert original["type"] == "Item"
+    projected = catalog.model_candidates("Location")[0]
+    assert "type" not in projected
+    for field in ("id", "label", "name", "category", "description"):
+        assert projected[field] == original[field]
+    assert catalog.candidates("Location")[0] == original
+    assert catalog.model_dump_json() == before
+
+
 async def test_relationship_contract_reaches_serialized_adapter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = with_catalog(example_state(tmp_path))
     state['outline_relationships_ref'] = None
@@ -39,18 +105,21 @@ async def test_relationship_contract_reaches_serialized_adapter(tmp_path: Path, 
         assert contract['json_schema']['strict'] is False
         assert bodies[0]['temperature'] == 1.0
         schema = contract['json_schema']['schema']
-        assert schema['required'] == ['kg_triples']
-        assert schema['additionalProperties'] is False
-        rows = schema['properties']['kg_triples']
-        assert rows['maxItems'] == 20
-        properties = rows['items']['properties']
-        assert set(rows['items']['required']) == set(properties)
-        assert rows['items']['additionalProperties'] is False
         catalog = select_catalog(state)
         assert encoded(catalog.model_candidates('Character', 'Location', 'Item', 'Event')) in bodies[0]['messages'][-1]['content']
-        assert properties['source_id']['enum'] == [entity.identity for entity in catalog.entities if entity.label in {'Character', 'Location', 'Item', 'Event'}]
-        assert properties['target_id'] == properties['source_id']
-        assert properties['source_label']['enum'] == ['Character', 'Location', 'Item', 'Event']
+        character = catalog.candidates('Character')[0]['id']
+        event = catalog.candidates('Event')[0]['id']
+        row = {'source_id': character, 'source_label': 'Character', 'target_id': event, 'target_label': 'Event', 'relationship_type': 'OCCURS_AT', 'description': 'Synthetic assertion'}
+        assert wire_accepts(schema, {'kg_triples': []})
+        assert wire_accepts(schema, {'kg_triples': [row] * 20})
+        assert not wire_accepts(schema, {'kg_triples': [row] * 21})
+        assert not wire_accepts(schema, {})
+        assert not wire_accepts(schema, {'kg_triples': [], 'extra': True})
+        for field in row:
+            assert not wire_accepts(schema, {'kg_triples': [{key: value for key, value in row.items() if key != field}]})
+            assert not wire_accepts(schema, {'kg_triples': [row | {field: None}]})
+        for bad in [row | {'extra': True}, row | {'relationship_type': 'AFFECTS'}, row | {'source_label': 'Event'}, row | {'target_label': 'Character'}, row | {'target_id': event.lower() + ' '}]:
+            assert not wire_accepts(schema, {'kg_triples': [bad]})
         # A subsequent narrative request must not inherit the extraction contract.
         await service.async_call_llm('synthetic', 'Write prose.', max_tokens=100, auto_clean_response=False)
         assert 'response_format' not in bodies[1]
@@ -93,6 +162,15 @@ async def test_every_catalog_selector_has_typed_choices(tmp_path: Path, monkeypa
             assert choices == [entity.identity for entity in catalog.entities if entity.label == label] + ([None] if field == 'location_id' else [])
         if 'role' in row['properties']:
             assert row['properties']['role']['type'] == ['string', 'null']
+        sample = {field: catalog.candidates(label)[0]['id'] for field, label in fields.items()}
+        if 'role' in row['properties']:
+            sample['role'] = None
+        assert wire_accepts(row, sample)
+        empty = {'location_id': None} if wrapper == 'location_id' else [] if wrapper is None else {wrapper: []}
+        assert wire_accepts(schema, empty)
+        for field, label in fields.items():
+            for candidate in catalog.candidates('Character', 'Location', 'Item', 'Event'):
+                assert wire_accepts(row, sample | {field: candidate['id']}) is (candidate['label'] == label)
     assert observed == set(expected)
 
 

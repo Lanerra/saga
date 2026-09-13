@@ -106,7 +106,12 @@ class EntityCatalog(FrozenPayload):
         """Keep semantic fields and exact IDs without empty values or storage bookkeeping."""
         storage_fields = {"created_ts", "updated_ts", "created_chapter", "last_updated_chapter", "is_provisional", "embedding_vector", "embedding_model", "entity_embedding_vector", "entity_embedding_model"}
         return [
-            {key: value for key, value in candidate.items() if key not in storage_fields and value not in (None, "", [], {})}
+            {
+                key: value for key, value in candidate.items()
+                if key not in storage_fields and value not in (None, "", [], {})
+                # WorldItem.type is a storage discriminator, not the catalog graph label.
+                and not (key == "type" and candidate["label"] in {"Location", "Item"})
+            }
             for candidate in self.candidates(*labels)
         ]
 
@@ -127,13 +132,19 @@ class EntityCatalog(FrozenPayload):
 
         role = {"type": ["string", "null"]}
         if name == "extract_outline_relationships":
-            labels = ["Character", "Location", "Item", "Event"]
-            rows = array({
-                "source_id": choices(*labels), "source_label": {"type": "string", "enum": labels},
-                "target_id": choices(*labels), "target_label": {"type": "string", "enum": labels},
-                "relationship_type": {"type": "string", "enum": sorted(RELATIONSHIP_TYPES)}, "description": {"type": "string"},
-            })
-            rows["maxItems"] = 20
+            labels = [label for label in ("Character", "Location", "Item", "Event") if any(entity.label == label for entity in self.entities)]
+            require(bool(labels), "Selector requires catalog candidates")
+            # Full object alternatives are supported by llama.cpp; disjoint label pairs
+            # couple exact IDs without a quadratic expansion over individual entities.
+            variants = [
+                record({
+                    "source_id": choices(source_label), "source_label": {"type": "string", "enum": [source_label]},
+                    "target_id": choices(target_label), "target_label": {"type": "string", "enum": [target_label]},
+                    "relationship_type": {"type": "string", "enum": sorted(RELATIONSHIP_TYPES)}, "description": {"type": "string"},
+                })
+                for source_label in labels for target_label in labels
+            ]
+            rows = {"type": "array", "items": {"oneOf": variants}, "maxItems": 20}
             schema = record({"kg_triples": rows})
         elif name == "catalog_possessions":
             schema = record({"possessions": array({"character_id": choices("Character"), "item_id": choices("Item")})})
