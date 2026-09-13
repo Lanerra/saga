@@ -56,7 +56,7 @@ async def get_scene_kg_facts(
     }
     scene_detail = cast(SceneDetail, scene_detail_untyped)
 
-    protagonist_name = getattr(config, "DEFAULT_PROTAGONIST_NAME", "Protagonist")
+    protagonist_name = state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME)
 
     kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
         chapter_outlines=chapter_outlines,

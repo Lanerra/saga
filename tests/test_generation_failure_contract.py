@@ -6,7 +6,7 @@ import os
 import runpy
 import sys
 from collections.abc import Iterator
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -37,7 +37,9 @@ from core.project_manager import ProjectManager
 from core.service_context import managed_services
 from core.spacy_service import get_spacy_service
 from orchestration.langgraph_orchestrator import LangGraphOrchestrator
+from tests.fakes.cli_capture import CLIStderr, capture_cli_stderr
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.fakes.generation_boundary import GenerationDatabase
 from tests.test_r08g_catalog_fixtures import catalog_state
 
 SCENE = {
@@ -86,7 +88,7 @@ def boundaries(monkeypatch: pytest.MonkeyPatch) -> tuple[ProviderBoundary, FakeN
     # Synthetic CLI projects keep production binding checks without owning session state.
     monkeypatch.setattr(neo4j_manager, "__dict__", {**neo4j_manager.__dict__, "_project_id": None, "_database": None, "_uri": None})
     provider = ProviderBoundary()
-    database = FakeNeo4jManager()
+    database = GenerationDatabase()
     database.configure_response(r"RETURN c.name AS name", [{"name": "Hero"}])
     database.configure_response(
         r"\A\s*MATCH \(c:Chapter\)\s+RETURN c.number AS chapter_number,\s+c.generation_status AS generation_status,\s+c.is_provisional AS is_provisional\s*\Z", provider.finalized_chapters,
@@ -96,7 +98,8 @@ def boundaries(monkeypatch: pytest.MonkeyPatch) -> tuple[ProviderBoundary, FakeN
     monkeypatch.setattr(neo4j_manager, "execute_write_query", database.execute_write_query)
     monkeypatch.setattr(neo4j_manager, "connect", database.connect)
     monkeypatch.setattr(neo4j_manager, "create_db_schema", database.connect)
-    monkeypatch.setattr(neo4j_manager, "driver", None)
+    monkeypatch.setattr(neo4j_manager, "driver", database.driver)
+    monkeypatch.setattr(neo4j_manager, "close", database.close)
     monkeypatch.setattr(CompletionHTTPClient, "get_completion", lambda client, *args, **kwargs: provider.completion(client, *args, **kwargs))
     monkeypatch.setattr(EmbeddingHTTPClient, "get_embedding", lambda client, *args, **kwargs: provider.embedding(client, *args, **kwargs))
     pipeline = spacy.blank("en")
@@ -131,6 +134,11 @@ def seeded_state(directory: Path) -> NarrativeState:
     state["chapter_plan_ref"] = manager.save_json([SCENE], "chapter_plan", "chapter_1", 1)
     state["chapter_plan_scene_count"] = 1
     state.update(catalog_state(directory, characters=("Hero",), locations=("Room",), events=("Open door",), existing=state))
+    state["protagonist_name"] = "Hero"
+    database = getattr(neo4j_manager.execute_read_query, "__self__", None)
+    if isinstance(database, GenerationDatabase):
+        database.select(state)
+        neo4j_manager.bind_project(state["graph_project_id"])
     return state
 
 
@@ -272,8 +280,8 @@ def test_real_cli_propagates_compiled_graph_failure(tmp_path: Path, monkeypatch:
     root = Path(__file__).resolve().parents[1]
     assert Path(inspect.getfile(plan_scenes)).resolve() == root / "core/langgraph/nodes/scene_planning_node.py"
     monkeypatch.setattr(sys, "argv", [str(root / "main.py"), "generate", "--project-dir", str(directory)])
-    output, errors = StringIO(), StringIO()
-    with pytest.raises(SystemExit) as caught, redirect_stdout(output), redirect_stderr(errors):
+    output, errors = StringIO(), CLIStderr()
+    with pytest.raises(SystemExit) as caught, redirect_stdout(output), capture_cli_stderr(errors):
         runpy.run_path(str(root / "main.py"), run_name="__main__")
     assert caught.value.code == (130 if scenario == "cancel" else 1)
     assert [line for line in output.getvalue().splitlines() if line.startswith("Scope:")] == [
@@ -281,11 +289,14 @@ def test_real_cli_propagates_compiled_graph_failure(tmp_path: Path, monkeypatch:
     ]
     assert "SAGA generation invocation succeeded:" not in output.getvalue()
     if scenario == "cancel":
-        assert errors.getvalue() == "SAGA generate cancelled; no completion claimed. Retained artifacts may include partial progress; resume the same project without resetting.\n"
+        assert errors.diagnostics == "SAGA generate cancelled; no completion claimed. Retained artifacts may include partial progress; resume the same project without resetting.\n"
+        assert any("generation cancelled" in record.getMessage() for _, _, record in errors.log_spans)
     else:
         failure = caught.value.__context__
         assert isinstance(failure, exceptions.WorkflowExecutionError)
-        assert errors.getvalue() == f"SAGA generate failed: {failure}. No completion claimed; retained artifacts may include partial progress.\n"
+        assert errors.diagnostics == f"SAGA generate failed: {failure}. No completion claimed; retained artifacts may include partial progress.\n"
+        assert any(record.levelname == "CRITICAL" and "unhandled main exception" in record.getMessage() for _, _, record in errors.log_spans)
+    assert "Multi-chapter generation stream complete." not in errors.getvalue()
 
     async def read_checkpoint() -> dict[str, Any]:
         async with create_checkpointer(str(checkpoint_path)) as checkpointer:
@@ -382,14 +393,16 @@ def test_cli_rejects_nonfatal_unfinished_native_stream(
     entrypoint = Path(__file__).resolve().parents[1] / "main.py"
     assert Path(inspect.getfile(LangGraphOrchestrator)).resolve() == entrypoint.parent / "orchestration/langgraph_orchestrator.py"
     monkeypatch.setattr(sys, "argv", [str(entrypoint), "generate", "--project-dir", str(directory)])
-    output, errors = StringIO(), StringIO()
-    with pytest.raises(SystemExit) as caught, redirect_stdout(output), redirect_stderr(errors):
+    output, errors = StringIO(), CLIStderr()
+    with pytest.raises(SystemExit) as caught, redirect_stdout(output), capture_cli_stderr(errors):
         runpy.run_path(str(entrypoint), run_name="__main__")
     assert caught.value.code == 1
     failure = caught.value.__context__
     assert isinstance(failure, exceptions.WorkflowExecutionError)
     assert failure.details["outcome"] == outcome
-    assert errors.getvalue() == f"SAGA generate failed: {failure}. No completion claimed; retained artifacts may include partial progress.\n"
+    assert errors.diagnostics == f"SAGA generate failed: {failure}. No completion claimed; retained artifacts may include partial progress.\n"
+    assert "Multi-chapter generation stream complete." not in errors.getvalue()
+    assert any(record.levelname == "CRITICAL" for _, _, record in errors.log_spans)
     assert "SAGA generation invocation succeeded:" not in output.getvalue()
     assert "SAGA: LangGraph Generation Complete" not in caplog.text
     assert "Multi-chapter generation stream complete." not in caplog.text
@@ -531,10 +544,11 @@ def test_cli_terminal_invocation_reports_actual_manuscripts_without_reinitializi
         if from_candidate and invocation == 0:
             arguments.append("--from-candidate")
         monkeypatch.setattr(sys, "argv", arguments)
-        output, errors = StringIO(), StringIO()
-        with redirect_stdout(output), redirect_stderr(errors):
+        output, errors = StringIO(), CLIStderr()
+        with redirect_stdout(output), capture_cli_stderr(errors):
             runpy.run_path(str(entrypoint), run_name="__main__")
-        assert errors.getvalue() == ""
+        assert errors.diagnostics == ""
+        assert errors.log_spans and all(record.levelno < 40 for _, _, record in errors.log_spans)
         assert [line for line in output.getvalue().splitlines() if line.startswith("SAGA generation invocation")] == [
             f"SAGA generation invocation succeeded: {directory}; accepted manuscripts {int(complete)}/1. Export is a separate command."
         ]
@@ -567,8 +581,8 @@ def test_cli_bootstrap_outcome_matches_saved_artifact(
     provider.cancel_draft = outcome == "cancel"
     entrypoint = Path(__file__).resolve().parents[1] / "main.py"
     monkeypatch.setattr(sys, "argv", [str(entrypoint), "bootstrap", "Synthetic premise"])
-    output, errors = StringIO(), StringIO()
-    with redirect_stdout(output), redirect_stderr(errors):
+    output, errors = StringIO(), CLIStderr()
+    with redirect_stdout(output), capture_cli_stderr(errors):
         if outcome == "success":
             runpy.run_path(str(entrypoint), run_name="__main__")
         else:
@@ -582,10 +596,12 @@ def test_cli_bootstrap_outcome_matches_saved_artifact(
     assert not candidate.with_name("config.json").exists()
     if outcome == "success":
         assert ProjectManager.load_candidate_config(candidate.parent).original_prompt == "Synthetic premise"
-        assert errors.getvalue() == ""
+        assert errors.diagnostics == ""
+        assert errors.log_spans and all(record.levelno < 40 for _, _, record in errors.log_spans)
     elif outcome == "cancel":
-        assert errors.getvalue() == "SAGA bootstrap cancelled; no completion claimed. Retained artifacts may include partial progress; resume the same project without resetting.\n"
+        assert errors.diagnostics == "SAGA bootstrap cancelled; no completion claimed. Retained artifacts may include partial progress; resume the same project without resetting.\n"
     else:
         failure = caught.value.__context__
         assert isinstance(failure, ValueError)
-        assert errors.getvalue() == f"SAGA bootstrap failed: {failure}. No completion claimed; retained artifacts may include partial progress.\n"
+        assert errors.diagnostics == f"SAGA bootstrap failed: {failure}. No completion claimed; retained artifacts may include partial progress.\n"
+        assert any(record.levelname == "CRITICAL" and "unhandled main exception" in record.getMessage() for _, _, record in errors.log_spans)
