@@ -22,11 +22,13 @@ async def test_authorized_name_survives_real_parsers(tmp_path: Path, monkeypatch
     state["scene_drafts_ref"] = manager.save_json([f"Ada trusts {name}. Neighbors watch."], "scene_drafts", "chapter_1", 1)
     result, requests = await run_extraction(monkeypatch, state, [
         {"character_updates": {name: {"description": "An author-named character", "traits": [], "status": "Active", "relationships": {}}}},
-        {"world_updates": {"Location": {}}}, {"world_updates": {"Event": {}}},
         {"kg_triples": [{"subject": "Ada", "predicate": "TRUSTS", "object_entity": name, "description": "Synthetic assertion"}]},
     ])
     assert result["extraction_status"] == "complete", result.get("last_error")
-    assert len(requests) == 4
+    # No selected Location/Event occurs in this scene: those producers send nothing.
+    assert [request["response_format"]["json_schema"]["name"] for request in requests] == [
+        "extract_scene_characters", "extract_scene_relationships",
+    ]
     rows = manager.load_json_strict(result["extracted_relationships_ref"])
     assert rows[0]["target_name"] == name
     assert all(row["source_name"] != "Neighbors" and row["target_name"] != "Neighbors" for row in rows)
