@@ -1,4 +1,5 @@
 """Chapter content embeddings keep one producer across staging and acceptance."""
+import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
@@ -20,6 +21,7 @@ from core.langgraph.nodes.narrative_enrichment_node import enrich_narrative
 from core.langgraph.state import NarrativeState
 from core.parsers.narrative_enrichment_parser import ChapterEmbeddingExtractionResult, NarrativeEnrichmentParser
 from core.service_context import get_services
+from data_access.validation_queries import PRIOR_ACCEPTED_ATTEMPTS_QUERY, fetch_prior_accepted_facts
 from tests.fakes.quality import example_quality_state
 from tests.test_langgraph.test_chapter_lifecycle import DriverExample, Rows, TransactionExample, example_state
 
@@ -29,6 +31,13 @@ pytestmark = pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, NEO4J_VECTOR_DIM
 class ContentTransaction(TransactionExample):
     def run(self, query: str, parameters: Any = None, **keywords: Any) -> Rows:
         chapter = self.nodes["chapter-1"]["properties"]
+        if query == PRIOR_ACCEPTED_ATTEMPTS_QUERY:
+            assert parameters == {"project_id": self.driver.project_id, "current_chapter": 2}
+            return Rows([
+                {**deepcopy(row), "chapter": row["chapter_number"], "chapter_attempt_id": chapter["attempt_id"],
+                 "chapter_project_id": chapter["graph_project_id"], "chapter_status": chapter["generation_status"]}
+                for row in self.receipts.values() if row["phase"] == "accepted"
+            ])
         if "RETURN c," in query or "RETURN c\n" in query:
             return Rows([{"c": {"id": "traveler", "name": "Traveler", "created_chapter": 0}, "traits": [], "relationships": []}])
         if "c.number AS number" in query or "RETURN c.embedding_vector AS embedding" in query:
@@ -221,3 +230,147 @@ async def test_legacy_finalizer_preserves_scene_producer_priority(tmp_path: Path
     assert result.get("has_fatal_error") is not True, result.get("last_error")
     assert len(writes) == 1
     assert writes[0][1]["embedding_vector_param"] == _aggregate_scene_embeddings_to_chapter(vectors)
+
+
+def candidate_for(state: NarrativeState) -> dict[str, Any]:
+    reference = state["draft_ref"]
+    assert reference is not None
+    return {"descriptions": [], "embeddings": [ChapterEmbeddingExtractionResult(
+        chapter_number=1, embedding_vector=[0.6, 0.8, 0.0], embedding_model=config.EMBEDDING_MODEL,
+        embedding_identity=embedding_identity(), source_text=ContentManager(state["project_dir"]).load_text(reference), extraction_method="scene_mean",
+    ).model_dump(mode="json")]}
+
+
+def historical_lifecycle(lifecycle: ChapterLifecycle) -> ChapterLifecycle:
+    return ChapterLifecycle({
+        "lifecycle_version": 1, "project_dir": str(lifecycle.files.root), "graph_project_id": lifecycle.project_id,
+        "current_chapter": lifecycle.chapter_number, "iteration_count": lifecycle.manifest.iteration_count,
+    }).load(lifecycle.manifest.attempt_id)
+
+
+@pytest.fixture
+async def accepted_enrichment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[ChapterLifecycle, ContentDriver]:
+    state = example_state(tmp_path)
+    manager = ContentManager(str(tmp_path))
+    assert state["scene_drafts_ref"] is not None
+    state["extraction_source"] = extraction_binding(state, manager.load_list_of_texts(state["scene_drafts_ref"]))
+    state["extracted_entities_ref"] = manager.save_json({"characters": [{"name": "Traveler", "attributes": {"traits": ["brave"]}}], "world_items": []}, "entities", "history")
+    state = example_quality_state(state)
+    driver = bind_driver(state, monkeypatch)
+    lifecycle = ChapterLifecycle(state)
+    lifecycle.retain_enrichment(candidate_for(state))
+    lifecycle.stage()
+    await lifecycle.commit([])
+    publication = await lifecycle.publish()
+    assert publication["lifecycle_phase"] == "published"
+    assert driver.commits == 2
+    assert lifecycle.manuscripts.accepted(1) is not None
+    return lifecycle, driver
+
+
+async def test_accepted_enrichment_is_read_as_prior_chapter_facts(accepted_enrichment: tuple[ChapterLifecycle, ContentDriver]) -> None:
+    lifecycle, driver = accepted_enrichment
+    before = deepcopy((driver.receipts, driver.nodes, driver.writes))
+    facts = await fetch_prior_accepted_facts({
+        "lifecycle_version": 1, "project_dir": str(lifecycle.files.root), "graph_project_id": lifecycle.project_id,
+        "current_chapter": 2, "extraction_status": "complete", "extraction_policy": "fail_closed",
+    })
+    assert facts == {"relationships": {}, "characters": {"Traveler": [{"first_chapter": 1, "traits": ["brave"]}]}}
+    assert (driver.receipts, driver.nodes, driver.writes) == before
+
+
+@pytest.mark.parametrize("operation", ["acceptance", "enrichment", "advance"])
+async def test_minimal_loaded_enrichment_uses_immutable_draft(accepted_enrichment: tuple[ChapterLifecycle, ContentDriver], operation: str) -> None:
+    lifecycle, driver = accepted_enrichment
+    historical = historical_lifecycle(lifecycle)
+    assert "draft_ref" not in historical.state
+    acceptance = json.loads(lifecycle.files.read_bytes(lifecycle.phase_path("acceptance")))
+    if operation == "acceptance":
+        assert historical._verify_acceptance(acceptance) == lifecycle.manuscripts.accepted(1)
+    elif operation == "enrichment":
+        assert historical.enrichment_path() == lifecycle.enrichment_path()
+        assert historical.enrichment() == acceptance["enrichment"]
+    else:
+        assert historical.advance() == {"attempt_id": None, "lifecycle_phase": "advanced", "current_chapter": 2}
+    assert "draft_ref" not in historical.state
+    assert driver.commits == 2
+
+
+@pytest.mark.parametrize("mode", ["prestage", "loaded"])
+def test_enrichment_source_modes(tmp_path: Path, mode: str) -> None:
+    state = example_state(tmp_path)
+    candidate = candidate_for(state)
+    lifecycle = ChapterLifecycle(state)
+    lifecycle.retain_enrichment(candidate)
+    path = lifecycle.enrichment_path()
+    if mode == "loaded":
+        assert state["scene_drafts_ref"] is not None
+        state["extraction_source"] = extraction_binding(state, ContentManager(str(tmp_path)).load_list_of_texts(state["scene_drafts_ref"]))
+        lifecycle = historical_lifecycle(lifecycle.stage())
+    assert lifecycle.enrichment_path() == path
+    assert lifecycle.enrichment() == candidate
+
+
+@pytest.mark.parametrize("mode", ["prestage", "loaded"])
+@pytest.mark.parametrize("mutation,reason", [
+    ("text", "source mismatch"), ("chapter", "chapter identity"), ("identity", "embedding identity"),
+    ("model", "model identity"), ("dimensions", "dimensions"), ("rank", "valid number"),
+    ("nonfinite", "finite"), ("zero", "nonzero"),
+])
+def test_enrichment_source_rejects_invalid_candidate(tmp_path: Path, mode: str, mutation: str, reason: str) -> None:
+    state = example_state(tmp_path)
+    candidate = candidate_for(state)
+    lifecycle = ChapterLifecycle(state)
+    if mode == "loaded":
+        assert state["scene_drafts_ref"] is not None
+        state["extraction_source"] = extraction_binding(state, ContentManager(str(tmp_path)).load_list_of_texts(state["scene_drafts_ref"]))
+        lifecycle = historical_lifecycle(lifecycle.stage())
+    embedding = candidate["embeddings"][0]
+    field, value = {
+        "text": ("source_text", embedding["source_text"].rstrip()), "chapter": ("chapter_number", 2),
+        "identity": ("embedding_identity", "other-provider"), "model": ("embedding_model", "other-model"),
+        "dimensions": ("embedding_vector", [0.6, 0.8]), "rank": ("embedding_vector", [[0.6, 0.8, 0.0]]),
+        "nonfinite": ("embedding_vector", [float("nan"), 0.8, 0.0]), "zero": ("embedding_vector", [0.0, 0.0, 0.0]),
+    }[mutation]
+    embedding[field] = value
+    with pytest.raises(ValueError, match=reason):
+        lifecycle.retain_enrichment(candidate)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "corrupt"])
+async def test_loaded_acceptance_requires_immutable_draft(accepted_enrichment: tuple[ChapterLifecycle, ContentDriver], mutation: str) -> None:
+    lifecycle, _ = accepted_enrichment
+    historical = historical_lifecycle(lifecycle)
+    acceptance = json.loads(lifecycle.files.read_bytes(lifecycle.phase_path("acceptance")))
+    path = lifecycle.files.root / lifecycle.artifact_ref("draft_ref")["path"]
+    if mutation == "missing":
+        path.rename(path.with_suffix(".retained"))
+        error: type[Exception] = FileNotFoundError
+    else:
+        path.write_bytes(b"corrupt immutable draft")
+        error = ValueError
+    with pytest.raises(error):
+        historical._verify_acceptance(acceptance)
+    with pytest.raises(error):
+        lifecycle.enrichment()
+
+
+@pytest.mark.parametrize("field,value", [("checksum", "0" * 64), ("size_bytes", 0), ("size_bytes", "float_size"), ("content_type", "application/json")])
+async def test_loaded_enrichment_rejects_divergent_live_identity(accepted_enrichment: tuple[ChapterLifecycle, ContentDriver], field: str, value: Any) -> None:
+    lifecycle, _ = accepted_enrichment
+    reference = lifecycle.state["draft_ref"]
+    assert reference is not None
+    if value == "float_size":
+        value = float(reference["size_bytes"])
+    lifecycle.state = {**lifecycle.state, "draft_ref": cast(Any, {**reference, field: value})}
+    with pytest.raises(ValueError):
+        lifecycle.enrichment()
+
+
+def test_prestage_enrichment_requires_live_draft(tmp_path: Path) -> None:
+    state = example_state(tmp_path)
+    candidate = candidate_for(state)
+    del state["draft_ref"]
+    lifecycle = ChapterLifecycle(state)
+    with pytest.raises(ValueError, match="draft reference"):
+        lifecycle.retain_enrichment(candidate)

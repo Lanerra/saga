@@ -386,11 +386,20 @@ class ChapterLifecycle:
         self.manuscripts.read(receipt)
         return receipt
 
-    def enrichment_path(self) -> str:
+    def _enrichment_draft(self) -> bytes:
         reference = self.state.get("draft_ref")
+        if hasattr(self, "manifest"):
+            identity = self.manifest.artifacts["draft_ref"]
+            if reference is not None:
+                if not isinstance(reference, dict) or ArtifactIdentity.model_validate({name: reference.get(name) for name in ("checksum", "size_bytes", "content_type")}) != identity:
+                    raise ValueError("Checkpoint/attempt content identity mismatch")
+            reference = self.artifact_ref("draft_ref")
         if not isinstance(reference, dict):
             raise ValueError("Enrichment requires a draft reference")
-        content = self._read_artifact(dict(reference))
+        return self._read_artifact(dict(reference))
+
+    def enrichment_path(self) -> str:
+        content = self._enrichment_draft()
         identity = {"project_id": self.project_id, "chapter_number": self.chapter_number, "iteration": self.state.get("iteration_count", 0), "draft_sha256": digest(content)}
         return f".saga/attempts/enrichment/{digest(canonical_bytes(identity))}.json"
 
@@ -406,10 +415,7 @@ class ChapterLifecycle:
         from core.langgraph.nodes.narrative_enrichment_node import EnrichmentCandidate
 
         content = EnrichmentCandidate.model_validate(candidate)
-        reference = self.state.get("draft_ref")
-        if not isinstance(reference, dict):
-            raise ValueError("Enrichment requires a draft reference")
-        draft = self._read_artifact(dict(reference)).decode("utf-8")
+        draft = self._enrichment_draft().decode("utf-8")
         for embedding in content.embeddings:
             embedding.validate_source(draft, self.chapter_number)
         return content.model_dump(mode="json")
