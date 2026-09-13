@@ -1,69 +1,46 @@
 # SAGA
 
-SAGA (Semantic And Graph-enhanced Authoring) is a **local-first**, single-user Python CLI for **AI-driven long-form fiction generation**. It uses:
+SAGA (Semantic And Graph-enhanced Authoring) turns a story premise into an outline,
+scene-by-scene drafts, and an exportable Markdown manuscript. It uses a Neo4j
+knowledge graph to track characters, events, and relationships, and LangGraph to
+checkpoint the writing workflow so you can resume an interrupted project.
 
-- **LangGraph** for workflow orchestration (checkpointed, resumable)
-- **Neo4j** as a persistent knowledge graph to store canon (characters, locations, relationships, events)
-- The local filesystem for human-readable artifacts and outputs
+SAGA is a local-first Python command-line application for one writer on one machine.
+There is no SAGA web server. You supply the text-generation, embedding, and Neo4j
+services; SAGA does not install or start them for you. Story text is sent to your
+configured model endpoints, so use local endpoints if it must stay on your machine.
 
-This is the maintained operational guide. Core philosophy: single machine, no SAGA
-web app or microservices (see [project constraints](docs/PROJECT_CONSTRAINTS.md)).
-Local Neo4j/Bolt and model HTTP processes are dependencies, not embedded Python databases.
+## Start here
 
-## For writers: what you get
+1. [Install the Python environment and spaCy pipeline](#installation).
+2. [Configure your model and database connections](#configuration).
+3. [Create a project, review its settings, and generate](#write-your-first-story).
+4. [Resume or export](#resume-and-export) using the exact project directory.
 
-SAGA's goal is to help you generate a novel while staying consistent with established story facts.
+Start with a short project before attempting a novel. Model calls can be slow and,
+with paid endpoints, expensive. Hardware requirements depend on the model server;
+the Python application does not bundle model weights or a GPU runtime.
 
-Running it produces (under `projects/{story_title}/`):
+## What to expect
 
-- Drafted and finalized chapters (`projects/{story_title}/chapters/`)
-- Chapter summaries (`projects/{story_title}/summaries/`)
-- Exportable compiled manuscript (`projects/{story_title}/exports/`)
-- Human-readable YAML artifacts (`projects/{story_title}/characters/`, `projects/{story_title}/world/`, `projects/{story_title}/outline/`)
-- Resumable workflow checkpoints (`projects/{story_title}/checkpoints/saga.db`)
+SAGA saves outlines, character/world files, chapter drafts, summaries, and workflow
+checkpoints under `projects/{story_title}/`. Export reads accepted manuscripts rather
+than unfinished drafts. Keep the project directory and its Neo4j data together.
 
-The intended design is: **your canon lives in Neo4j**, while **your artifacts live in files**, so you can inspect and version outputs easily.
+The repaired workflow has completed a real-model two-chapter, eight-scene project
+of about 6,700 words, including a source-repaired continuation, accepted export,
+and a fresh-process reopen without model replay or changes to accepted data.
+This was a bounded test, not evidence that every model or full-length novel works.
+It used an Ornith-1.5-35B-A3B model through llama.cpp and 1,024-dimensional
+`qwen3-embedding:0.6b` embeddings, not the placeholder models in `.env.example`.
 
-## Status: not production-ready
-
-SAGA currently has known critical issues and is **not production-ready**.
-
-Repair verification is source-level and synthetic unless explicitly stated otherwise.
-The locked Linux runtime has clean-install/dependency-check evidence, including a
-real `en_core_web_lg` 3.8.0 statistical pipeline with spaCy 3.8.7, installed from a retained local wheel.
-Disposable standalone Neo4j/APOC startup and synthetic-provider authoring through
-real graph/SQLite/files have been exercised. Original-data preservation and disposable
-restore verification are complete; they are not permission to access or reset originals.
-The configured-model drafting baseline covers four scenes and six AI-assessed quality
-dimensions, not human review or completed live full-workflow authoring. Optional
-author review is not a required signoff for that baseline.
-
-Writer command parsing and deterministic bootstrap/promotion/resume/export fixtures
-have been exercised offline. The `quick` entrypoint smoke covers failure propagation,
-not a successful novel. Narrative and embedding service/model selection is resolved;
-catalog/protocol checks do not prove full authoring. The retained real-service run
-`sampling-20260910T190220Z` extracted 15 relationships, discarded 13 at semantic
-admission, stored 2, and reached quality evaluation before a major contradiction.
-Revision rollback then failed because a node still had relationships. That run has
-no accepted export or completed fresh-process reopen. Its response 025 assesses
-earlier prose; it is not a new high-temperature draft. Source repairs and synthetic
-regressions are not evidence that this real-service gate has subsequently passed.
-Fresh hash-locked UV setup and the online spaCy 3.8.0 URL installation have been
-exercised in the canonical `.venv-runtime`, including dependency and statistical-load
-checks. The disposable standalone engine/APOC and configured 1,024-dimensional
-embedding path also have real read-back/reuse evidence. These do not prove completed
-live authoring. The optional Docker example is source-checked but unverified on this host;
-the supported tested engine setup here is the standalone alternative below.
-Do not infer that all commands below passed or that the repository is release-ready.
-
-Scene relationship extraction uses a provider JSON schema for the name-based
-`subject`, `predicate`, `object_entity`, `description` contract (at most 15 rows),
-not the outline catalog's stable-ID contract. Application admission independently
-rejects duplicate JSON keys, missing/extra fields and noncanonical predicates.
-This contract is scoped to relationship extraction, not free-prose drafting.
-A reachable endpoint or supported schema is not proof of a usable answer: empty
-final content must not be replaced by reasoning text, and incomplete extraction
-does not establish chapter acceptance, export or completed-project reopen.
+**Expect to edit the output.** AI review of that manuscript found repetition,
+chronology and arithmetic errors, and incomplete adherence to the premise.
+Automatic acceptance is not an editorial endorsement. Prose evaluation samples
+the first and last 4,000 characters of longer chapters rather than grading every
+line. The default author policy can accept with explicit exceptions; the example
+project's exceptions were graph-check cadence skips, not executed graph checks.
+See [quality acceptance](docs/quality-acceptance.md) for the policy details.
 
 ## Screenshots
 
@@ -71,19 +48,24 @@ Progress window (Rich CLI):
 
 ![SAGA Progress Window](SAGA.png)
 
-Example KG snapshot (5 chapters):
+Historical knowledge-graph example (five chapters, not a current quality benchmark):
 
 ![SAGA KG Visualization](SAGA-KG-Ch5.png)
 
-## Developer quickstart
+## Installation
 
 ### Prerequisites
 
-- Linux x86-64 with CPython **3.12.13** (pinned in `.python-version`; Ruff/Mypy target Python 3.12)
-- `uv` **0.11.21** for interpreter installation and dependency locking
-- A running Neo4j instance with compatible APOC (standalone or the optional Docker example below)
-- A local OpenAI-compatible LLM endpoint (for text generation)
-- A local embeddings endpoint
+- Linux x86-64; the verified runtime uses CPython **3.12.13** and `uv` **0.11.21**.
+- Neo4j with compatible APOC. The tested combination is Community **5.26.8**, its
+  bundled APOC core, and JDK **21**. See [database setup](#database-setup).
+- A text endpoint supporting OpenAI-compatible chat completions and JSON-schema
+  response formats, with enough context and output capacity for your settings.
+- An embedding endpoint supporting Ollama's `POST /api/embeddings` protocol.
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first, then
+open a shell in this repository. macOS, Windows, and other Python versions have
+not been verified.
 
 ### Setup
 
@@ -99,19 +81,18 @@ cp -n .env.example .env
 Edit your `.env` to match your local services (see `.env.example`).
 The copy command preserves an existing `.env`; never replace credentials on retry.
 
-Use a fresh destination for environment creation. Do not replace or delete an existing
-`.venv` while its recoverability is unresolved. The repair campaign uses its own
-runtime for frozen historical receipts. The finish coordinator also exercised the
-three UV commands in a new canonical `.venv-runtime`; the original `.venv` remains
-untouched. Interpreter assets and package caches were isolated from the original
-environment. Run from this checkout so imports do not resolve to an older editable
-installation. Environment setup alone does not qualify real-model authoring.
+Use a fresh `.venv-runtime` directory. If one already exists, activate that environment
+or choose a different destination rather than overwriting it. Run SAGA from the
+repository root so imports and relative project paths resolve to this checkout.
 
 `requirements.txt` is the direct-pin resolver input, not the supported installation
 command. `requirements.lock` pins and SHA-256-verifies the full Linux Python 3.12
 dependency closure, including pip, pytest/asyncio/coverage/timeout, Ruff, Mypy and
 aiofiles/PyYAML type stubs. It does not install SAGA as an editable package or install
 GPU libraries. Other platforms and Python versions are not verified.
+
+<details>
+<summary>For contributors: checking or updating the dependency lock</summary>
 
 To check or deliberately refresh the lock with the supported interpreter, constrain
 resolution to the existing lock so unchanged dependencies do not drift:
@@ -129,9 +110,10 @@ corresponding constraint change before resolving. Inspect the candidate, install
 into a separate fresh environment, then run `python -m pip check` and the runtime
 regressions before promoting it. A successful `pip check` alone does not prove imports
 work: spaCy 3.8.7 also requires the explicitly pinned Click compatibility dependency.
-The audit's `runtime-freeze.txt` is historical evidence, not an install manifest.
 
-### spaCy model setup (explicit, separate from the runtime lock)
+</details>
+
+### Install the spaCy language pipeline
 
 The default statistical pipeline is `en_core_web_lg`. The library lock does not include
 model weights, and CLI help does not require them. Install the compatible **3.8.0**
@@ -151,28 +133,23 @@ resource, not covered by the library lock's hashes; syncing only `requirements.l
 removes the optional model package. Do not run model download commands automatically
 at application startup or in unit fixtures. `SPACY_MODEL` selects a deliberately
 installed alternative; the small model does not provide the large model's vectors.
-The online URL installation, local-wheel alternative and real pipeline load have
-execution evidence. A retained wheel's transfer checksum is not independent upstream
-authentication.
 
-### Runtime verification
+This spaCy package handles language analysis; it is separate from both the text
+generation model and the embedding model served by your endpoints.
 
-Use the selected runtime's absolute interpreter path and an explicit `PYTHONPATH`
-pointing to the intended worktree. Run application checks from fresh synthetic
-working/output/cache directories, without personal `.env` files, and deny network
-and subprocess execution before importing SAGA. Offline environment flags alone
-are not a network boundary. The campaign runtime receipt supplies the denied-network
-harness and exact reusable commands; it accepts a selected worktree and a worker-local
-scratch parent, with no installs by consumers.
+## Database setup
 
-With pytest plugin autoload disabled, load entry-point names `-p asyncio -p pytest_cov
--p timeout` (not their module paths), so pytest can validate the required plugin
-distributions. `tests/test_runtime_dependencies.py` checks the declarations, hashed
-lock and a blank spaCy pipeline without downloading statistical models. Existing
-model-dependent spaCy cases require separate fixture/integration treatment; do not
-silently skip them or interpret the runtime smoke as a green full unit suite.
+Use a dedicated Neo4j database for each story. SAGA claims exclusive project
+ownership and will refuse an occupied or incompatible database. Do not point a
+first test at a database containing work you want to keep.
 
-### Start disposable Neo4j (standalone alternative)
+For real stories, configure persistent storage, keep authentication enabled, and
+test your backup/restore procedure. The examples below are disposable smoke-test
+setups, not durable deployments. You can skip them if you already have a suitable
+empty database with APOC enabled.
+
+<details>
+<summary>Standalone Neo4j smoke-test setup (verified engine combination)</summary>
 
 Docker is not required. The exercised standalone combination is Neo4j Community
 5.26.8, its bundled APOC core in `labs/`, and JDK 21. Reuse verified distributions
@@ -214,21 +191,22 @@ characters, not an existing credential). From the fresh directory:
 timeout --signal=TERM --kill-after=40s 1800s "${NEO4J_HOME:?}/bin/neo4j" console
 ```
 
-These variable-based shell commands and the literal `1800s` timeout wrapper have
-disposable startup, authenticated APOC and port-closure evidence. The smoke terminates
-the engine explicitly after readiness; its wrapper exit 124 records teardown, not
-successful authoring or exhaustion of the 30-minute allowance. Allow clean shutdown and verify the selected
-port closes before calling teardown complete. Never stop another engine or remove
-storage to resolve a collision. Do not use this trial recipe for an existing story.
+The timeout stops this disposable engine after 30 minutes; it is not suitable for
+a long authoring session. Exit 124 means the timeout expired, not that authoring
+succeeded. Allow clean shutdown and check that the selected port closes. Never
+stop another engine or remove storage to resolve a port collision.
 
 In a separate SAGA shell, select `NEO4J_URI=bolt://127.0.0.1:<unused-port>`,
 `NEO4J_USER=neo4j` and the same disposable password, with a fresh project/output/cache.
 Require authenticated Bolt/APOC/schema readiness before authoring; process existence
 is not readiness. HTTP/Browser is intentionally disabled. Real stories require
 operator-reviewed durable storage and a restore-tested backup. Neither this
-alternative nor earlier engine trials prove literal Docker command coverage.
+alternative nor its startup test establishes Docker compatibility.
 
-### Start disposable Neo4j (optional Docker example)
+</details>
+
+<details>
+<summary>Optional Docker Compose smoke-test setup (not execution-verified)</summary>
 
 The supplied Compose file is a **disposable example**, not a durable story deployment.
 It publishes Bolt on loopback only, disables HTTP/HTTPS, bounds heap/page cache and
@@ -236,11 +214,9 @@ processor use, and does not automatically restart. No host story directory is mo
 container/anonymous-volume storage is not a reviewed durable data or backup policy.
 Do not use it for real stories, remove an existing container, or occupy a live service
 port. Operator-reviewed durable storage and a restore-tested backup remain prerequisites.
-The following optional command requires a separately installed
-`docker-compose` executable and has not been exercised on this host. It is not the
-supported setup path for this host; use the tested standalone distribution above.
-The Compose file remains available for operators with an appropriately isolated
-Docker environment; no Docker installation or daemon change is required for SAGA.
+This optional example requires a separately installed `docker-compose` executable.
+Its configuration has source-level checks, but the Docker launch has not been
+execution-verified. Docker is not required by SAGA.
 From a fresh synthetic working directory, select an unused `SAGA_DISPOSABLE_BOLT_PORT`,
 set a disposable `NEO4J_PASSWORD` of at least eight characters, and set
 `COMPOSE_PROJECT_NAME` to a fresh unique synthetic name. Set `COMPOSE_FILE` to the
@@ -258,7 +234,12 @@ schema checks alone do not prove engine/APOC readiness or shutdown. The user is
 `neo4j`; configure SAGA with the same explicitly selected port/password. The
 application's `saga_password` placeholder is not a production credential.
 
-### Run SAGA's bootstrap mode with a high-level plot specification
+</details>
+
+## Write your first story
+
+Start the model and database services, configure `.env`, then ask SAGA to propose
+project metadata:
 
 ```bash
 python main.py bootstrap "A suspenseful thriller set inside a deep-sea facility at the bottom of the ocean"
@@ -270,14 +251,30 @@ directory already exists is rejected without overwriting it; choose a distinct t
 for a new project. An interrupted config publication can leave a reserved directory,
 but never authorizes overwriting it on retry.
 
-### Start SAGA's generation mode using the information from bootstrap mode
+Review `title`, `genre`, `theme`, `setting`, `protagonist_name`, `narrative_style`,
+`total_chapters`, and `target_word_count`. For a first run, choose a small chapter
+count and word target. Keep the JSON field names and types intact; chapter and word
+counts must be positive integers. Then accept that candidate and start generation:
 
 ```bash
 python main.py generate --project-dir "projects/{story_title}" --from-candidate
 ```
 
 `--from-candidate` validates and promotes only that project's candidate. It refuses
-to replace an existing `config.json`. For subsequent continuation, omit the flag:
+to replace an existing `config.json`. Replace `projects/{story_title}` in these
+commands with the actual path; the braces are placeholders.
+
+To accept the model's metadata without reviewing it first, use the shortcut:
+
+```bash
+python main.py quick "A suspenseful thriller set inside a deep-sea facility at the bottom of the ocean"
+```
+
+`quick` performs bootstrap and generation. It does not export the manuscript.
+
+## Resume and export
+
+Continue an existing project with the same command, omitting `--from-candidate`:
 
 ```bash
 python main.py generate --project-dir "projects/{story_title}"
@@ -291,19 +288,16 @@ is not necessarily a complete manuscript: the terminal summary reports the actua
 checksum-verified accepted chapter count. Failures exit 1 and cancellations exit 130;
 both can retain partial progress. Resume the same project, not a replacement project.
 
+`CHAPTERS_PER_RUN` defaults to 3, so longer projects may require multiple invocations.
+Read the accepted-chapter count in the terminal summary before exporting.
+
 Neo4j ownership is exclusive to one project per configured database. Keep that
 project's `graph-project-id`, files and checkpoints together. A copied identity is
 a restore of the same story, not a new story fork. A new title or directory is not
 permission to adopt an occupied or legacy database. Ownership/resume conflicts
 require reconciliation, not a reset or removal of the identity file.
 
-### SAGA can also be started directly with the high-level plot specification to auto-accept LLM choices
-
-```bash
-python main.py quick "A suspenseful thriller set inside a deep-sea facility at the bottom of the ocean"
-```
-
-### Export the complete accepted manuscript
+When every configured chapter is accepted:
 
 ```bash
 python main.py export --project-dir "projects/{story_title}"
@@ -326,8 +320,15 @@ future runs; active runs retain immutable snapshots. Settings import also create
 configured output/log paths, so maintenance probes must use a synthetic cwd/output
 and must not run inside an original story or with inherited private configuration.
 
-The public example uses the shipped `qwen3-a3b` model placeholder for every text role,
-not a claim that your endpoint offers it. Replace it with exact server model IDs.
+Copy [.env.example](.env.example) only for a new setup, then edit the connection
+values and model names. Never commit your real `.env` or include it in bug reports.
+Set `NEO4J_URI`, `NEO4J_USER`, and `NEO4J_PASSWORD` for your dedicated database;
+the example password is a placeholder, not a secure credential.
+
+The public example uses `qwen3-a3b` as a placeholder for every text role, not a claim
+that your endpoint offers it. Set **all four** of `LARGE_MODEL`, `MEDIUM_MODEL`,
+`SMALL_MODEL`, and `NARRATIVE_MODEL` to exact server model IDs. They may use the
+same installed model.
 `TEMPERATURE_OVERRIDE=1.0` overrides role-specific temperatures. The shipped provider
 wire flag is `STRUCTURED_OUTPUT_STRICT=False`; this does not disable Pydantic,
 JSON-schema, exact-ID or catalog admission. Context is 131072 tokens and the
@@ -354,7 +355,7 @@ describe every supported model. The explicitly supplied `qwen3-embedding:0.6b`
 service produces **1024** components. To choose it, set `EMBEDDING_MODEL` and
 `EMBEDDING_API_BASE` explicitly, with `EXPECTED_EMBEDDING_DIM=1024` and
 `NEO4J_VECTOR_DIMENSIONS=1024` together for a **new isolated database and cache**.
-Do not change shipped defaults, resize an old index, reuse a previous model's cache,
+Do not resize an old index, reuse a previous model's cache,
 or truncate/pad embeddings to make a different model fit. Existing story indexes
 and retained content must remain untouched by a new-model trial.
 
@@ -408,55 +409,25 @@ hand. Bootstrap first produces `config.candidate.json`; acceptance publishes
 `config.json`. Runtime logs follow `LOG_FILE` under `BASE_OUTPUT_DIR` (or console
 only in simple logging mode), not a guaranteed per-project `.saga/logs/` directory.
 
-## How it works (high level)
+## How it works
 
-SAGA uses a two-phase workflow:
+Initialization builds character sheets, an outline, and a catalog of story facts.
+Generation plans and drafts individual scenes with retrieved graph context, extracts
+entities and relationships, validates embeddings, and stages a chapter attempt.
+Consistency and prose checks feed revision or acceptance. Accepted manuscripts have
+checksum-bound receipts; summaries and graph maintenance support later chapters.
 
-### 1. Initialization Phase
-Runs once per project to establish the narrative foundation:
-- Generate character sheets for main characters
-- Create a global outline with act structure (3 or 5 acts)
-- Expand into detailed act outlines with chapter-level beats
-- Commit initialization to Neo4j knowledge graph
-- Persist artifacts as YAML/Markdown files
+Graph transactions, manuscript files, and SQLite checkpoints are separate storage
+boundaries. Recovery reconciles them rather than assuming one atomic write.
+Do not edit checkpoints or acceptance receipts to bypass a failure.
 
-### 2. Generation Loop (Chapter-by-Chapter)
-Repeats for each chapter:
+The default `QUALITY_ACCEPTANCE_POLICY=author` records permitted quality exceptions.
+Choose `strict` before starting a project to require passing narrative gates, and
+`QA_ACCEPTANCE_POLICY=mandatory` to require graph-quality checks instead of advisory
+cadence. Settings and acceptance policies are retained with the run; changing `.env`
+does not rewrite prior decisions. Neither policy guarantees factual or literary quality.
 
-1. **Chapter Planning**: Generate a detailed scene-by-scene outline
-2. **Scene-level Generation**:
-   - Plan scenes from the chapter outline
-   - Retrieve relevant context from Neo4j (characters, relationships, events)
-   - Generate prose for each scene individually
-3. **Extraction**: Extract entities and relationships from each scene, then consolidate
-4. **Embedding Generation**: Create and validate vector embeddings for scenes
-5. **Relationship Normalization**: Map extracted relationships to canonical types
-6. **Commit to Graph**: Stage the chapter attempt in Neo4j under lifecycle ownership
-7. **Validation**:
-   - Consistency checks (relationship validation, trait consistency, plot advancement)
-   - LLM-based quality evaluation (coherence, prose quality, pacing, tone)
-   - Contradiction detection (abrupt relationship changes, timeline issues)
-8. **Revision Loop**: On a recoverable rejection, revise and return to scene generation.
-   Failed/incomplete evaluation cannot become acceptance. Strict policy also rejects
-   exhausted low-quality revisions; author policy has explicit continuation rules.
-9. **Finalization**: Generate summary and publish checksum-bound accepted manuscript
-10. **Maintenance**: Graph healing and graph quality checks precede chapter advancement
-
-Graph transactions, manuscript publication and SQLite checkpoints are distinct
-persistence boundaries, not one cross-store atomic transaction. Recovery reconciles
-retained attempts/receipts with the native checkpoint. Do not patch a saved checkpoint
-to fit current configuration or treat compatibility chapter files as accepted canon.
-See [quality acceptance](docs/quality-acceptance.md) for the distinction between
-evaluated narrative quality and optional graph maintenance.
-
-### Key Features
-
-- **Scene-level generation**: Chapters are broken into scenes, each generated with relevant context from the knowledge graph
-- **Content externalization**: Large text blobs stored on disk via `ContentRef` to keep checkpoints lightweight
-- **Graph healing**: Automated maintenance to merge duplicates and enrich provisional nodes
-- **LLM-based quality evaluation**: Automatic scoring of coherence, prose quality, pacing, and tone
-- **Extended contradiction detection**: Relationship evolution checks and graph consistency validation
-- **Bootstrap capability**: Converts high-level prompts into structured project configurations via `python main.py bootstrap "A western about a robot sheriff"`, with optional review step before generation
+## For contributors
 
 ### Current source map
 
@@ -508,7 +479,7 @@ fields and labels settings-group factories without resolving private runtime val
 Its import still has the settings side effects described above. Retired reset/cleanup
 entrypoints remain explicit refusals, not working maintenance procedures.
 
-### Contributor checks
+### Tests and static checks
 
 See the [test boundary guide](tests/README.md), [AGENTS.md](AGENTS.md)
 and [CLAUDE.md](CLAUDE.md) for Python/pytest contributor conventions.
@@ -519,21 +490,18 @@ diagnostics are reported separately, not treated as maintained-code failures.
 With the locked runtime selected, run from the intended repository root:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider tests/test_operational_tools.py tests/test_writer_cli.py tests/core/langgraph/test_visualization.py
+PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider tests
 PYTHONDONTWRITEBYTECODE=1 python -m mypy .
 python -m ruff check --no-cache .
-python -m ruff format --check --no-cache .
 ```
 
 Pytest installs synthetic configuration and denies external I/O before application
-imports. The repair campaign additionally requires its launcher filesystem sandbox
-and OS-level network denial. Tests use disposable lane-local storage; they are not
-permission to open real stories, credentials, or a live graph. Test functions and
-files use pytest's `test_` / `test_*.py` discovery conventions.
+imports. Tests use temporary storage, not real stories or a live graph. CI should
+also deny network at the operating-system boundary. See the test guide for the
+separate startup matrix and explicitly provisioned integration cases.
 Ruff checks all configured `F`, `B`, `I`, and `UP` rules; a targeted `F` pass is not
-a full lint pass. Full Ruff and formatting currently have recorded debt. Keep
-maintained source/test diagnostics separate from frozen audit diagnostics; do not
-rewrite historical evidence or suppress active errors to report a green check.
+a full lint pass. Formatting is a separate check (`python -m ruff format --check .`);
+legacy formatting differences are not a reason to weaken lint or behavioral tests.
 
 ### Historical references
 
@@ -549,22 +517,25 @@ The frozen audit's original findings and counts are intentionally unchanged.
 
 ## Troubleshooting
 
-- Logs and debug artifacts:
-  - Check the configured `LOG_FILE`/console and `projects/{story_title}/.saga/content/`.
-- Retired destructive utilities:
-  - `reset_neo4j.py` rejects all reset requests before loading settings or connecting;
-    even the legacy `--force` option cannot enable it. Database-wide reset cannot
-    prove project scope or coordinate retained files/checkpoints. This is deliberately
-    not a functioning reset command, nor a resume repair.
-  - `cleanup.sh` exits 2 without deleting anything. Arbitrary cwd recursion and a
-    `__pycache__` name cannot prove ownership. Prevent new bytecode with
-    `PYTHONDONTWRITEBYTECODE=1`; use an independently reviewed, exact-target maintenance
-    procedure for existing caches rather than recursive project/environment deletion.
-- Neo4j connection failures:
-  - Confirm `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` match `.env.example`
+| Symptom | What to check |
+| --- | --- |
+| Connection refused or authentication failure | Start the intended service and check its URL and credentials in your `.env`. The example values are not your service configuration. |
+| Missing spaCy model | Install the separate language pipeline after syncing the library lock. |
+| Unknown text model or rejected structured output | Use the exact server model ID for every text role and a server supporting chat completions with JSON-schema responses. |
+| Embedding dimension or identity mismatch | Match the model, both dimension settings, and the database/cache created for that identity. Do not pad vectors or resize an existing story's index. |
+| Project ownership or checkpoint conflict | Confirm the selected project and database belong together. Preserve both and investigate the error rather than resetting either. |
+| Fewer accepted chapters than requested | Check the terminal summary, `CHAPTERS_PER_RUN`, and the logs; continue the same project. |
+| Export refuses missing or corrupt chapters | Complete or reconcile the project first. Export deliberately does not substitute draft files. |
+
+Logs go to the console and the configured `LOG_FILE` under `BASE_OUTPUT_DIR`.
+For a bug report, include the command, error, Python version, server/model versions,
+and relevant settings with credentials and private story content removed.
+
+`reset_neo4j.py` and `cleanup.sh` are retained refusal entrypoints: they do not reset
+databases or delete files, even with legacy flags. They are not recovery tools.
+Back up the complete project and matching graph before maintenance. A new folder
+name does not turn a copied graph identity into an independent story.
 
 ## License
 
-Apache-2.0 - See `LICENSE`.
-
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Lanerra/saga)
+Apache-2.0 - See [LICENSE](LICENSE).

@@ -118,3 +118,38 @@ def test_old_audits_are_explicitly_historical(path: str) -> None:
     first_lines = (ROOT / path).read_text(encoding="utf-8").splitlines()[:6]
     assert any("Historical" in line for line in first_lines)
 
+
+def test_readme_navigation_targets_exist() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    headings = re.findall(r"^#{1,6} (.+)$", readme, re.MULTILINE)
+    anchors = {re.sub(r"[^\w -]", "", heading.lower()).replace(" ", "-") for heading in headings}
+    links = re.findall(r"\]\(#([^)]+)\)", readme)
+    assert links
+    assert set(links) <= anchors
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'python main.py bootstrap "',
+        'python main.py generate --project-dir "projects/{story_title}" --from-candidate',
+        'python main.py generate --project-dir "projects/{story_title}"',
+        'python main.py export --project-dir "projects/{story_title}"',
+        'python main.py quick "',
+    ],
+)
+def test_readme_documents_explicit_writer_commands(command: str) -> None:
+    assert command in (ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def test_readme_separates_user_guidance_from_internal_repair_history() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert re.search(r"/(?:home|Users)/[^/\s]+/", readme) is None
+    assert ".saga-repair/" not in readme
+    assert re.search(r"sampling-\d{8}T\d{6}Z", readme) is None
+    assert "SAGA currently has known critical issues" not in readme
+    assert "Expect to edit the output" in readme
+    assert "POST /api/embeddings" in readme
+    assert "source-repaired continuation" in readme
+    assert "not execution-verified" in readme
+    assert readme.count("<details>") == readme.count("</details>")
