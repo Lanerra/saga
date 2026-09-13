@@ -16,25 +16,29 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from core.db_manager import Neo4jManagerSingleton
+from core.langgraph.chapter_lifecycle import ChapterLifecycle, canonical_bytes, extraction_binding
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.state import Contradiction, NarrativeState, create_initial_state
 from core.langgraph.state_helpers import clear_error_state
 from core.langgraph.workflow import create_checkpointer, create_full_workflow_graph
 from core.service_context import get_services
-from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from data_access.chapter_queries import build_chapter_upsert_statement
 from tests.fakes.service_context import patch_service
+from tests.test_langgraph.test_chapter_lifecycle import DriverExample, example_state
 
 
 @pytest.fixture(autouse=True)
-def revision_database(monkeypatch: pytest.MonkeyPatch) -> FakeNeo4jManager:
-    database = FakeNeo4jManager()
+def revision_database(monkeypatch: pytest.MonkeyPatch) -> Neo4jManagerSingleton:
+    monkeypatch.setattr(Neo4jManagerSingleton, "_instance", None)
+    database = Neo4jManagerSingleton()
     monkeypatch.setattr(get_services(), 'database', database)
     return database
 
 
 @pytest.fixture
-def sample_revision_state(tmp_path: Path) -> NarrativeState:
+async def sample_revision_state(tmp_path: Path, revision_database: Neo4jManagerSingleton) -> NarrativeState:
     project_dir = str(tmp_path / "test-project")
 
     state = create_initial_state(
@@ -50,6 +54,9 @@ def sample_revision_state(tmp_path: Path) -> NarrativeState:
         medium_model="test-model",
         revision_model="test-revision-model",
     )
+    state.update(example_state(Path(project_dir)))
+    state["project_id"] = "test-project"
+    state["total_chapters"] = 20
 
     content_manager = ContentManager(project_dir)
 
@@ -106,13 +113,17 @@ def sample_revision_state(tmp_path: Path) -> NarrativeState:
     state["max_iterations"] = 3
     state["needs_revision"] = True
 
-    state["scene_drafts_ref"] = {"path": "mock_scene_drafts.json"}
-    state["scene_embeddings_ref"] = {"path": "mock_scene_embeddings.json"}
-    state["draft_ref"] = {"path": "mock_draft.txt"}
-    state["embedding_ref"] = {"path": "mock_embedding.json"}
-    state["extracted_entities_ref"] = {"path": "mock_entities.json"}
-    state["extracted_relationships_ref"] = {"path": "mock_relationships.json"}
+    state["scene_embeddings_ref"] = content_manager.save_json([[0.1, 0.2]], "scene_embeddings", "chapter_1", 1)
+    state["embedding_ref"] = content_manager.save_json([0.1, 0.2], "embedding", "chapter_1", 1)
     state["generated_embedding"] = [0.1, 0.2]
+    assert state["scene_drafts_ref"] is not None
+    scenes = content_manager.load_list_of_texts(state["scene_drafts_ref"])
+    state["extraction_source"] = extraction_binding(state, scenes)
+    revision_database.bind_project(state["graph_project_id"])
+    revision_database.driver = cast(Any, DriverExample(state["graph_project_id"]))
+    lifecycle = ChapterLifecycle(state).stage()
+    await lifecycle.commit([build_chapter_upsert_statement(chapter_number=1, generation_status="committed", is_provisional=True)])
+    state.update(lifecycle.state_update("committed"))
 
     return state
 
@@ -176,14 +187,17 @@ async def test_revise_chapter_guidance_generation_failure_sets_fatal_error(
 
 
 class FailingRollbackDatabase:
-    def __init__(self) -> None:
-        self.batches: list[list[tuple[str, dict[str, Any]]]] = []
+    def __init__(self, database: Neo4jManagerSingleton, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.reads: list[tuple[str, Any]] = []
         self.fail = True
+        self.read = database.execute_read_query
+        monkeypatch.setattr(database, "execute_read_query", self.execute_read_query)
 
-    async def execute_cypher_batch(self, queries: list[tuple[str, dict[str, Any]]]) -> None:
-        self.batches.append(deepcopy(queries))
+    async def execute_read_query(self, query: str, parameters: Any = None) -> list[dict[str, Any]]:
+        self.reads.append((query, deepcopy(parameters)))
         if self.fail:
             raise RuntimeError("rollback acknowledgement lost")
+        return await self.read(query, parameters)
 
 
 @pytest.fixture
@@ -191,9 +205,7 @@ def rollback_failure_state(sample_revision_state: dict[str, Any]) -> dict[str, A
     assert Path(inspect.getfile(revise_chapter)).resolve() == Path(__file__).resolve().parents[2] / "core/langgraph/nodes/revision_node.py"
     state = sample_revision_state
     manager = ContentManager(state["project_dir"])
-    for key in ("scene_drafts_ref", "scene_embeddings_ref", "embedding_ref", "extracted_entities_ref", "extracted_relationships_ref"):
-        state[key] = manager.save_json({"rejected_attempt": key}, key.removesuffix("_ref"), "chapter_1", 1)
-    state["draft_ref"] = manager.save_text("Rejected draft evidence", "draft", "chapter_1", 1)
+
     state["revision_guidance_ref"] = manager.save_text("Prior guidance evidence", "revision_guidance", "chapter_1", 1)
     state["last_error"] = "Prior validation diagnostic"
     state["error_node"] = "validate"
@@ -203,10 +215,11 @@ def rollback_failure_state(sample_revision_state: dict[str, Any]) -> dict[str, A
 
 @pytest.mark.asyncio
 async def test_failed_rollback_preserves_evidence_and_blocks_direct_retry(
-    rollback_failure_state: dict[str, Any], monkeypatch: pytest.MonkeyPatch, mock_llm_guidance: AsyncMock
+    rollback_failure_state: dict[str, Any], monkeypatch: pytest.MonkeyPatch, mock_llm_guidance: AsyncMock, revision_database: Neo4jManagerSingleton,
 ) -> None:
-    database = FailingRollbackDatabase()
-    monkeypatch.setattr(get_services(), 'database', database)
+    database = FailingRollbackDatabase(revision_database, monkeypatch)
+    driver = cast(DriverExample, revision_database.driver)
+    graph_before = deepcopy((driver.nodes, driver.edges, driver.receipts, driver.writes, driver.commits))
     original = deepcopy({key: dict(value) if key.endswith("_ref") and value is not None else value for key, value in rollback_failure_state.items()})
     result = await revise_chapter(cast(NarrativeState, rollback_failure_state))
 
@@ -226,18 +239,27 @@ async def test_failed_rollback_preserves_evidence_and_blocks_direct_retry(
         "current_node": "revise_blocked",
     }
     blocked = {**original, **result}
-    database.fail = False
-    for retry_controls in ({}, clear_error_state(), {"force_continue": True, "iteration_count": 3}):
+    for retry_controls in ({}, clear_error_state(), {"force_continue": True}):
         retried = await revise_chapter(cast(NarrativeState, {**blocked, **retry_controls}))
-        assert retried == {
-            "last_error": result["last_error"],
-            "has_fatal_error": True,
-            "error_node": "revise",
-            "current_node": "revise_blocked",
-        }
-    assert len(database.batches) == 1
-    assert [parameters for _, parameters in database.batches[0]] == [{"chapter": 1}] * 4
+        expected = deepcopy(result)
+        assert expected["revision_rollback_failure"] is not None
+        expected["revision_rollback_failure"]["previous_error"] = retry_controls.get("last_error", blocked["last_error"])
+        expected["revision_rollback_failure"]["previous_error_node"] = retry_controls.get("error_node", blocked["error_node"])
+        assert retried == expected
+    assert len(database.reads) == 4
+    assert (driver.nodes, driver.edges, driver.receipts, driver.writes, driver.commits) == graph_before
     assert mock_llm_guidance.async_call_llm.call_count == 0
+    database.fail = False
+    recovered = await revise_chapter(cast(NarrativeState, blocked))
+    assert recovered["has_fatal_error"] is False
+    assert recovered["revision_rollback_failure"] is None
+    assert recovered["iteration_count"] == 1
+    assert driver.commits == 2
+    assert driver.chapters == [{"status": "planned", "attempt_id": None}]
+    assert mock_llm_guidance.async_call_llm.call_count == 1
+    assert await revise_chapter(cast(NarrativeState, blocked)) == recovered
+    assert driver.commits == 2
+    assert mock_llm_guidance.async_call_llm.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -248,9 +270,11 @@ async def test_failed_rollback_stays_blocked_across_sqlite_reopen_and_workflow_r
     monkeypatch: pytest.MonkeyPatch,
     mock_llm_guidance: AsyncMock,
     clear_transient_errors: bool,
+    revision_database: Neo4jManagerSingleton,
 ) -> None:
-    database = FailingRollbackDatabase()
-    monkeypatch.setattr(get_services(), 'database', database)
+    database = FailingRollbackDatabase(revision_database, monkeypatch)
+    driver = cast(DriverExample, revision_database.driver)
+    graph_before = deepcopy((driver.nodes, driver.edges, driver.receipts, driver.writes, driver.commits))
     project = Path(rollback_failure_state["project_dir"])
     artifact_bytes = {str(path.relative_to(project)): path.read_bytes() for path in project.rglob("*") if path.is_file()}
     configuration = {"configurable": {"thread_id": "rollback-recovery"}}
@@ -293,6 +317,11 @@ async def test_failed_rollback_stays_blocked_across_sqlite_reopen_and_workflow_r
             if key not in {"has_fatal_error", "last_error", "error_node", "current_node", "force_continue", "revision_rollback_failure"}:
                 assert final[key] == value
 
-    assert len(database.batches) == 1
+    assert len(database.reads) == 1
+    assert (driver.nodes, driver.edges, driver.receipts, driver.writes, driver.commits) == graph_before
     assert mock_llm_guidance.async_call_llm.call_count == 0
-    assert {str(path.relative_to(project)): path.read_bytes() for path in project.rglob("*") if path.is_file()} == artifact_bytes
+    lifecycle = ChapterLifecycle(cast(NarrativeState, rollback_failure_state)).stage()
+    expected_marker = canonical_bytes({"schema_version": 1, "attempt_id": lifecycle.manifest.attempt_id, "phase": "compensation_required"})
+    assert {str(path.relative_to(project)): path.read_bytes() for path in project.rglob("*") if path.is_file()} == {
+        **artifact_bytes, lifecycle.phase_path("compensation_required"): expected_marker,
+    }

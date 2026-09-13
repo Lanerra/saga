@@ -5,17 +5,21 @@ from uuid import UUID
 import pytest
 from neo4j import Driver
 
+import config
 from core.db_manager import Neo4jManagerSingleton
 from core.exceptions import DatabaseConnectionError
 from core.service_context import get_services
 
 
 class RecordingTransaction:
-    def __init__(self) -> None:
+    def __init__(self, expected_query: str | None = None) -> None:
         self.queries: list[str] = []
+        self.expected_query = expected_query
 
     def run(self, query: str, parameters: Any = None) -> list[Any]:
         self.queries.append(query)
+        if self.expected_query is None or " ".join(query.split()) != " ".join(self.expected_query.split()):
+            raise AssertionError(f"Unconfigured ownership test query: {query}")
         return []
 
     def commit(self) -> None:
@@ -124,6 +128,45 @@ async def test_metadata_cache_rejects_restored_owner_mismatch(operation: str) ->
             await manager.has_property_key("name")
 
 
+CHARACTER_READ = """
+MATCH (c:Character {IDENTITY})
+// Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
+OPTIONAL MATCH (c)-[r]->(target)
+WITH c, collect( DISTINCT CASE
+WHEN coalesce(r.source_profile_managed, false) = true
+AND ( $include_provisional = TRUE OR coalesce(r.is_provisional, FALSE) = FALSE )
+THEN { target_name: target.name, rel_type: type(r), rel_props: properties(r) }
+END ) AS relationships_raw
+RETURN c, coalesce(c.traits, []) AS traits,
+[rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
+"""
+CACHE_READ_QUERIES = {
+    "get_character_profile_by_name": CHARACTER_READ.replace("IDENTITY", "name: $name"),
+    "get_character_profile_by_id": CHARACTER_READ.replace("IDENTITY", "id: $character_id"),
+    "get_world_item_by_id": "MATCH (we {id: $id}) WHERE (we:Location OR we:Item OR we:Event) AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE) RETURN we",
+    "query_kg_from_db": """
+        MATCH (s)-[r]->(o) WHERE s.name = $subject_param AND coalesce(r.is_provisional, FALSE) = FALSE
+        RETURN s.name AS subject, type(r) AS predicate,
+        CASE WHEN o:ValueNode THEN o.value ELSE o.name END AS object,
+        CASE WHEN o:ValueNode THEN 'Literal' ELSE labels(o)[0] END AS object_type,
+        coalesce(r.chapter_added, -1) AS chapter_added, coalesce(r.confidence, 0.0) AS confidence,
+        coalesce(r.is_provisional, FALSE) AS is_provisional
+        ORDER BY coalesce(r.chapter_added, -1) DESC, coalesce(r.confidence, 0.0) DESC
+    """,
+    "get_novel_info_property_from_db": "MATCH (ni:NovelInfo {id: $novel_id_param}) RETURN ni.theme AS value",
+    "get_plot_outline_from_db": """
+        MATCH (ni:NovelInfo {id: $novel_id_param})
+        WITH apoc.map.removeKeys(properties(ni), ["id", "created_ts", "updated_ts"]) AS base
+        WITH base, [k IN keys(base) WHERE k ENDS WITH "_json"] AS json_keys
+        WITH apoc.map.removeKeys(base, json_keys) AS primitives,
+        apoc.map.fromPairs( [ k IN json_keys | [ substring(k, 0, size(k) - 5),
+        CASE WHEN base[k] STARTS WITH "[" THEN apoc.convert.fromJsonList(base[k])
+        ELSE apoc.convert.fromJsonMap(base[k]) END ] ] ) AS decoded
+        RETURN apoc.map.merge(primitives, decoded) AS plot_data
+    """,
+}
+
+
 @pytest.mark.parametrize("module_name,function_name,arguments", [
     ("character_queries", "get_character_profile_by_name", ("Missing",)),
     ("character_queries", "get_character_profile_by_id", ("missing-character",)),
@@ -140,7 +183,7 @@ async def test_cached_graph_reads_reject_owner_change(module_name: str, function
     manager = isolated_manager()
     manager.bind_project(PROJECT_ID)
     driver = OwnershipDriver()
-    driver.transaction.payload = RecordingTransaction()
+    driver.transaction.payload = RecordingTransaction(CACHE_READ_QUERIES[function_name])
     manager.driver = cast(Driver, driver)
     module = import_module(f"data_access.{module_name}")
     monkeypatch.setattr(get_services(), 'database', manager)
@@ -154,16 +197,21 @@ async def test_cached_graph_reads_reject_owner_change(module_name: str, function
     function.cache_clear()
 
 
-async def test_close_retains_binding_and_rejects_target_change(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_close_retains_binding_and_rejects_target_change() -> None:
     from tests.fakes.graph_ownership import PROJECT_ID
 
     manager = isolated_manager()
     manager.bind_project(PROJECT_ID)
     await manager.close()
     assert manager.require_project_binding() == PROJECT_ID
-    monkeypatch.setattr("config.NEO4J_DATABASE", "other-story")
-    with pytest.raises(DatabaseConnectionError, match="target changed"):
-        await manager.execute_read_query("MATCH (n) RETURN n")
+    effective = config.snapshot_settings()
+    changed = type(effective).model_validate({**{name: getattr(effective, name) for name in type(effective).model_fields}, "NEO4J_DATABASE": "other-story"})
+    with config.bind_settings(changed):
+        assert config.snapshot_settings() is changed
+        with pytest.raises(DatabaseConnectionError, match="target changed"):
+            await manager.execute_read_query("MATCH (n) RETURN n")
+    assert config.snapshot_settings() is effective
+    assert manager.require_project_binding() == PROJECT_ID
 
 
 @pytest.mark.parametrize("identity", ["", "Same Story", "11111111-1111-4111-8111-11111111111A"])

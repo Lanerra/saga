@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -46,10 +47,10 @@ async def phase(name: str, directory: Path) -> None:
     from tests.test_langgraph.test_chapter_lifecycle import DriverExample, Rows, TransactionExample, example_state
 
     class ProcessTransaction(TransactionExample):
-        def run(self, query: str, parameters: Any = None) -> Rows:
-            if "c.number AS chapter_number" in query:
-                return Rows([{"chapter_number": 1, "generation_status": item["status"], "is_provisional": False} for item in self.chapters])
-            return super().run(query, parameters)
+        def run(self, query: str, parameters: Any = None, **keywords: Any) -> Rows:
+            if " ".join(query.split()) == "MATCH (c:Chapter) RETURN c.number AS chapter_number, c.generation_status AS generation_status, c.is_provisional AS is_provisional":
+                return Rows([{"chapter_number": node["properties"]["number"], "generation_status": node["properties"].get("generation_status"), "is_provisional": node["properties"].get("is_provisional")} for node in self.nodes.values() if "Chapter" in node["labels"]])
+            return super().run(query, parameters, **keywords)
 
     class ProcessDriver(DriverExample):
         def begin_transaction(self) -> ProcessTransaction:
@@ -64,7 +65,8 @@ async def phase(name: str, directory: Path) -> None:
         provider_calls.append(request.method)
         raise AssertionError(f"Unexpected provider call: {request.method}")
 
-    configuration = config.snapshot_settings().model_copy(update={"ENABLE_QA_CHECKS": False})
+    effective = config.snapshot_settings()
+    configuration = type(effective).model_validate({**{name: getattr(effective, name) for name in type(effective).model_fields}, "ENABLE_QA_CHECKS": False})
     with config.bind_settings(configuration):
         language_model = create_llm_service(HTTPClientService(client=httpx.AsyncClient(transport=httpx.MockTransport(provider_request))))
         database = Neo4jManagerSingleton()
@@ -85,7 +87,10 @@ async def phase(name: str, directory: Path) -> None:
                 persisted = json.loads((directory / "synthetic-graph.json").read_text())
                 driver = ProcessDriver(persisted["project_id"])
                 driver.receipts = persisted["receipts"]
-                driver.chapters = persisted["chapters"]
+                driver.nodes = persisted["nodes"]
+                driver.edges = persisted["edges"]
+                assert driver.nodes and driver.edges
+                assert driver.receipts and all(row["compensation"] and row["compensation_sha256"] for row in driver.receipts.values())
                 driver.writes = persisted["writes"]
                 driver.commits = persisted["commits"]
             database.bind_project(driver.project_id)
@@ -115,12 +120,13 @@ async def phase(name: str, directory: Path) -> None:
                     assert (await graph.aget_state(saved)).next == ("finalize",)
                     assert (await graph.aget_state(graph_configuration)).values["current_node"] == "finalize"
                     (directory / "synthetic-graph.json").write_text(json.dumps({
-                        "project_id": driver.project_id, "receipts": driver.receipts, "chapters": driver.chapters,
+                        "project_id": driver.project_id, "receipts": driver.receipts, "nodes": driver.nodes, "edges": driver.edges,
                         "writes": driver.writes, "commits": driver.commits,
                     }))
                     (directory / "seed-files.json").write_text(json.dumps(file_identities(directory)))
                 else:
                     before_writes = list(driver.writes)
+                    before_graph = deepcopy((driver.nodes, driver.edges, driver.receipts))
                     before_snapshot = await graph.aget_state(graph_configuration)
                     orchestrator = LangGraphOrchestrator(project_dir=directory)
                     state = await orchestrator._load_state_for_run(graph=graph, requested_project_id="synthetic", thread_id="saga_synthetic", narrative_config=None)
@@ -129,6 +135,7 @@ async def phase(name: str, directory: Path) -> None:
                     assert snapshot.next == snapshot.tasks == ()
                     assert snapshot.values["current_node"] == "check_quality"
                     assert driver.writes == before_writes
+                    assert (driver.nodes, driver.edges, driver.receipts) == before_graph
                     assert driver.commits == 2
                     output = generate_full_export(directory, expected_chapters=1)
                     assert output.read_bytes() == b"A synthetic traveler returns.\\n\nUnicode: \xe9\x9b\xa8\n"

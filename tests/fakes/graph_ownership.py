@@ -5,6 +5,7 @@ from core.graph_ownership import OWNER_CONSTRAINT_QUERY, OWNER_INDEX_QUERY, OWNE
 from tests.fakes.schema_catalog import schema_catalog
 
 PROJECT_ID = "11111111-1111-4111-8111-111111111111"
+OWNER_LOCK_QUERY = "MATCH (owner:SagaGraphOwner {key: 'exclusive', project_id: $project_id}) SET owner.version = owner.version"
 
 
 class OwnershipRows(list[dict[str, Any]]):
@@ -28,6 +29,9 @@ class OwnershipTransaction:
             return OwnershipRows([])
         if query == OWNER_QUERY:
             return OwnershipRows([{"key": "exclusive", "project_id": self.owner, "version": 1}])
+        if query == OWNER_LOCK_QUERY:
+            assert parameters == {"project_id": self.owner}
+            return OwnershipRows()
         if query == "RETURN 1 AS ownership_verified":
             return [{"ownership_verified": 1}]
         if self.payload is not None:

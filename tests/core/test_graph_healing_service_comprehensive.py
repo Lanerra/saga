@@ -1,12 +1,18 @@
 # tests/core/test_graph_healing_service_comprehensive.py
 """Comprehensive tests for GraphHealingService."""
 
+from copy import deepcopy
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
 
+from core.db_manager import Neo4jManagerSingleton
 from core.graph_healing_service import GraphHealingService
+from core.service_context import get_services
+from tests.fakes.graph_ownership import PROJECT_ID
 from tests.fakes.service_context import patch_service
+from tests.test_langgraph.test_chapter_lifecycle import DriverExample
 
 
 class TestGraphHealingServiceNodeIdentification:
@@ -374,59 +380,41 @@ class TestGraphHealingServiceDeduplication:
 
 
 class TestGraphHealingServiceOrphanCleanup:
-    """Test orphaned node cleanup functionality."""
+    """Age is a reconciliation signal, not ownership permitting deletion."""
+
+    @pytest.fixture
+    def orphan_graph(self, monkeypatch: pytest.MonkeyPatch) -> DriverExample:
+        monkeypatch.setattr(Neo4jManagerSingleton, "_instance", None)
+        database = Neo4jManagerSingleton()
+        database.bind_project(PROJECT_ID)
+        driver = DriverExample(PROJECT_ID)
+        driver.nodes["chapter-1"]["properties"]["created_chapter"] = 1
+        for identity, chapter, provisional in (("old", 1, True), ("recent", 4, True), ("accepted", 1, False)):
+            driver.nodes[identity] = {
+                "element_id": identity, "labels": ["Character"],
+                "properties": {"id": identity, "name": identity.title(), "created_chapter": chapter, "is_provisional": provisional},
+            }
+        database.driver = cast(Any, driver)
+        monkeypatch.setattr(get_services(), "database", database)
+        return driver
 
     @pytest.mark.asyncio
-    async def test_cleanup_orphaned_nodes_removes_old_orphans(self) -> None:
-        """Test that cleanup_orphaned_nodes removes old orphaned nodes."""
+    async def test_cleanup_orphaned_nodes_reports_old_orphans(self, orphan_graph: DriverExample) -> None:
         service = GraphHealingService()
-
-        with patch_service('database.execute_read_query') as mock_query:
-            with patch_service('database.execute_write_query') as mock_write:
-                mock_query.return_value = [
-                    {
-                        "element_id": "neo4j-element-1",
-                        "name": "Orphan Entity",
-                        "type": "Character",
-                        "created_chapter": 1,
-                    }
-                ]
-                mock_write.return_value = [{"deleted_count": 1}]
-
-                result = await service.cleanup_orphaned_nodes(current_chapter=5)
-
-                assert isinstance(result, dict)
-                assert result["nodes_removed"] == 1
-                assert result["nodes_checked"] == 1
+        before = deepcopy(orphan_graph.__dict__)
+        result = await service.cleanup_orphaned_nodes(current_chapter=5)
+        assert result == {"nodes_removed": 0, "nodes_checked": 1, "nodes_requiring_reconciliation": 1}
+        assert orphan_graph.__dict__ == before
 
     @pytest.mark.asyncio
-    async def test_cleanup_orphaned_nodes_preserves_recent(self) -> None:
-        """Test that cleanup_orphaned_nodes preserves recent orphaned nodes."""
+    async def test_cleanup_orphaned_nodes_preserves_recent(self, orphan_graph: DriverExample) -> None:
         service = GraphHealingService()
-
-        with patch_service('database.execute_read_query') as mock_read:
-            with patch_service('database.execute_write_query') as mock_write:
-
-                def mock_query_side_effect(query: str, params: dict[str, object] | None = None) -> list[dict[str, object]]:
-                    if params and params.get("cutoff_chapter") == 2:
-                        return [
-                            {
-                                "element_id": "neo4j-element-1",
-                                "name": "Old Entity",
-                                "type": "Character",
-                                "created_chapter": 1,
-                            }
-                        ]
-                    return []
-
-                mock_read.side_effect = mock_query_side_effect
-                mock_write.return_value = [{"deleted_count": 1}]
-
-                result = await service.cleanup_orphaned_nodes(current_chapter=5)
-
-                assert isinstance(result, dict)
-                assert result["nodes_removed"] == 1
-                assert result["nodes_checked"] == 1
+        before = deepcopy(orphan_graph.__dict__)
+        assert await service.cleanup_orphaned_nodes(current_chapter=3) == {"nodes_removed": 0, "nodes_checked": 0, "nodes_requiring_reconciliation": 0}
+        assert await service.cleanup_orphaned_nodes(current_chapter=4) == {"nodes_removed": 0, "nodes_checked": 1, "nodes_requiring_reconciliation": 1}
+        assert await service.cleanup_orphaned_nodes(current_chapter=6) == {"nodes_removed": 0, "nodes_checked": 1, "nodes_requiring_reconciliation": 1}
+        assert await service.cleanup_orphaned_nodes(current_chapter=7) == {"nodes_removed": 0, "nodes_checked": 2, "nodes_requiring_reconciliation": 2}
+        assert orphan_graph.__dict__ == before
 
 
 class TestGraphHealingServiceIntegration:

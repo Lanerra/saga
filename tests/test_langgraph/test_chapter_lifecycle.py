@@ -11,8 +11,9 @@ from structlog.testing import capture_logs
 
 from core.db_manager import neo4j_manager
 from core.exceptions import WorkflowExecutionError
+from core.graph_migration import EDGE_SNAPSHOT_QUERY, NODE_SNAPSHOT_QUERY
 from core.graph_ownership import OWNER_QUERY, load_graph_project_id
-from core.langgraph.chapter_lifecycle import ATTEMPT_QUERY, CHAPTER_QUERY, CREATE_ATTEMPT, UPDATE_ATTEMPT, ChapterLifecycle, extraction_binding
+from core.langgraph.chapter_lifecycle import ATTEMPT_QUERY, CHAPTER_QUERY, CREATE_ATTEMPT, STORE_COMPENSATION, UPDATE_ATTEMPT, ChapterLifecycle, extraction_binding
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.finalize_node import finalize_chapter
@@ -21,7 +22,10 @@ from core.langgraph.state import NarrativeState
 from core.langgraph.workflow import advance_chapter, create_checkpointer
 from core.service_context import get_services
 from data_access import character_queries, kg_queries, world_queries
+from data_access.chapter_queries import build_chapter_upsert_statement, compute_chapter_id
+from data_access.cypher_builders import graph_compensation as compensation
 from orchestration.langgraph_orchestrator import LangGraphOrchestrator
+from tests.fakes.graph_ownership import OWNER_LOCK_QUERY
 from tests.fakes.quality import example_quality_state
 from tests.fakes.schema_catalog import schema_catalog
 from utils.file_io import ContainedFiles
@@ -86,38 +90,107 @@ class TransactionExample:
     def __init__(self, driver: "DriverExample") -> None:
         self.driver = driver
         self.receipts = deepcopy(driver.receipts)
-        self.chapters = deepcopy(driver.chapters)
+        self.nodes = deepcopy(driver.nodes)
+        self.edges = deepcopy(driver.edges)
         self.statements: list[str] = []
         self.is_closed = False
 
-    def run(self, query: str, parameters: Any = None) -> Rows:
+    def run(self, query: str, parameters: Any = None, **keywords: Any) -> Rows:
+        if keywords:
+            parameters = {**(parameters or {}), **keywords}
         catalog = schema_catalog()
         if query in catalog:
             return Rows(catalog[query])
         if query == OWNER_QUERY:
             return Rows([{"key": "exclusive", "project_id": self.driver.project_id, "version": 1}])
+        if query == OWNER_LOCK_QUERY:
+            assert parameters == {"project_id": self.driver.project_id}
+            return Rows()
+        if query == NODE_SNAPSHOT_QUERY:
+            return Rows(deepcopy(list(self.nodes.values())))
+        if query == EDGE_SNAPSHOT_QUERY:
+            return Rows(deepcopy(list(self.edges.values())))
+        if " ".join(query.split()) == "MATCH (n) WHERE n:Character OR n:Location OR n:Event OR n:Item RETURN DISTINCT toLower(n.name) AS name":
+            names = {node["properties"].get("name") for node in self.nodes.values() if set(node["labels"]) & {"Character", "Location", "Event", "Item"}}
+            return Rows([{"name": name.lower() if name is not None else None} for name in names])
+        if " ".join(query.split()) == "MATCH (n) WHERE n.is_provisional = true AND NOT (n)-[]-() AND n.created_chapter IS NOT NULL AND n.created_chapter <= $cutoff_chapter RETURN elementId(n) AS element_id, n.name AS name, labels(n)[0] AS type, n.created_chapter AS created_chapter":
+            return Rows([
+                {"element_id": identity, "name": node["properties"].get("name"), "type": node["labels"][0], "created_chapter": node["properties"]["created_chapter"]}
+                for identity, node in self.nodes.items()
+                if node["properties"].get("is_provisional") is True
+                and node["properties"].get("created_chapter") is not None
+                and node["properties"]["created_chapter"] <= parameters["cutoff_chapter"]
+                and all(identity not in (edge["source"], edge["target"]) for edge in self.edges.values())
+            ])
         if query == ATTEMPT_QUERY:
-            return Rows(list(self.receipts.values()))
+            return Rows(deepcopy([row for row in self.receipts.values() if row["project_id"] == parameters["project_id"] and row["chapter_number"] == parameters["chapter_number"]]))
         if query == CHAPTER_QUERY:
-            return Rows(self.chapters)
+            return Rows([
+                {"status": node["properties"].get("generation_status"), "attempt_id": node["properties"].get("attempt_id")}
+                for node in self.nodes.values() if "Chapter" in node["labels"] and node["properties"]["number"] == parameters["chapter_number"]
+            ])
         if query == CREATE_ATTEMPT:
+            assert parameters["attempt_id"] not in self.receipts
             self.receipts[parameters["attempt_id"]] = {
                 "id": parameters["attempt_id"],
+                "project_id": parameters["project_id"],
+                "chapter_number": parameters["chapter_number"],
                 "manifest": parameters["manifest"],
                 "phase": "committed",
                 "acceptance": None,
             }
-            self.chapters = [{"status": "committed", "attempt_id": parameters["attempt_id"]}]
+            for node in self.nodes.values():
+                if "Chapter" in node["labels"] and node["properties"]["number"] == parameters["chapter_number"]:
+                    node["properties"].update(attempt_id=parameters["attempt_id"], graph_project_id=parameters["project_id"])
+        elif query == STORE_COMPENSATION:
+            receipt = self.receipts[parameters["attempt_id"]]
+            assert receipt["project_id"] == parameters["project_id"]
+            receipt.update(compensation=parameters["compensation"], compensation_sha256=parameters["compensation_sha256"])
         elif query == UPDATE_ATTEMPT:
             self.receipts[parameters["attempt_id"]].update(phase=parameters["phase"], acceptance=parameters["acceptance"])
-        elif "MERGE (c:Chapter" in query:
-            self.chapters = [{"status": parameters["generation_status_param"], "attempt_id": self.chapters[0]["attempt_id"] if self.chapters else None}]
-        elif query.strip().startswith("MATCH (ch:Chapter") and "DELETE r, ch" in query:
-            self.chapters = []
-        elif "DELETE r" in query or "SET e.is_provisional" in query:
-            pass
-        elif "RETURN" in query and ("name" in query or "labels" in query):
-            return Rows()
+        elif " ".join(query.split()) == "MATCH ()-[r]->() WHERE r.chapter_added = $chapter AND r.assertion_origin IN ['chapter_extraction', 'chapter_profile'] DELETE r":
+            self.edges = {
+                identity: edge for identity, edge in self.edges.items()
+                if not (edge["properties"].get("chapter_added") == parameters["chapter"] and edge["properties"].get("assertion_origin") in {"chapter_extraction", "chapter_profile"})
+            }
+        elif query == build_chapter_upsert_statement(chapter_number=1)[0]:
+            number = parameters["chapter_number_param"]
+            matches = [node for node in self.nodes.values() if "Chapter" in node["labels"] and node["properties"]["number"] == number]
+            assert len(matches) <= 1
+            if matches:
+                node = matches[0]
+            else:
+                identity = f"chapter-{number}"
+                assert identity not in self.nodes
+                node = {"element_id": identity, "labels": ["Chapter"], "properties": {"number": number, "created_ts": self.driver.commits, "generation_status": "staged"}}
+                self.nodes[identity] = node
+            properties = node["properties"]
+            for field in ("id", "title", "act_number"):
+                parameter = "chapter_id_param" if field == "id" else f"{field}_param"
+                if properties.get(field) is None and parameters[parameter] is not None:
+                    properties[field] = deepcopy(parameters[parameter])
+            properties.update(created_chapter=number, updated_ts=self.driver.commits)
+            for field in ("summary", "is_provisional", "generation_status", "embedding_vector", "embedding_model", "embedding_identity"):
+                if parameters[f"{field}_param"] is not None:
+                    properties[field] = deepcopy(parameters[f"{field}_param"])
+        elif query == compensation.DELETE_EDGE:
+            del self.edges[parameters["element_id"]]
+        elif query == compensation.DELETE_NODE:
+            identity = parameters["element_id"]
+            assert all(identity not in (edge["source"], edge["target"]) for edge in self.edges.values())
+            del self.nodes[identity]
+        elif query == compensation.RESTORE_NODE:
+            self.nodes[parameters["element_id"]]["properties"] = deepcopy(parameters["properties"])
+        elif query == compensation.RESTORE_EDGE:
+            self.edges[parameters["element_id"]]["properties"] = deepcopy(parameters["properties"])
+        elif query == compensation.CREATE_EDGE:
+            assert parameters["source"] in self.nodes and parameters["target"] in self.nodes
+            identity = f"restored-{len(self.edges)}"
+            while identity in self.edges:
+                identity += "-next"
+            self.edges[identity] = {"element_id": identity, **deepcopy(parameters)}
+            self.statements.append(query)
+            return Rows([{"element_id": identity}])
         else:
             raise AssertionError(f"Unimplemented synthetic query: {query}")
         self.statements.append(query)
@@ -128,7 +201,8 @@ class TransactionExample:
             self.driver.failure = ""
             raise RuntimeError("interrupted before commit")
         self.driver.receipts = self.receipts
-        self.driver.chapters = self.chapters
+        self.driver.nodes = self.nodes
+        self.driver.edges = self.edges
         self.driver.writes.extend(self.statements)
         self.driver.commits += 1
         self.is_closed = True
@@ -147,10 +221,20 @@ class DriverExample:
     def __init__(self, project_id: str) -> None:
         self.project_id = project_id
         self.receipts: dict[str, dict[str, Any]] = {}
-        self.chapters: list[dict[str, Any]] = []
+        self.nodes: dict[str, dict[str, Any]] = {
+            "chapter-1": {"element_id": "chapter-1", "labels": ["Chapter"], "properties": {"id": compute_chapter_id(1), "number": 1, "generation_status": "planned", "title": "Connected plan", "is_provisional": True}},
+            "scene-1": {"element_id": "scene-1", "labels": ["Scene"], "properties": {"id": "planned-scene", "chapter_number": 1}},
+        }
+        self.edges: dict[str, dict[str, Any]] = {
+            "plan-edge": {"element_id": "plan-edge", "source": "scene-1", "target": "chapter-1", "type": "PART_OF", "properties": {"chapter_added": 0}},
+        }
         self.writes: list[str] = []
         self.commits = 0
         self.failure = ""
+
+    @property
+    def chapters(self) -> list[dict[str, Any]]:
+        return [{"status": node["properties"].get("generation_status"), "attempt_id": node["properties"].get("attempt_id")} for node in self.nodes.values() if "Chapter" in node["labels"]]
 
     def session(self, **arguments: Any) -> "DriverExample":
         return self
@@ -259,8 +343,13 @@ async def test_publication_reentry_uses_exact_accepted_candidate(lifecycle_examp
 
 
 @pytest.mark.parametrize("boundary", ["before_commit", "after_commit", ""])
-async def test_compensation_reentry_preserves_verified_barrier(lifecycle_example: tuple[NarrativeState, DriverExample], boundary: str) -> None:
+@pytest.mark.parametrize("existing_plan", [False, True])
+async def test_compensation_reentry_preserves_verified_barrier(lifecycle_example: tuple[NarrativeState, DriverExample], boundary: str, existing_plan: bool) -> None:
     state, driver = lifecycle_example
+    if not existing_plan:
+        del driver.nodes["chapter-1"]
+        del driver.edges["plan-edge"]
+    before = deepcopy((driver.nodes, driver.edges))
     state = {**state, **await commit_to_graph(state)}
     lifecycle = ChapterLifecycle(state).stage()
     driver.failure = boundary
@@ -273,7 +362,8 @@ async def test_compensation_reentry_preserves_verified_barrier(lifecycle_example
     await _rollback_chapter_data(1, lifecycle=lifecycle)
     assert lifecycle.files.exists(lifecycle.phase_path("compensated")) is True
     assert driver.commits == 2
-    assert driver.chapters == []
+    assert (driver.nodes, driver.edges) == before
+    assert driver.chapters == ([{"status": "planned", "attempt_id": None}] if existing_plan else [])
     assert (await commit_to_graph(state))["has_fatal_error"] is True
 
 
@@ -380,7 +470,7 @@ async def test_publication_rejects_divergent_graph_projection(lifecycle_example:
     state, driver = lifecycle_example
     state = {**state, **await commit_to_graph(state)}
     assert (await finalize_chapter(state))["lifecycle_phase"] == "published"
-    driver.chapters[0]["status"] = "planned"
+    driver.nodes["chapter-1"]["properties"]["generation_status"] = "planned"
     result = await finalize_chapter(state)
     assert result["has_fatal_error"] is True
 
