@@ -8,6 +8,7 @@ into a single import surface to reduce file count and simplify imports.
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
@@ -62,7 +63,13 @@ def load_strict_json(text: str) -> Any:
     def reject_constant(value: str) -> Any:
         raise ValueError("Nonfinite JSON number")
 
-    return json.loads(text, object_pairs_hook=unique_pairs, parse_constant=reject_constant)
+    def finite_float(value: str) -> float:
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("Nonfinite JSON number")
+        return number
+
+    return json.loads(text, object_pairs_hook=unique_pairs, parse_constant=reject_constant, parse_float=finite_float)
 
 
 def extract_json_from_text(text: str) -> str | None:

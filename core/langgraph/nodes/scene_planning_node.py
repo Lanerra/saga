@@ -11,7 +11,7 @@ from json import JSONDecodeError
 from typing import Annotated, Any, cast
 
 import structlog
-from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+from pydantic import BaseModel, ConfigDict, StringConstraints, TypeAdapter, ValidationError
 
 import config
 from core.langgraph.content_manager import (
@@ -26,7 +26,7 @@ from core.service_context import get_services
 from data_access.character_queries import get_all_character_names, sync_characters
 from models.agent_models import SceneDetail
 from models.kg_models import CharacterProfile
-from prompts.prompt_renderer import get_system_prompt, render_prompt
+from prompts.prompt_renderer import compact_json, get_system_prompt, render_prompt
 from utils.common import load_strict_json
 from utils.text_processing import normalize_entity_name
 
@@ -279,6 +279,8 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         "Return ONLY valid JSON. "
         "The top-level JSON value MUST be a single array (not an object). "
         'Do not wrap the array in an object like {"scenes": [...]} and do not include any extra text.'
+        " Recheck the requested exact scene count, field types, and ordered exhaustive beat partition. "
+        "Do not omit, reorder, rewrite, invent, or deduplicate selected beats."
     )
 
     try:
@@ -291,6 +293,8 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         if type(requested_scenes) is not int or requested_scenes < 1:
             raise ValueError("Requested scene count must be a positive integer")
         number_of_scenes = min(requested_scenes, chapter_target)
+        selected_beats = TypeAdapter(list[_SceneText], config=ConfigDict(strict=True, hide_input_in_errors=True)).validate_python(outline.get("key_beats"))
+        scene_word_targets = [allocate_word_target(chapter_target, number_of_scenes, position) for position in range(1, number_of_scenes + 1)]
         base_prompt = render_prompt(
             "narrative_agent/plan_scenes.j2",
             {
@@ -303,6 +307,17 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
                 "outline": outline,
                 "num_scenes": number_of_scenes,
             },
+        )
+        base_prompt += (
+            f"\n\nExact admission requirements: Return exactly {number_of_scenes} scenes. "
+            "Every text field, including pov_character, must contain non-whitespace text; "
+            "characters and beats must be arrays of non-whitespace strings. "
+            "Concatenating beats in scene order must equal the selected ordered list exactly, including duplicates. "
+            "Copy each selected beat verbatim; do not omit, reorder, rewrite, or invent beats. "
+            "A scene's beats may be []; the 1-3 beats recommendation does not override the exact count or exhaustive partition. "
+            "characters may also be []. Use the computed word targets to size scenes, without adding output fields."
+            f"\nSelected ordered key_beats (JSON): {compact_json(selected_beats)}"
+            f"\nScene word targets in order (not output fields): {compact_json(scene_word_targets)}"
         )
         prompt = base_prompt
         scenes_untyped: list[dict[str, Any]] = []
@@ -319,6 +334,10 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
 
             try:
                 scenes_untyped = _parse_scene_plan_json_from_llm_response(response)
+                if len(scenes_untyped) != number_of_scenes:
+                    raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} expected exactly {number_of_scenes} scenes, got {len(scenes_untyped)}.")
+                if [beat for scene in scenes_untyped for beat in scene["beats"]] != selected_beats:
+                    raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} scene beats must form an ordered exhaustive partition of selected chapter key_beats, including duplicates.")
                 parsed_successfully = True
                 break
             except ValueError as e:
