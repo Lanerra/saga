@@ -17,6 +17,7 @@ async def test_selected_global_outline_requires_arcs_and_nested_prompt_fields(tm
     assert state["global_outline_ref"] is not None
     response = manager.load_json_strict(state["global_outline_ref"])
     response = {key: value for key, value in response.items() if key in GlobalOutlineSchema.model_fields}
+    response["character_arcs"] = [{"character_name": "Ada", "starting_state": "Afraid", "ending_state": "Confident", "key_moments": ["Ada chooses"]}]
     calls = []
 
     async def provider(**options: Any) -> tuple[str, dict[str, Any]]:
