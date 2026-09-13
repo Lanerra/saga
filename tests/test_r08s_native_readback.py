@@ -98,7 +98,7 @@ async def run_native_readback(root: Path, session: Any) -> dict[str, Any]:
             raise AssertionError("Conflicting explicit identity was accepted")
     assert session.run("MATCH (n) RETURN count(n) AS count").single()["count"] == before
     assert session.run("MATCH ()-[r:WIELDS]->() RETURN count(r) AS count").single()["count"] == 1
-    projected = session.run("MATCH (c:Character {id:'Reader:Exact'}) OPTIONAL MATCH (c)-[r]->(o) RETURN properties(c) AS c, collect(properties(r) + {type:type(r), target_name:o.name, target_id:o.id, target_label:'Character'}) AS relationships").single().data()
+    projected = session.run("MATCH (c:Character {id:'Reader:Exact'}) OPTIONAL MATCH (c)-[r]->(o) RETURN properties(c) AS c, collect(r {.*, type:type(r), target_name:o.name, target_id:o.id, target_label:'Character'}) AS relationships").single().data()
     profile = CharacterProfile.from_dict_record(projected)
     assert len(profile.relationships["Bob"]) == 3
     session.run(*NativeCypherBuilder.character_upsert_cypher(profile, 9)).consume()

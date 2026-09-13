@@ -33,4 +33,6 @@ async def test_scene_plan_must_preserve_selected_outline(tmp_path: Path, monkeyp
     assert result.get("has_fatal_error") is True
     assert result.get("chapter_plan_ref") is None
     expected = {"missing_beats": "ordered exhaustive partition", "wrong_type": "setting", "wrong_count": "exactly 2 scenes"}
-    assert expected[case] in result["last_error"]
+    error = result["last_error"]
+    assert isinstance(error, str)
+    assert expected[case] in error
