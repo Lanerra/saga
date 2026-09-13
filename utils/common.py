@@ -49,6 +49,22 @@ def _is_fill_in(value: Any) -> bool:
 
 
 # --- json_utils.py ---
+def load_strict_json(text: str) -> Any:
+    """Parse exactly one JSON value without duplicate keys or nonfinite numbers."""
+    def unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate JSON object key")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> Any:
+        raise ValueError("Nonfinite JSON number")
+
+    return json.loads(text, object_pairs_hook=unique_pairs, parse_constant=reject_constant)
+
+
 def extract_json_from_text(text: str) -> str | None:
     """Extract a JSON object/array substring from arbitrary text."""
     if not isinstance(text, str) or not text:

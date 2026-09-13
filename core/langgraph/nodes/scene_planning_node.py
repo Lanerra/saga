@@ -7,11 +7,11 @@ shape, externalizes it, and ensures any newly introduced characters exist in
 Neo4j (as provisional stubs) so downstream context retrieval can resolve them.
 """
 
-import json
 from json import JSONDecodeError
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 import structlog
+from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 
 import config
 from core.langgraph.content_manager import (
@@ -27,6 +27,7 @@ from data_access.character_queries import get_all_character_names, sync_characte
 from models.agent_models import SceneDetail
 from models.kg_models import CharacterProfile
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import load_strict_json
 from utils.text_processing import normalize_entity_name
 
 logger = structlog.get_logger(__name__)
@@ -44,6 +45,22 @@ _SCENE_REQUIRED_KEYS: tuple[str, ...] = (
 )
 
 _SCENE_PLAN_CONTRACT_ERROR_PREFIX = "Scene plan contract violation:"
+
+
+_SceneText = Annotated[str, StringConstraints(pattern=r"\S")]
+
+
+class _ScenePlanEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
+
+    title: _SceneText
+    pov_character: _SceneText
+    setting: _SceneText
+    characters: list[_SceneText]
+    plot_point: _SceneText
+    conflict: _SceneText
+    outcome: _SceneText
+    beats: list[_SceneText]
 
 
 def _validate_scene_plan_structure(scenes: Any) -> list[str]:
@@ -83,10 +100,10 @@ def _validate_scene_plan_structure(scenes: Any) -> list[str]:
         if extra_keys:
             errors.append(f"Scene[{i}] has unexpected keys: {extra_keys}")
 
-        if "characters" in scene:
-            chars = scene.get("characters")
-            if not isinstance(chars, list) or not all(isinstance(c, str) and c.strip() for c in chars):
-                errors.append(f"Scene[{i}].characters must be a non-empty list of character name strings")
+        try:
+            _ScenePlanEntry.model_validate(scene)
+        except ValidationError:
+            errors.append(f"Scene[{i}] requires non-empty text fields and arrays of non-empty strings for characters and beats")
 
     return errors
 
@@ -113,9 +130,11 @@ def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, An
         raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} empty response; expected a JSON array of scene objects.")
 
     try:
-        parsed = json.loads(response_stripped)
+        parsed = load_strict_json(response_stripped)
     except JSONDecodeError as e:
         raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} invalid JSON; expected a JSON array of scene objects. " f"JSONDecodeError at pos {e.pos}: {e.msg}") from e
+    except ValueError as e:
+        raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} ambiguous or nonstandard JSON") from e
 
     if isinstance(parsed, dict):
         raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} top-level JSON must be an array, not an object.")

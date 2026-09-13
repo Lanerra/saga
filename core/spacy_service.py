@@ -380,73 +380,36 @@ class SpacyService:
         Returns:
             Cleaned text. Returns original text on error or if model not loaded.
         """
+        if not text or not isinstance(text, str):
+            return ""
+
+        # Whitespace normalization must not infer spacing from NLP token classes.
+        # Apostrophe suffixes, quotes and hyphens retain their source adjacency.
+        if not aggressive:
+            import re
+
+            cleaned = text.replace("\r\n", "\n").replace("\r", "\n")
+            cleaned = re.sub(r"[^\S\n]+", " ", cleaned)
+            cleaned = re.sub(r" *\n *", "\n", cleaned)
+            return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
         self._ensure_loaded()
         if not self.is_loaded():
             logger.warning("clean_text: spaCy model not loaded, using fallback")
-            import re
-
-            cleaned = text.strip()
-            cleaned = re.sub(r"\s+", " ", cleaned)
-            cleaned = re.sub(r"[\t\r\f\v]", " ", cleaned)
-            return cleaned
-
-        if not text or not isinstance(text, str):
-            return ""
+            return self.clean_text(text, aggressive=False)
 
         assert self._nlp is not None
         try:
             doc = self._nlp(text)
 
-            if aggressive:
-                # Aggressive cleaning: remove stop words and excessive punctuation
-                tokens = []
-                for token in doc:
-                    # Skip stop words, punctuation, and whitespace
-                    if not token.is_stop and not token.is_punct and not token.is_space:
-                        tokens.append(token.lemma_.lower())
-                cleaned = " ".join(tokens)
-            else:
-                # Conservative cleaning: normalize whitespace and basic punctuation
-                # Reconstruct text from tokens but preserve newlines
-                cleaned_parts: list[str] = []
-                for token in doc:
-                    if not token.is_space:
-                        # Add space before non-punctuation tokens if we have content already
-                        # and the previous token didn't end with a newline
-                        if cleaned_parts and not token.is_punct:
-                            if not cleaned_parts[-1].endswith("\n") and not cleaned_parts[-1].endswith(" "):
-                                cleaned_parts.append(" ")
-                        cleaned_parts.append(token.text)
-                    elif "\n" in token.text:
-                        # Preserve newlines (normalize multiple newlines to max 2)
-                        newlines = token.text.count("\n")
-                        if newlines >= 2:
-                            cleaned_parts.append("\n\n")
-                        else:
-                            cleaned_parts.append("\n")
-                    elif cleaned_parts and not cleaned_parts[-1].endswith(" ") and not cleaned_parts[-1].endswith("\n"):
-                        # Add single space for other whitespace tokens if needed
-                        cleaned_parts.append(" ")
-
-                cleaned = "".join(cleaned_parts)
-
-                # Normalize common punctuation patterns but preserve newlines
-                import re
-
-                cleaned = re.sub(r"[\t\r\f\v]", " ", cleaned)
-                # Collapse multiple spaces but keep newlines
-                cleaned = re.sub(r"[ ]+", " ", cleaned).strip()
-
-            return cleaned
+            tokens = []
+            for token in doc:
+                if not token.is_stop and not token.is_punct and not token.is_space:
+                    tokens.append(token.lemma_.lower())
+            return " ".join(tokens)
         except Exception as e:
             logger.error("clean_text failed: %s", e, exc_info=True)
-            # Fallback to simple cleaning on error
-            import re
-
-            cleaned = text.strip()
-            cleaned = re.sub(r"\s+", " ", cleaned)
-            cleaned = re.sub(r"[\t\r\f\v]", " ", cleaned)
-            return cleaned
+            return self.clean_text(text, aggressive=False)
 
     def extract_sentences(self, text: str) -> list[str]:
         """Extract sentences from text using spaCy's sentence boundary detection.

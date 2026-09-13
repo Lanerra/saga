@@ -148,7 +148,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             temperature=0.7,
             max_tokens=config.MAX_GENERATION_TOKENS,
             system_prompt=system_prompt,
-            spacy_cleanup=True,
+            spacy_cleanup=False,
         )
 
         if not draft_text.strip():

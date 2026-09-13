@@ -230,6 +230,8 @@ async def _summarize_scene_text(
         if summary_text and summary_text.strip():
             return summary_text.strip()
 
+    except TimeoutError:
+        raise
     except Exception as e:
         logger.warning(
             "context_scene: failed to summarize scene, falling back to truncation",
@@ -409,6 +411,8 @@ async def get_semantic_context(
             truncation_marker="\n... (semantic context truncated)",
         )
 
+    except TimeoutError:
+        raise
     except Exception as e:
         logger.warning(
             "context_scene: non-fatal error getting semantic context, continuing without it",

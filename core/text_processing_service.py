@@ -196,41 +196,25 @@ class ResponseCleaningService:
         self._compile_cleaning_patterns()
 
     def _compile_cleaning_patterns(self) -> None:
-        """Compile regex patterns used for response cleaning.
-
-        Optimization: Uses alternation to combine multiple tag patterns into single regexes,
-        reducing the number of pattern matching operations from 44+ to 4 for think tag removal.
-        """
+        """Compile patterns for outer artifacts, never answer-interior rewriting."""
         tag_alternation = "|".join(re.escape(tag) for tag in self._think_tags)
 
         self._patterns = {
-            "think_blocks": re.compile(
-                rf"<\s*(?:{tag_alternation})\s*>.*?<\s*/\s*(?:{tag_alternation})\s*>",
-                flags=re.DOTALL | re.IGNORECASE,
-            ),
-            "think_self_closing": re.compile(
-                rf"<\s*(?:{tag_alternation})\s*/\s*>",
-                flags=re.IGNORECASE,
-            ),
-            "think_opening": re.compile(
-                rf"<\s*(?:{tag_alternation})\s*>",
-                flags=re.IGNORECASE,
-            ),
-            "think_closing": re.compile(
-                rf"<\s*/\s*(?:{tag_alternation})\s*>",
+            "reasoning_tag": re.compile(
+                rf"<\s*(/?)\s*({tag_alternation})\s*(/?)\s*>",
                 flags=re.IGNORECASE,
             ),
             "think_boundary": re.compile(
-                r"<\s*/\s*think\s*>",
-                flags=re.IGNORECASE,
+                r"^[ \t]*<\s*/\s*think\s*>[ \t]*(?:\r?\n|$)",
+                flags=re.IGNORECASE | re.MULTILINE,
             ),
             "code_blocks": re.compile(
-                r"```(?:[a-zA-Z0-9_-]+)?\s*(.*?)\s*```",
+                r"\A\s*```(?:[a-zA-Z0-9_-]+)?[ \t]*\r?\n(.*?)\r?\n```\s*\Z",
                 flags=re.DOTALL,
             ),
             "chapter_headers": re.compile(
-                r"^\s*Chapter \d+\s*[:\-—]?\s*(.*?)\s*$",
-                flags=re.MULTILINE | re.IGNORECASE,
+                r"\A[ \t]*Chapter \d+[ \t]*[:\-—]?[ \t]*([^\r\n]*)(?:\r?\n|$)",
+                flags=re.IGNORECASE,
             ),
         }
 
@@ -248,7 +232,34 @@ class ResponseCleaningService:
             r"\s*\[END SYSTEM OUTPUT\]\s*$",
         ]
 
-        self._phrase_patterns = [re.compile(pattern_string, flags=re.IGNORECASE | re.MULTILINE) for pattern_string in phrase_pattern_strings]
+        self._phrase_patterns = [re.compile(pattern_string, flags=re.IGNORECASE) for pattern_string in phrase_pattern_strings]
+
+    def _remove_reasoning_prefix(self, text: str) -> str:
+        """Consume balanced leading reasoning blocks or fail on incomplete markup."""
+        text = text.strip()
+        pattern = self._patterns["reasoning_tag"]
+        if pattern.match(text) is None and not text.startswith(("{", "[")):
+            boundary = self._patterns["think_boundary"].search(text)
+            if boundary is not None:
+                text = text[boundary.end():].lstrip()
+        while (opening := pattern.match(text)) is not None:
+            if opening.group(1):
+                raise ValueError("Unexpected closing reasoning tag")
+            stack: list[str] = []
+            for tag in pattern.finditer(text):
+                closing, name, self_closing = tag.groups()
+                name = name.lower()
+                if closing:
+                    if self_closing or not stack or stack.pop() != name:
+                        raise ValueError("Mismatched reasoning tags")
+                elif not self_closing:
+                    stack.append(name)
+                if not stack:
+                    text = text[tag.end():].lstrip()
+                    break
+            else:
+                raise ValueError("Incomplete reasoning block")
+        return text
 
     def clean_response(self, text: str) -> str:
         """Clean common artifacts from an LLM text response.
@@ -271,58 +282,32 @@ class ResponseCleaningService:
 
         self._stats["responses_cleaned"] += 1
         original_length = len(text)
-        cleaned_text = text
+        cleaned_text = text.strip()
 
-        # Remove think tags and similar content
-        text_before_think_removal = cleaned_text
+        # Removing an outer fence or lead-in can expose a reasoning prefix.
+        # Each pass only consumes boundaries; answer interiors remain literal.
+        while True:
+            before_pass = cleaned_text
+            cleaned_text = self._remove_reasoning_prefix(cleaned_text)
+            if cleaned_text != before_pass:
+                self._stats["think_tags_removed"] += 1
 
-        last_think_closing_tag_end_index = -1
-        for match in self._patterns["think_boundary"].finditer(cleaned_text):
-            last_think_closing_tag_end_index = match.end()
+            if self._patterns["code_blocks"].search(cleaned_text):
+                self._stats["code_blocks_cleaned"] += 1
+            cleaned_text = self._patterns["code_blocks"].sub(r"\1", cleaned_text).strip()
+            cleaned_text = self._patterns["chapter_headers"].sub("\\1\n", cleaned_text).strip()
 
-        if last_think_closing_tag_end_index != -1:
-            cleaned_text = cleaned_text[last_think_closing_tag_end_index:]
-
-        cleaned_text = self._patterns["think_blocks"].sub("", cleaned_text)
-        cleaned_text = self._patterns["think_self_closing"].sub("", cleaned_text)
-        cleaned_text = self._patterns["think_opening"].sub("", cleaned_text)
-        cleaned_text = self._patterns["think_closing"].sub("", cleaned_text)
-
-        if len(cleaned_text) < len(text_before_think_removal):
-            self._stats["think_tags_removed"] += 1
-            logger.debug(f"clean_response: Removed think tag content. " f"Length before: {len(text_before_think_removal)}, after: {len(cleaned_text)}.")
-
-        # Remove code blocks
-        if self._patterns["code_blocks"].search(cleaned_text):
-            self._stats["code_blocks_cleaned"] += 1
-        cleaned_text = self._patterns["code_blocks"].sub(r"\1", cleaned_text)
-
-        # Remove chapter headers
-        cleaned_text = self._patterns["chapter_headers"].sub(r"\1", cleaned_text).strip()
-
-        # Remove common phrases
-        for pattern in self._phrase_patterns:
-            original_text = cleaned_text
-            if pattern.pattern.startswith("^"):
-                # Apply repeatedly for patterns that should be removed from start
-                while True:
-                    new_text = pattern.sub("", cleaned_text, count=1).strip()
-                    if new_text == cleaned_text:
-                        break
-                    cleaned_text = new_text
-            else:
+            for pattern in self._phrase_patterns:
+                original_text = cleaned_text
                 cleaned_text = pattern.sub("", cleaned_text, count=1).strip()
+                if cleaned_text != original_text:
+                    self._stats["phrases_removed"] += 1
 
-            if len(cleaned_text) < len(original_text):
-                self._stats["phrases_removed"] += 1
+            if cleaned_text == before_pass:
+                break
 
         # Final normalization
-        final_text = cleaned_text.strip()
-
-        # Normalize multiple newlines
-        final_text = re.sub(r"\n\s*\n(\s*\n)+", "\n\n", final_text)
-        final_text = re.sub(r"\n{3,}", "\n\n", final_text)
-
+        final_text = cleaned_text
         # Track significant reductions
         if original_length > 0 and len(final_text) < original_length:
             reduction_percentage = ((original_length - len(final_text)) / original_length) * 100

@@ -331,6 +331,9 @@ class CompletionService:
             if spacy_cleanup:
                 content = self._text_processor.clean_text_with_spacy(content, aggressive=False)
 
+            if not content.strip():
+                raise ValueError("Completion contains no answer after cleanup")
+
             self._stats["completions_successful"] += 1
             return content, usage_data
 
@@ -395,6 +398,9 @@ class CompletionService:
 
                     if spacy_cleanup:
                         content = self._text_processor.clean_text_with_spacy(content, aggressive=False)
+
+                    if not content.strip():
+                        raise ValueError("Completion contains no answer after cleanup")
 
                     self._stats["completions_successful"] += 1
                     return content, usage_data

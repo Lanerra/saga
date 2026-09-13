@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 import config
 from config.settings import EffectiveSettings
+from utils.common import load_strict_json
 
 logger = structlog.get_logger(__name__)
 
@@ -152,11 +153,17 @@ def completion_content(response: dict[str, Any], configuration: EffectiveSetting
     try:
         if configuration.COMPLETION_CONTENT_FORMAT == "text_parts":
             parts_response = PartsCompletionResponse.model_validate(response)
-            text = "".join(part.text for part in parts_response.choices[0].message.content)
+            choice = parts_response.choices[0]
+            text = "".join(part.text for part in choice.message.content)
+            finish_reason, refusal = choice.finish_reason, choice.message.refusal
         else:
-            text = CompletionResponse.model_validate(response).choices[0].message.content
+            string_choice = CompletionResponse.model_validate(response).choices[0]
+            text = string_choice.message.content
+            finish_reason, refusal = string_choice.finish_reason, string_choice.message.refusal
     except ValidationError:
         raise ValueError("Invalid completion provider response schema") from None
+    if finish_reason not in (None, "stop") or refusal is not None:
+        raise ValueError("Provider completion did not finish with an answer")
     if not text.strip():
         raise ValueError("Completion provider response is empty")
     return text
@@ -254,9 +261,8 @@ class HTTPClientService:
                     status_code = e.response.status_code if e.response else 0
                     logger.warning("HTTP status error", attempt=attempt + 1, status_code=status_code, response_length=len(e.response.content))
 
-                    # Don't retry on client errors (except 429 rate limit)
-                    if 400 <= status_code < 500 and status_code != 429:
-                        logger.error(f"Non-retryable client error {status_code}, aborting")
+                    if status_code < 500 and status_code != 429:
+                        logger.error(f"Non-retryable HTTP status {status_code}, aborting")
                         break
 
                 except httpx.RequestError as e:
@@ -266,6 +272,7 @@ class HTTPClientService:
                 except Exception as e:
                     last_exception = e
                     logger.error("Unexpected HTTP error", attempt=attempt + 1, error_type=type(e).__name__)
+                    break
 
                 # Apply retry delay if not the last attempt
                 if attempt < effective_max_retries - 1:
@@ -359,7 +366,7 @@ def prepare_completion_payload(
     payload = {
         "model": model,
         "messages": messages,
-        "temperature": temperature,
+        "temperature": configuration.TEMPERATURE_OVERRIDE if configuration.TEMPERATURE_OVERRIDE is not None else temperature,
         "top_p": configuration.LLM_TOP_P,
         "max_tokens": max_tokens,
         "stream": False,
@@ -419,7 +426,7 @@ class CompletionHTTPClient:
 
         logger.debug("Requesting completion", message_count=len(messages))
         response = await self._http_client.post_json(f"{self._http_client.configuration.OPENAI_API_BASE}/chat/completions", payload, headers)
-        response_data = response.json()
+        response_data = load_strict_json(response.text)
         completion_content(response_data, self._http_client.configuration)
         return response_data
 

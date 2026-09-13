@@ -30,7 +30,7 @@ from core.langgraph.state import NarrativeState
 from core.service_context import get_services
 from data_access import chapter_queries
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-from utils.common import try_load_json_from_response
+from utils.common import load_strict_json
 from utils.file_io import write_text_file
 
 logger = structlog.get_logger(__name__)
@@ -207,7 +207,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "summarize",
         }
 
-    except ChapterSummaryContractError:
+    except (ChapterSummaryContractError, TimeoutError):
         raise
     except Exception as e:
         logger.error(
@@ -239,10 +239,10 @@ def _parse_summary_response(response_text: str) -> str:
     Raises:
         ChapterSummaryContractError: When the response is not a JSON object matching the contract.
     """
-    parsed, _candidates, _parse_errors = try_load_json_from_response(
-        response_text,
-        expected_root=(dict,),
-    )
+    try:
+        parsed = load_strict_json(response_text)
+    except ValueError:
+        raise ChapterSummaryContractError("Chapter summary JSON contract violated: expected one unambiguous JSON object.") from None
 
     if not isinstance(parsed, dict):
         raise ChapterSummaryContractError("Chapter summary JSON contract violated: could not parse a JSON object from the model response.")

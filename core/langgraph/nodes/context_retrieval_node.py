@@ -78,9 +78,15 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
 
     chapter_plan = get_chapter_plan(state, content_manager)
 
-    if not chapter_plan or scene_index >= len(chapter_plan):
+    if not chapter_plan or type(scene_index) is not int or scene_index < 0 or scene_index >= len(chapter_plan):
         logger.error("retrieve_context: invalid scene index", index=scene_index)
-        return {"current_node": "retrieve_context"}
+        return {
+            "has_fatal_error": True,
+            "last_error": "Invalid scene index for context retrieval",
+            "error_node": "retrieve_context",
+            "hybrid_context_ref": None,
+            "current_node": "retrieve_context",
+        }
 
     current_scene = chapter_plan[scene_index]
     model_name = state.get("narrative_model", config.NARRATIVE_MODEL)
