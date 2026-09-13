@@ -173,6 +173,7 @@ class NarrativeState(TypedDict, total=False):
     setting: str
     target_word_count: int
     narrative_style: str
+    original_prompt: str
 
     # =========================================================================
     # Current Position in Story
@@ -363,6 +364,7 @@ class AuthoringState(BaseModel):
     setting: str
     protagonist_name: str = Field(min_length=1)
     narrative_style: str = Field(min_length=1)
+    original_prompt: str = ""
     target_word_count: int = Field(gt=0)
     total_chapters: int = Field(gt=0)
     current_chapter: int = Field(gt=0)
@@ -431,6 +433,7 @@ def create_initial_state(
     project_dir: str,
     protagonist_name: str,
     narrative_style: str | None = None,
+    original_prompt: str = "",
     extraction_model: str | None = None,
     revision_model: str | None = None,
     # New model params with defaults
@@ -452,6 +455,7 @@ def create_initial_state(
         total_chapters: Total number of chapters planned.
         project_dir: Base directory for project files.
         protagonist_name: Protagonist name used for prompts and initialization.
+        original_prompt: Unaltered author premise, separate from derived metadata.
         extraction_model: Default model for entity/relationship extraction.
         revision_model: Default model for revision passes.
         large_model: Large model tier identifier (used by some nodes/subgraphs).
@@ -473,6 +477,7 @@ def create_initial_state(
         "setting": setting,
         "target_word_count": target_word_count,
         "narrative_style": config.settings.DEFAULT_NARRATIVE_STYLE if narrative_style is None else narrative_style,
+        "original_prompt": original_prompt,
         # Position
         "current_chapter": 1,
         "total_chapters": total_chapters,

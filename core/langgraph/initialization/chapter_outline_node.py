@@ -270,6 +270,7 @@ async def _generate_single_chapter_outline(
     prompt = render_prompt(
         "initialization/generate_chapter_outline.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "chapter_target_word_count": allocate_word_target(state.get("target_word_count", config.TARGET_WORD_COUNT), total_chapters, chapter_number),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
@@ -495,6 +496,7 @@ Return the enriched outline in the same JSON format:
     prompt = render_prompt(
         "initialization/generate_chapter_outline.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "chapter_target_word_count": allocate_word_target(state.get("target_word_count", config.TARGET_WORD_COUNT), total_chapters, chapter_number),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),

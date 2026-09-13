@@ -319,6 +319,7 @@ async def _generate_single_act_outline(
     prompt = render_prompt(
         "initialization/generate_act_outline.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),

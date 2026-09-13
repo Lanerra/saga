@@ -253,6 +253,7 @@ class LangGraphOrchestrator:
                 project_dir=str(self.project_dir),
                 protagonist_name=narrative_config.protagonist_name,
                 narrative_style=narrative_config.narrative_style,
+                original_prompt=narrative_config.original_prompt,
                 extraction_model=config.MEDIUM_MODEL,
                 revision_model=config.LARGE_MODEL,
                 large_model=config.LARGE_MODEL,

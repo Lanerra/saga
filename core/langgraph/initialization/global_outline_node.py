@@ -106,6 +106,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     prompt = render_prompt(
         "initialization/generate_global_outline.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),

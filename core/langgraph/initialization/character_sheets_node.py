@@ -361,6 +361,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
     prompt = render_prompt(
         "initialization/generate_character_list.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
@@ -519,6 +520,7 @@ async def _generate_character_sheet(
     prompt = render_prompt(
         "initialization/generate_character_sheet.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),

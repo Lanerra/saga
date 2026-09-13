@@ -10,6 +10,7 @@ Protagonist: {{ protagonist_name }}
 Main characters:
 {{ character_context }}
 
+{% include "initialization/original_story_input.j2" %}
 ## Task
 
 {% set example_act_count = [total_chapters, 3] | min %}

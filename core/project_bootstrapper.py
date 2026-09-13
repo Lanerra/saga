@@ -188,6 +188,7 @@ class ProjectBootstrapper:
         prompt = render_prompt(
             "initialization/world_building_questions.j2",
             {
+                "original_prompt": project_config.original_prompt,
                 "title": project_config.title,
                 "genre": project_config.genre,
                 "theme": project_config.theme,

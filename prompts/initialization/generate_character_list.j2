@@ -6,6 +6,7 @@ Theme: {{ theme }}
 Setting: {{ setting }}
 {% if protagonist_name %}Protagonist: {{ protagonist_name }}{% endif %}
 
+{% include "initialization/original_story_input.j2" %}
 ## Task
 
 Generate the main character names for this story.
@@ -19,5 +20,11 @@ Rules:
 
 Include:
 - The protagonist{% if protagonist_name %} (must include exactly "{{ protagonist_name }}"){% endif %}
+{% if original_prompt | default('') %}
+- All named people supplied in the original story input, preserving their names exactly.
+- Supporting characters and antagonists only as sensible elaborations of that premise, not replacements for its people or conflict.
+- Keep the cast within the output contract: {% if protagonist_name %}3{% else %}1{% endif %}-10 unique names.
+{% else %}
 - 3 supporting characters
 - 1-2 antagonists (if appropriate)
+{% endif %}
