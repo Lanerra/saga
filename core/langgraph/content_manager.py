@@ -896,7 +896,7 @@ def get_scene_drafts(state: Mapping[str, Any], manager: ContentManager) -> list[
         ValueError: If the referenced JSON payload is not a list.
     """
     scene_drafts_ref = state.get("scene_drafts_ref")
-    if not scene_drafts_ref:
+    if scene_drafts_ref is None:
         return []
 
     return manager.load_list_of_texts(scene_drafts_ref)
@@ -1139,16 +1139,14 @@ def get_extracted_entities(state: Mapping[str, Any], manager: ContentManager) ->
 
     Raises:
         FileNotFoundError: If `extracted_entities_ref` is present but the referenced file is missing.
+        ValueError: If the referenced JSON payload is not a dict.
     """
     entities_ref = state.get("extracted_entities_ref")
-    if not entities_ref:
+    if entities_ref is None:
         # Fallback to in-state content if ref not available
         return state.get("extracted_entities", {})
 
-    data = manager.load_json_strict(cast(ContentRef, entities_ref)) if isinstance(entities_ref, dict) else manager.load_json(entities_ref)
-    if not isinstance(data, dict):
-        return {}
-    return cast(dict[str, list[dict[str, Any]]], data)
+    return load_extracted_entities(manager, entities_ref)
 
 
 def get_extracted_relationships(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
@@ -1167,16 +1165,14 @@ def get_extracted_relationships(state: Mapping[str, Any], manager: ContentManage
 
     Raises:
         FileNotFoundError: If `extracted_relationships_ref` is present but the referenced file is missing.
+        ValueError: If the referenced JSON payload is not a list.
     """
     relationships_ref = state.get("extracted_relationships_ref")
-    if not relationships_ref:
+    if relationships_ref is None:
         # Fallback to in-state content if ref not available
         return state.get("extracted_relationships", [])
 
-    data = manager.load_json_strict(cast(ContentRef, relationships_ref)) if isinstance(relationships_ref, dict) else manager.load_json(relationships_ref)
-    if not isinstance(data, list):
-        return []
-    return data
+    return load_extracted_relationships(manager, relationships_ref)
 
 
 def set_extracted_relationships(
