@@ -25,8 +25,8 @@ from core.langgraph.state import NarrativeState
 from core.parsers.act_outline_parser import ActOutlineParser
 from core.parsers.chapter_outline_parser import ChapterOutlineParser
 from core.parsers.global_outline_parser import GlobalOutlineParser
+from core.relationship_schema import allowed_relationship_types
 from core.service_context import get_services
-from models.kg_constants import RELATIONSHIP_TYPES
 from models.kg_models import ActKeyEvent, Chapter, CharacterProfile, MajorPlotPoint, Scene, SceneEvent, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import generate_entity_id
@@ -140,7 +140,7 @@ class EntityCatalog(FrozenPayload):
                 record({
                     "source_id": choices(source_label), "source_label": {"type": "string", "enum": [source_label]},
                     "target_id": choices(target_label), "target_label": {"type": "string", "enum": [target_label]},
-                    "relationship_type": {"type": "string", "enum": sorted(RELATIONSHIP_TYPES)}, "description": {"type": "string"},
+                    "relationship_type": {"type": "string", "enum": allowed_relationship_types(source_label, target_label)}, "description": {"type": "string"},
                 })
                 for source_label in labels for target_label in labels
             ]

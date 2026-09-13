@@ -39,6 +39,7 @@ from core.langgraph.nodes.scene_extraction_validation import (
     scene_name_authority,
 )
 from core.langgraph.state import NarrativeState, SceneExtractionOutcome, SceneExtractionType
+from core.relationship_schema import allowed_relationship_types
 from core.service_context import get_services
 from models.kg_constants import RELATIONSHIP_TYPES
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -171,7 +172,7 @@ async def _extract_characters_from_scene(
             "novel_title": novel_title,
             "novel_genre": novel_genre,
             "chapter_text": scene_text,
-            "canonical_relationship_types": sorted(RELATIONSHIP_TYPES),
+            "canonical_relationship_types": allowed_relationship_types("Character", "Character"),
         },
     )
 

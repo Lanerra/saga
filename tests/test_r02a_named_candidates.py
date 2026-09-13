@@ -124,9 +124,10 @@ async def test_catalog_names_ids_and_choices_survive_full_handoff(tmp_path: Path
         assert request["max_tokens"] == 65536
     contract = requests[3]["response_format"]["json_schema"]
     assert contract["strict"] is False
-    properties = contract["schema"]["$defs"]["SceneRelationship"]["properties"]
-    assert set(properties["subject"]["enum"]) == expected
-    assert set(properties["object_entity"]["enum"]) == expected
+    variants = contract["schema"]["$defs"]["SceneRelationship"]["oneOf"]
+    assert len(variants) == 9
+    assert {name for variant in variants for name in variant["properties"]["subject"]["enum"]} == expected
+    assert {name for variant in variants for name in variant["properties"]["object_entity"]["enum"]} == expected
 
 
 @pytest.mark.parametrize("case", ["missing", "corrupt", "wrong_parent"])

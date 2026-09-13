@@ -28,7 +28,7 @@ Output shape:
 - "character_updates" maps character_name -> character_details_object
 - If no characters are present, return: {"character_updates": {}}
 
-Canonical relationship types (use ONLY these):
+Allowed Character-to-Character relationship types (use ONLY these):
 {% for relationship_type in canonical_relationship_types %}
 - {{ relationship_type }}
 {% endfor %}
@@ -50,6 +50,7 @@ Per-character entry requirements:
 - "traits" (array): Single-word descriptors only
 - "status" (string): Current state or role
 - "relationships" (object): Maps character names to {"type": string, "description": string}
+  - Both endpoints must be selected Character entries; do not use item, location or event predicates for characters.
   - "type": MUST be one of the canonical relationship types listed above
   - "description": <= 180 chars
 

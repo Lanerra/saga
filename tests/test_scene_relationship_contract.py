@@ -14,6 +14,7 @@ from core.langgraph.nodes.scene_extraction import _extract_relationships_from_sc
 from core.langgraph.nodes.scene_extraction_parsing import parse_kg_triples
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import create_llm_service
+from core.relationship_validation import validate_relationship_semantics_strict
 from core.service_context import get_services
 from models.kg_constants import RELATIONSHIP_TYPES
 from prompts.prompt_renderer import render_prompt
@@ -32,6 +33,9 @@ def test_scene_prompt_examples_and_guidance_use_only_canonical_predicates() -> N
     predicates = set(re.findall(r"\b[A-Z]+(?:_[A-Z]+)+\b", examples))
     assert predicates <= RELATIONSHIP_TYPES
     assert "ALLIES_WITH" in predicates
+    example, _ = json.JSONDecoder().raw_decode(examples[examples.index('{'):])
+    labels = {"Elara": "Character", "Marcus": "Character", "Sunken Library": "Location", "Enchanted Blade": "Item"}
+    assert all(validate_relationship_semantics_strict(row["predicate"], labels[row["subject"]], labels[row["object_entity"]])[0] for row in example["kg_triples"])
 
 
 @pytest.mark.parametrize("mode", ["success", "json_retry", "fallback", "exhausted_json", "exhausted_fallback"])
@@ -70,10 +74,16 @@ async def test_scene_schema_reaches_every_wire_attempt(tmp_path: Path, monkeypat
         row_schema = rows["items"]
         if "$ref" in row_schema:
             row_schema = schema["$defs"][row_schema["$ref"].rsplit("/", 1)[1]]
-        assert set(row_schema["properties"]) == set(ROW)
-        assert set(row_schema["required"]) == set(ROW)
-        assert row_schema["additionalProperties"] is False
-        assert row_schema["properties"]["predicate"]["enum"] == sorted(RELATIONSHIP_TYPES)
+        labels = {"Elara": "Character", "Library": "Location"}
+        assert len(row_schema["oneOf"]) == 4
+        for variant in row_schema["oneOf"]:
+            assert set(variant["properties"]) == set(ROW)
+            assert set(variant["required"]) == set(ROW)
+            assert variant["additionalProperties"] is False
+            properties = variant["properties"]
+            subject, = properties["subject"]["enum"]
+            target, = properties["object_entity"]["enum"]
+            assert properties["predicate"]["enum"] == sorted(predicate for predicate in RELATIONSHIP_TYPES if validate_relationship_semantics_strict(predicate, labels[subject], labels[target])[0])
         if not mode.startswith("exhausted"):
             await service.async_call_llm("synthetic", "Write prose.", max_tokens=100, auto_clean_response=False)
             assert "response_format" not in bodies[-1]

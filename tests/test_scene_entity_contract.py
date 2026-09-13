@@ -13,6 +13,7 @@ from core.langgraph.initialization.catalog import select_catalog
 from core.langgraph.nodes import scene_extraction, scene_extraction_parsing
 from core.langgraph.nodes.scene_extraction_validation import scene_name_authority
 from core.llm_interface_refactored import create_llm_service
+from core.relationship_validation import validate_relationship_semantics_strict
 from core.service_context import get_services
 from models.kg_constants import RELATIONSHIP_TYPES
 from tests.test_r08g_catalog_fixtures import catalog_state
@@ -94,7 +95,7 @@ async def test_entity_schema_reaches_every_wire_attempt(tmp_path: Path, monkeypa
             relation = relationships["properties"][NAMES["characters"]]
             assert relation["additionalProperties"] is False
             assert set(relation["required"]) == {"type", "description"}
-            assert relation["properties"]["type"]["enum"] == sorted(RELATIONSHIP_TYPES)
+            assert relation["properties"]["type"]["enum"] == sorted(predicate for predicate in RELATIONSHIP_TYPES if validate_relationship_semantics_strict(predicate, "Character", "Character")[0])
         assert all(SCENE in body["messages"][-1]["content"] for body in bodies)
     finally:
         await service.aclose()

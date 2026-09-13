@@ -5,7 +5,7 @@ Chapter: {{ chapter_number }}
 
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
-CANONICAL RELATIONSHIP TYPES (ONLY THESE ARE ACCEPTABLE):
+CANONICAL RELATIONSHIP VOCABULARY (the schema further limits each label pair):
 {% for rel_type in canonical_relationship_types %}
 - {{ rel_type }}
 {% endfor %}
@@ -13,7 +13,8 @@ CANONICAL RELATIONSHIP TYPES (ONLY THESE ARE ACCEPTABLE):
 Extraction rules:
 - Extract ONLY the most significant relationships (≤ 15).
 - Direction matters: subject acts on object.
-- Predicates MUST be UPPERCASE_WITH_UNDERSCORES and MUST be one of the CANONICAL RELATIONSHIP TYPES listed above.
+- Predicates MUST be UPPERCASE_WITH_UNDERSCORES and listed in the supplied schema alternative for the subject's and object's actual selected labels. A canonical predicate is not valid for every label pair.
+- Select the complete object alternative matching both exact names; never reinterpret an endpoint's label to obtain a different predicate list.
 
 ENTITY REQUIREMENTS:
 {% include "knowledge_agent/_named_identity.j2" %}
@@ -38,6 +39,7 @@ Output contract:
 - If no significant relationships are present, return: {"kg_triples": []}
 
 Examples demonstrating valid relationships:
+These examples use Character Elara and Marcus, Location Sunken Library, and Item Enchanted Blade. They illustrate those label pairs only; never copy a name absent from the eligible scene identities.
 {"kg_triples":[
   {"subject":"Elara","predicate":"LOCATED_AT","object_entity":"Sunken Library","description":"Elara is currently at the Sunken Library."},
   {"subject":"Marcus","predicate":"ALLIES_WITH","object_entity":"Elara","description":"Marcus considers Elara a trusted ally."},

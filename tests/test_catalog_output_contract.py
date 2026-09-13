@@ -15,7 +15,9 @@ from core.langgraph.initialization.snapshot import encoded
 from core.langgraph.initialization.staged_import import InitializationImport
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import create_llm_service
+from core.relationship_validation import validate_relationship_semantics_strict
 from core.service_context import get_services
+from models.kg_constants import RELATIONSHIP_TYPES
 from tests.test_initialization_catalog import SyntheticSelector, selected_state
 from tests.test_staged_initialization import example_state, with_catalog
 
@@ -59,7 +61,8 @@ async def test_relationship_wire_couples_literal_identity_and_label(tmp_path: Pa
     assert all(serialized.count(json.dumps(candidate["id"])) <= 8 for candidate in candidates)
     for source in candidates:
         for target in candidates:
-            row = {"source_id": source["id"], "source_label": source["label"], "target_id": target["id"], "target_label": target["label"], "relationship_type": "OWNS", "description": "Synthetic assertion"}
+            predicate = next(predicate for predicate in sorted(RELATIONSHIP_TYPES) if validate_relationship_semantics_strict(predicate, source["label"], target["label"])[0])
+            row = {"source_id": source["id"], "source_label": source["label"], "target_id": target["id"], "target_label": target["label"], "relationship_type": predicate, "description": "Synthetic assertion"}
             assert wire_accepts(schema, {"kg_triples": [row]})
             for wrong_label in {"Character", "Location", "Item", "Event"} - {row[endpoint + "_label"]}:
                 bad = row | {endpoint + "_label": wrong_label}
@@ -109,7 +112,7 @@ async def test_relationship_contract_reaches_serialized_adapter(tmp_path: Path, 
         assert encoded(catalog.model_candidates('Character', 'Location', 'Item', 'Event')) in bodies[0]['messages'][-1]['content']
         character = catalog.candidates('Character')[0]['id']
         event = catalog.candidates('Event')[0]['id']
-        row = {'source_id': character, 'source_label': 'Character', 'target_id': event, 'target_label': 'Event', 'relationship_type': 'OCCURS_AT', 'description': 'Synthetic assertion'}
+        row = {'source_id': character, 'source_label': 'Character', 'target_id': event, 'target_label': 'Event', 'relationship_type': 'PARTICIPATES_IN', 'description': 'Synthetic assertion'}
         assert wire_accepts(schema, {'kg_triples': []})
         assert wire_accepts(schema, {'kg_triples': [row] * 20})
         assert not wire_accepts(schema, {'kg_triples': [row] * 21})

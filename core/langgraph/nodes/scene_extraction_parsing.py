@@ -7,13 +7,15 @@ focused on the extraction flow while the parsing logic lives here.
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
+from copy import deepcopy
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 import config
 from core.langgraph.nodes.scene_extraction_validation import validate_lexical_entity_name
+from core.relationship_schema import allowed_relationship_types
 from models.kg_constants import RELATIONSHIP_TYPES
 
 
@@ -46,15 +48,26 @@ class SceneRelationships(BaseModel):
     kg_triples: list[SceneRelationship] = Field(max_length=15)
 
     @classmethod
-    def response_format(cls, eligible_names: Collection[str] = ()) -> dict[str, Any]:
+    def response_format(cls, candidates: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, Any]:
+        """Couple exact names and predicates by selected semantic label pair."""
         schema = cls.model_json_schema()
-        properties = schema["$defs"]["SceneRelationship"]["properties"]
-        for endpoint in ("subject", "object_entity"):
-            properties[endpoint]["enum"] = sorted(eligible_names)
-        if not eligible_names:
+        if not candidates:
             schema["properties"]["kg_triples"]["maxItems"] = 0
-            for endpoint in ("subject", "object_entity"):
-                del properties[endpoint]["enum"]
+        else:
+            labels = sorted({candidate["label"] for candidate in candidates.values()})
+            if set(labels) - {"Character", "Location", "Item", "Event"}:
+                raise ValueError("Scene relationship candidates require selected semantic labels")
+            names_by_label = {label: sorted(name for name, candidate in candidates.items() if candidate["label"] == label) for label in labels}
+            variants = []
+            for source_label in labels:
+                for target_label in labels:
+                    variant = deepcopy(schema["$defs"]["SceneRelationship"])
+                    properties = variant["properties"]
+                    properties["subject"]["enum"] = names_by_label[source_label]
+                    properties["object_entity"]["enum"] = names_by_label[target_label]
+                    properties["predicate"]["enum"] = allowed_relationship_types(source_label, target_label)
+                    variants.append(variant)
+            schema["$defs"]["SceneRelationship"] = {"oneOf": variants}
         return {"type": "json_schema", "json_schema": {
             "name": "extract_scene_relationships", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": schema,
         }}
@@ -81,7 +94,7 @@ def scene_entity_response_format(entity_type: str, eligible_names: Collection[st
     if entity_type == "Character":
         details = record({
             "description": text, "traits": strings, "status": text,
-            "relationships": named(record({"type": {"type": "string", "enum": sorted(RELATIONSHIP_TYPES)}, "description": text})),
+            "relationships": named(record({"type": {"type": "string", "enum": allowed_relationship_types("Character", "Character")}, "description": text})),
         })
         schema = record({"character_updates": named(details)})
     else:
