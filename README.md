@@ -24,46 +24,50 @@ Running it produces (under `projects/{story_title}/`):
 
 The intended design is: **your canon lives in Neo4j**, while **your artifacts live in files**, so you can inspect and version outputs easily.
 
-## Status: not production-ready
+## Status: bounded end-to-end verification
 
-SAGA currently has known critical issues and is **not production-ready**.
+SAGA has completed a **real two-chapter authoring, export and fresh-process reopen**
+qualification on Linux. This is not production-ready unattended long-form publishing:
+the generated prose still needs editorial review, and one bounded story does not
+establish reliability or quality for every model, genre or book length.
 
-Repair verification is source-level and synthetic unless explicitly stated otherwise.
-The locked Linux runtime has clean-install/dependency-check evidence, including a
-real `en_core_web_lg` 3.8.0 statistical pipeline with spaCy 3.8.7, installed from a retained local wheel.
-Disposable standalone Neo4j/APOC startup and synthetic-provider authoring through
-real graph/SQLite/files have been exercised. Original-data preservation and disposable
-restore verification are complete; they are not permission to access or reset originals.
-The configured-model drafting baseline covers four scenes and six AI-assessed quality
-dimensions, not human review or completed live full-workflow authoring. Optional
-author review is not a required signoff for that baseline.
+The 2026-09-13 qualification used runtime source `98fe7ea`, the installed
+`Ornith-1.5-35B-A3B-Heretic-MTP-APEX-I-Compact` model, and
+`qwen3-embedding:0.6b` with 1,024-dimensional vectors. It retained eight real scene
+drafts and produced a 6,726-word export. The lineage includes a from-scratch run and
+a source-repaired Chapter 2 continuation; earlier failed attempts were preserved,
+not relabeled as successful. Completed reopen made zero model calls and preserved
+accepted text, graph/vector state and logical checkpoint contents.
 
-Writer command parsing and deterministic bootstrap/promotion/resume/export fixtures
-have been exercised offline. The `quick` entrypoint smoke covers failure propagation,
-not a successful novel. Narrative and embedding service/model selection is resolved;
-catalog/protocol checks do not prove full authoring. The retained real-service run
-`sampling-20260910T190220Z` extracted 15 relationships, discarded 13 at semantic
-admission, stored 2, and reached quality evaluation before a major contradiction.
-Revision rollback then failed because a node still had relationships. That run has
-no accepted export or completed fresh-process reopen. Its response 025 assesses
-earlier prose; it is not a new high-temperature draft. Source repairs and synthetic
-regressions are not evidence that this real-service gate has subsequently passed.
-Fresh hash-locked UV setup and the online spaCy 3.8.0 URL installation have been
-exercised in the canonical `.venv-runtime`, including dependency and statistical-load
-checks. The disposable standalone engine/APOC and configured 1,024-dimensional
-embedding path also have real read-back/reuse evidence. These do not prove completed
-live authoring. The optional Docker example is source-checked but unverified on this host;
-the supported tested engine setup here is the standalone alternative below.
-Do not infer that all commands below passed or that the repository is release-ready.
+Both chapters were `accepted_with_exceptions` solely because advisory graph QA was
+skipped by the unchanged frequency-three cadence. Consistency, contradiction and
+prose evaluation completed, and `force_continue` remained false. Runtime prose
+grading sampled 8,000 characters per chapter. No natural revision occurred in this
+story; separate real-Neo4j synthetic tests verified compensation, preservation,
+concurrency and retry behavior. These distinctions are part of the qualification.
 
-Scene relationship extraction uses a provider JSON schema for the name-based
-`subject`, `predicate`, `object_entity`, `description` contract (at most 15 rows),
-not the outline catalog's stable-ID contract. Application admission independently
-rejects duplicate JSON keys, missing/extra fields and noncanonical predicates.
-This contract is scoped to relationship extraction, not free-prose drafting.
-A reachable endpoint or supported schema is not proof of a usable answer: empty
-final content must not be replaced by reasoning text, and incomplete extraction
-does not establish chapter acceptance, export or completed-project reopen.
+Full-manuscript AI assessments found a useful draft scaffold, not publish-ready prose:
+repetition, chronology and viewpoint drift, partial premise fulfillment, and numerical
+or physical inconsistencies remain model-quality limitations. No human review or
+former `3.6-a3b` service recovery is claimed.
+
+The qualified source passed 4,482 default offline tests, with 11 pre-existing opt-in
+integration cases excluded, plus maintained-code Mypy, configured Ruff and the
+15-case process startup matrix. The test log retains 156 Pydantic serialization
+warnings. Local campaign evidence is under `.saga-repair/complete-20260913T043054Z/`;
+it is not a packaged runtime dependency. The optional Docker example remains
+source-checked but unverified on this host; the tested engine setup is the standalone
+alternative below. Original-data preservation and restore evidence never authorize
+access to or resets of original story stores.
+
+Scene extraction restricts literal endpoint names to the verified selected catalog
+and retains canonical IDs through state and persistence. Its provider JSON schema
+uses `subject`, `predicate`, `object_entity` and `description` (at most 15 rows), with
+eligible names and endpoint-compatible predicates. Local admission independently
+rejects duplicate keys, malformed fields, unknown identities and invalid predicates.
+The global temperature override is 1.0 and provider schema `strict` is false;
+application parsing and admission remain strict. These constraints do not turn a
+reachable endpoint or an empty final answer into successful authoring.
 
 ## Screenshots
 
