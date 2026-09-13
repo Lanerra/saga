@@ -22,7 +22,7 @@ from typing import Annotated, Any, Concatenate, Literal
 import httpx
 import structlog
 import tiktoken
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 import config
 from config.settings import EffectiveSettings
@@ -118,8 +118,16 @@ class _LlamaCppTimings(_ProviderModel):
     predicted_ms: float = Field(ge=0, allow_inf_nan=False)
     predicted_per_token_ms: float = Field(ge=0, allow_inf_nan=False)
     predicted_per_second: float = Field(ge=0, allow_inf_nan=False)
-    draft_n: int = Field(ge=0)
-    draft_n_accepted: int = Field(ge=0)
+    draft_n: int | None = Field(default=None, ge=0)
+    draft_n_accepted: int | None = Field(default=None, ge=0)
+
+    @field_validator("draft_n", "draft_n_accepted")
+    @classmethod
+    def validate_speculative_count(cls, value: int | None) -> int:
+        """Absent speculative counters are unknown; supplied counters must be integers."""
+        if value is None:
+            raise ValueError("Supplied speculative count must not be null")
+        return value
 
 
 class _Usage(_ProviderModel):
