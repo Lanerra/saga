@@ -9,7 +9,10 @@ with a lightweight, injectable alternative.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
+
+QueryResponse = list[dict[str, Any]] | Callable[[dict[str, Any] | None], list[dict[str, Any]]]
 
 
 class FakeNeo4jManager:
@@ -22,32 +25,32 @@ class FakeNeo4jManager:
     def __init__(self) -> None:
         self.executed_queries: list[tuple[str, dict[str, Any] | None]] = []
         self.batch_statements: list[list[tuple[str, dict[str, Any]]]] = []
-        self._configured_responses: list[tuple[re.Pattern[str], list[dict[str, Any]]]] = []
+        self._configured_responses: list[tuple[re.Pattern[str], QueryResponse]] = []
         self._apoc_available: bool = True
 
-    def configure_response(self, query_pattern: str, response: list[dict[str, Any]]) -> None:
+    def configure_response(self, query_pattern: str, response: QueryResponse) -> None:
         """Register an explicit response contract, not a graph-side-effect model."""
         self._configured_responses.append((re.compile(query_pattern, re.IGNORECASE), response))
 
-    def _response(self, query: str) -> list[dict[str, Any]]:
+    def _response(self, query: str, parameters: dict[str, Any] | None) -> list[dict[str, Any]]:
         for pattern, response in self._configured_responses:
             if pattern.search(query):
-                return response
+                return response(parameters) if callable(response) else response
         raise AssertionError(f"Unconfigured synthetic query: {query}")
 
     async def execute_read_query(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         self.executed_queries.append((query, parameters))
-        return self._response(query)
+        return self._response(query, parameters)
 
     async def execute_write_query(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         self.executed_queries.append((query, parameters))
-        return self._response(query)
+        return self._response(query, parameters)
 
     async def execute_cypher_batch(self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]) -> None:
         self.batch_statements.append(list(cypher_statements_with_params))
         for query, params in cypher_statements_with_params:
             self.executed_queries.append((query, params))
-            self._response(query)
+            self._response(query, params)
 
     async def execute_in_transaction(
         self,

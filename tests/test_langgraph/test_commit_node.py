@@ -68,25 +68,20 @@ class TestCommitToGraph:
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
 
-        with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-            mock_builder = mock_builder_class.return_value
-            mock_builder.character_upsert_cypher.return_value = ("query", {})
-            mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+        with (
+            patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars,
+            patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world,
+            patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg,
+        ):
+            result = await commit_to_graph(state)
 
-            with (
-                patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars,
-                patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world,
-                patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg,
-            ):
-                result = await commit_to_graph(state)
+        assert result["current_node"] == "commit_to_graph"
+        assert result["last_error"] is None
 
-            assert result["current_node"] == "commit_to_graph"
-            assert result["last_error"] is None
-
-            assert len(fake_neo4j.batch_statements) == 1
-            assert mock_clear_chars.called
-            assert mock_clear_world.called
-            assert mock_clear_kg.called
+        assert len(fake_neo4j.batch_statements) == 1
+        assert mock_clear_chars.called
+        assert mock_clear_world.called
+        assert mock_clear_kg.called
 
     async def test_commit_with_entities_and_relationships(
         self,
@@ -96,26 +91,21 @@ class TestCommitToGraph:
         """Test commit with entities and relationships."""
         state = sample_state_with_extraction
 
-        with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-            mock_builder = mock_builder_class.return_value
-            mock_builder.character_upsert_cypher.return_value = ("query", {})
-            mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+        with (
+            patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars,
+            patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world,
+            patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg,
+        ):
+            result = await commit_to_graph(state)
 
-            with (
-                patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars,
-                patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world,
-                patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg,
-            ):
-                result = await commit_to_graph(state)
+        assert result["current_node"] == "commit_to_graph"
+        assert result["last_error"] is None
 
-            assert result["current_node"] == "commit_to_graph"
-            assert result["last_error"] is None
+        assert len(fake_neo4j.batch_statements) == 1
 
-            assert len(fake_neo4j.batch_statements) == 1
-
-            assert mock_clear_chars.called
-            assert mock_clear_world.called
-            assert mock_clear_kg.called
+        assert mock_clear_chars.called
+        assert mock_clear_world.called
+        assert mock_clear_kg.called
 
     async def test_extraction_normalization_commit_reads_normalized_ref(self, tmp_path: Path, fake_neo4j: FakeNeo4jManager) -> None:
         """
@@ -241,40 +231,20 @@ class TestCommitToGraph:
         ]
 
         # Step 3: Commit reads from extracted_relationships_ref (single source of truth) and uses WORKS_WITH.
-        # Avoid relying on real chapter query builder in this focused test.
-        with patch(
-            "core.langgraph.nodes.commit_graph_ops.chapter_queries.build_chapter_upsert_statement",
-            return_value=(
-                "CHAPTER_UPSERT",
-                {
-                    "chapter_number_param": 1,
-                    "chapter_id_param": "chapter_1",
-                    "summary_param": None,
-                    "embedding_vector_param": None,
-                    "is_provisional_param": False,
-                },
-            ),
-        ):
-            with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-                mock_builder = mock_builder_class.return_value
-                mock_builder.character_upsert_cypher.return_value = ("CHAR_UPSERT", {})
-                mock_builder.world_item_upsert_cypher.return_value = ("WORLD_UPSERT", {})
+        result = await commit_to_graph(state)
+        assert result["last_error"] is None
 
-                result = await commit_to_graph(state)
-                assert result["last_error"] is None
+        assert len(fake_neo4j.batch_statements) == 1
+        statements = fake_neo4j.batch_statements[0]
 
-                assert len(fake_neo4j.batch_statements) == 1
-                statements = fake_neo4j.batch_statements[0]
+        # Profile upserts also contain relationship Cypher; select standalone assertions.
+        rel_statements = [(q, p) for (q, p) in statements if "predicate_clean" in p]
+        assert rel_statements, "Expected at least one relationship statement"
 
-                # Find relationship statements and assert predicate type is normalized.
-                rel_statements = [(q, p) for (q, p) in statements if isinstance(q, str) and "CALL apoc.merge.relationship" in q]
-
-                assert rel_statements, "Expected at least one relationship statement"
-
-                # Contract: relationship type is passed as a parameter (not interpolated into the query string).
-                assert any(p.get("predicate_clean") == "WORKS_WITH" for (_q, p) in rel_statements)
-                assert all(p.get("predicate_clean") != "COLLABORATES_WITH" for (_q, p) in rel_statements)
-                assert all(p.get("predicate_clean") != "SHOULD_NOT_SEE" for (_q, p) in rel_statements)
+        # Relationship types are parameters, never interpolated query text.
+        assert any(p.get("predicate_clean") == "WORKS_WITH" for (_q, p) in rel_statements)
+        assert all(p.get("predicate_clean") != "COLLABORATES_WITH" for (_q, p) in rel_statements)
+        assert all(p.get("predicate_clean") != "SHOULD_NOT_SEE" for (_q, p) in rel_statements)
 
     async def test_commit_handles_errors_gracefully(
         self,
@@ -311,15 +281,11 @@ class TestCommitToGraph:
         with patch("core.langgraph.nodes.commit_node.load_embedding") as mock_load:
             mock_load.return_value = [0.1, 0.2, 0.3]
 
-            with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-                mock_builder = mock_builder_class.return_value
-                mock_builder.character_upsert_cypher.return_value = ("query", {})
-                mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+            result = await commit_to_graph(state)
 
-                result = await commit_to_graph(state)
-
-                assert result["last_error"] is None
-                assert mock_load.called
+            assert result["last_error"] is None
+            assert mock_load.called
+            assert fake_neo4j.batch_statements[0][-1][1]["embedding_vector_param"] == [0.1, 0.2, 0.3]
 
     async def test_commit_with_embedding_load_failure(
         self,
@@ -338,14 +304,11 @@ class TestCommitToGraph:
         with patch("core.langgraph.nodes.commit_node.load_embedding") as mock_load:
             mock_load.side_effect = Exception("File not found")
 
-            with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-                mock_builder = mock_builder_class.return_value
-                mock_builder.character_upsert_cypher.return_value = ("query", {})
-                mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+            result = await commit_to_graph(state)
 
-                result = await commit_to_graph(state)
-
-                assert result["last_error"] is None
+            assert result["last_error"] is None
+            mock_load.assert_called_once()
+            assert fake_neo4j.batch_statements[0][-1][1]["embedding_vector_param"] is None
 
     async def test_commit_with_fallback_embedding(
         self,
@@ -357,14 +320,10 @@ class TestCommitToGraph:
         state = sample_state_with_extraction
         state["embedding_ref"] = save_embedding(ContentManager(state["project_dir"]), [0.4, 0.5, 0.6], 1, embedding_model=config.EMBEDDING_MODEL)
 
-        with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-            mock_builder = mock_builder_class.return_value
-            mock_builder.character_upsert_cypher.return_value = ("query", {})
-            mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+        result = await commit_to_graph(state)
 
-            result = await commit_to_graph(state)
-
-            assert result["last_error"] is None
+        assert result["last_error"] is None
+        assert fake_neo4j.batch_statements[0][-1][1]["embedding_vector_param"] == [0.4, 0.5, 0.6]
 
     async def test_commit_with_duplicate_world_items_in_batch(
         self,

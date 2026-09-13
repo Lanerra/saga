@@ -1,7 +1,7 @@
 # tests/core/langgraph/nodes/test_commit_node.py
 """Tests for core/langgraph/nodes/commit_node.py - entity and relationship persistence."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
@@ -11,6 +11,7 @@ import pytest
 from neo4j import Driver
 from structlog.testing import capture_logs
 
+import config
 from core.db_manager import Neo4jManagerSingleton
 from core.graph_ownership import OWNER_QUERY
 from core.langgraph.content_manager import ContentManager
@@ -36,11 +37,11 @@ def known_entity_names(offline_commit_providers: FakeNeo4jManager) -> None:
     [([], [], 0), (["Alice"], [], 0), (["Alice", "Bob"], [], 7),
      ([], ["Castle"], 5), ([], ["Castle", "Forest"], 5), (["Alice"], ["Castle"], 7)],
 )
+@pytest.mark.run_settings(ENABLE_ENTITY_EMBEDDING_PERSISTENCE=False)
 async def test_native_entity_provider_preserves_payloads(
     character_names: list[str], location_names: list[str], chapter: int,
-    monkeypatch: pytest.MonkeyPatch, offline_commit_providers: FakeNeo4jManager,
+    offline_commit_providers: FakeNeo4jManager,
 ) -> None:
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     characters = [CharacterProfile(name=name, personality_description=f"About {name}", traits=["brave"]) for name in character_names]
     locations = [WorldItem.from_dict("Location", name, {"description": f"About {name}"}) for name in location_names]
 
@@ -58,11 +59,10 @@ async def test_native_entity_provider_preserves_payloads(
     assert offline_commit_providers.batch_statements == []
 
 
+@pytest.mark.run_settings(ENABLE_ENTITY_EMBEDDING_PERSISTENCE=True, MAIN_NOVEL_INFO_NODE_ID="synthetic_novel")
 async def test_commit_batches_real_conversions_embeddings_and_chapter(
-    tmp_path: Path, offline_commit_providers: FakeNeo4jManager, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, offline_commit_providers: FakeNeo4jManager,
 ) -> None:
-    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
-    monkeypatch.setattr("config.MAIN_NOVEL_INFO_NODE_ID", "synthetic_novel")
     content_manager = ContentManager(str(tmp_path))
     entities = {
         "characters": [{"name": "Alice", "type": "Character", "description": "A scout", "first_appearance_chapter": 2,
@@ -212,7 +212,7 @@ class ChapterDriver:
 
 
 @pytest.fixture
-def chapter_driver(monkeypatch: pytest.MonkeyPatch) -> ChapterDriver:
+def chapter_driver(monkeypatch: pytest.MonkeyPatch) -> Generator[ChapterDriver, None, None]:
     driver = ChapterDriver()
     manager = object.__new__(Neo4jManagerSingleton)
     manager._initialized_flag = False
@@ -220,10 +220,12 @@ def chapter_driver(monkeypatch: pytest.MonkeyPatch) -> ChapterDriver:
     manager.bind_project("11111111-1111-4111-8111-111111111111")
     manager.driver = cast(Driver, driver)
     monkeypatch.setattr(get_services(), 'database', manager)
-    monkeypatch.setattr("config.MAIN_NOVEL_INFO_NODE_ID", "synthetic_novel")
     assert Path(commit_to_graph.__code__.co_filename).resolve() == Path(__file__).resolve().parents[4] / "core/langgraph/nodes/commit_node.py"
     assert Path(Neo4jManagerSingleton.execute_cypher_batch.__code__.co_filename).resolve() == Path(__file__).resolve().parents[4] / "core/db_manager.py"
-    return driver
+    enclosing = config.snapshot_settings()
+    values = {name: getattr(enclosing, name) for name in config.EffectiveSettings.model_fields}
+    with config.bind_settings(config.EffectiveSettings(_env_file=None, **{**values, "MAIN_NOVEL_INFO_NODE_ID": "synthetic_novel"})):
+        yield driver
 
 
 def chapter_state(directory: Path, chapter: int = 4) -> NarrativeState:
@@ -369,47 +371,31 @@ class TestCommitNodeEntityPersistence:
     """Test entity persistence operations in the commit node."""
 
     @pytest.mark.asyncio
-    async def test_commit_to_graph_creates_entity_ids(self) -> None:
-        """Test that commit_to_graph generates unique entity IDs."""
-        mock_state = {
-            "current_chapter": 1,
-            "project_dir": "/tmp/test_project",
-            "extracted_entities_ref": {
-                "path": ".saga/content/extracted_entities/chapter_1.json",
-                "content_type": "extracted_entities",
-                "version": 1,
-                "size_bytes": 100,
-                "checksum": "abc123",
-            },
-        }
+    async def test_commit_to_graph_creates_entity_ids(self, tmp_path: Path, offline_commit_providers: FakeNeo4jManager) -> None:
+        """Submit name-only identities to the native resolver, not a Python ID generator."""
+        state = chapter_state(tmp_path, 1)
+        manager = ContentManager(str(tmp_path))
+        state["extracted_entities_ref"] = manager.save_json({
+            "characters": [
+                {"name": "Alice", "type": "Character", "description": "Protagonist", "first_appearance_chapter": 1},
+                {"name": "Bob", "type": "Character", "description": "Antagonist", "first_appearance_chapter": 1},
+            ],
+            "world_items": [{"name": "Sword", "type": "Item", "description": "A sharp sword", "first_appearance_chapter": 1}],
+        }, "extracted_entities", "chapter_1", 1)
 
-        with patch("core.langgraph.nodes.commit_node.ContentManager") as mock_cm_class:
-            mock_cm = MagicMock()
-            mock_cm_class.return_value = mock_cm
+        with patch("utils.text_processing.generate_entity_id") as generate_id:
+            result = await commit_to_graph(state)
 
-            # Mock the content manager to return test data
-            mock_cm.load_json_strict.return_value = {
-                "characters": [
-                    {"name": "Alice", "type": "Character", "description": "Protagonist", "first_appearance_chapter": 1},
-                    {"name": "Bob", "type": "Character", "description": "Antagonist", "first_appearance_chapter": 1},
-                ],
-                "world_items": [
-                    {"name": "Sword", "type": "Item", "description": "A sharp sword", "first_appearance_chapter": 1},
-                ],
-            }
-
-            with patch("utils.text_processing.generate_entity_id") as mock_generate_id:
-                mock_generate_id.side_effect = lambda name, category: f"id_{name}"
-
-                with patch_service('database.execute_cypher_batch') as batch:
-                    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
-                    assert result["has_fatal_error"] is False
-                    batch.assert_awaited_once()
-                    assert any(parameters.get("name") == "Sword" for _, parameters in batch.await_args.args[0])
-
-                    # Name-only entities now go through exact graph resolution,
-                    # never punctuation-normalizing Python ID generation.
-                    mock_generate_id.assert_not_called()
+        assert result == {"current_node": "commit_to_graph", "has_fatal_error": False, "last_error": None}
+        assert len(offline_commit_providers.batch_statements) == 1
+        statements = offline_commit_providers.batch_statements[0]
+        assert [(parameters["name"], parameters["id"]) for _, parameters in statements[1:4]] == [("Alice", None), ("Bob", None), ("Sword", None)]
+        assert [parameters["identity"] for _, parameters in statements[4:7]] == [
+            {"label": "Character", "id": None, "name": "Alice"},
+            {"label": "Character", "id": None, "name": "Bob"},
+            {"label": "Item", "id": None, "name": "Sword"},
+        ]
+        generate_id.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_commit_to_graph_handles_empty_extractions(self) -> None:

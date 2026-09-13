@@ -12,6 +12,7 @@ import config
 from config.settings import EffectiveSettings
 from core.service_context import get_services
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.fakes.strict_commit_recorder import StrictCommitRecorder
 from tests.offline import boundary_key
 
 # Ensure repository root is on PYTHONPATH for tests
@@ -79,7 +80,7 @@ def offline_commit_providers(monkeypatch: pytest.MonkeyPatch, run_service_contex
     values = {name: getattr(enclosing, name) for name in EffectiveSettings.model_fields}
     configuration = EffectiveSettings(_env_file=None, **{**values, "EXPECTED_EMBEDDING_DIM": 2})
     with synthetic_run(configuration):
-        database = FakeNeo4jManager()
+        database = StrictCommitRecorder()
         monkeypatch.setattr(get_services(), 'database', database)
 
         async def embedding_batch(texts: list[str]) -> list[list[float]]:

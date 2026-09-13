@@ -23,6 +23,7 @@ from core.service_context import get_services
 from models.kg_models import CharacterProfile, WorldItem
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
 from tests.fakes.service_context import patch_service
+from tests.fakes.strict_commit_recorder import StrictCommitRecorder
 from tests.test_langgraph import InlineExtractionState
 
 
@@ -189,9 +190,8 @@ def sample_state_with_extraction(tmp_path: Path) -> InlineExtractionState:
 
 @pytest.fixture
 def fake_neo4j(monkeypatch: pytest.MonkeyPatch) -> Generator[FakeNeo4jManager, None, None]:
-    """Inject a FakeNeo4jManager into core.db_manager for the test duration."""
-    fake = FakeNeo4jManager()
-    monkeypatch.setattr(get_services(), 'database', fake)
+    """Inject a response-only recorder with exact native commit contracts."""
+    fake = StrictCommitRecorder()
     monkeypatch.setattr(get_services(), 'database', fake)
     yield fake
 
