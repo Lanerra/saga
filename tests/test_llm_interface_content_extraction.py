@@ -4,7 +4,6 @@ from typing import Any
 import numpy as np
 import pytest
 
-import config
 from core.llm_interface_refactored import CompletionService, EmbeddingService
 
 
@@ -46,11 +45,15 @@ class _DummyTextProcessor:
     def __init__(self) -> None:
         self.response_cleaner = self._Cleaner()
 
+    def clean_text_with_spacy(self, text: str, aggressive: bool = False) -> str:
+        return text
+
     def get_combined_statistics(self) -> dict[str, Any]:
         return {}
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(COMPLETION_CONTENT_FORMAT="text_parts")
 async def test_extracts_text_from_list_of_parts_content_and_ignores_reasoning_content() -> None:
     svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
     text, usage = await svc.get_completion("model", "prompt")
@@ -115,9 +118,10 @@ async def test_reasoning_content_is_not_used_when_content_is_missing() -> None:
             }
 
     svc = CompletionService(_ReasoningOnlyClient(), _DummyTextProcessor())  # type: ignore
-    text, usage = await svc.get_completion("model", "prompt")
-    assert text == ""
-    assert usage and usage.get("total_tokens") == 3
+    from core.exceptions import LLMServiceError
+
+    with pytest.raises(LLMServiceError, match="LLM completion failed"):
+        await svc.get_completion("model", "prompt")
 
 
 def test_streaming_api_surface_removed() -> None:
@@ -127,17 +131,9 @@ def test_streaming_api_surface_removed() -> None:
     assert not hasattr(CompletionService, "get_streaming_completion")
 
 
-def test_embedding_fallback_accepts_numeric_list_under_non_embedding_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    Exercise the fallback branch in EmbeddingService._extract_and_validate_embedding():
-
-    - Response does NOT include "embedding" key
-    - Response includes a numeric list under some other key
-    - Should validate and return a numpy array without raising TypeError
-    """
-    # Keep the test fast and deterministic by shrinking the expected dim.
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", np.float32)
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
+def test_embedding_rejects_numeric_list_under_non_embedding_key() -> None:
+    """Unrelated numeric fields cannot become an embedding."""
 
     class _DummyEmbeddingClient:
         pass
@@ -147,17 +143,12 @@ def test_embedding_fallback_accepts_numeric_list_under_non_embedding_key(monkeyp
     response = {"vector": [1, 2.5, 3]}
     embedding = svc._extract_and_validate_embedding(response)
 
-    assert isinstance(embedding, np.ndarray)
-    assert embedding.shape == (3,)
-    assert embedding.dtype == np.float32
+    assert embedding is None
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EMBEDDING_MAX_INPUT_TOKENS=5, EMBEDDING_MODEL="dummy-embed", EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
 async def test_get_embedding_truncates_to_configured_max_before_request(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EMBEDDING_MAX_INPUT_TOKENS", 5)
-    monkeypatch.setattr(config, "EMBEDDING_MODEL", "dummy-embed")
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", np.float32)
 
     import core.llm_interface_refactored as llm_interface_refactored
 
@@ -203,11 +194,8 @@ async def test_get_embedding_truncates_to_configured_max_before_request(monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EMBEDDING_MAX_INPUT_TOKENS=5, EMBEDDING_MODEL="dummy-embed", EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
 async def test_get_embedding_exact_limit_can_pass_through(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(config, "EMBEDDING_MAX_INPUT_TOKENS", 5)
-    monkeypatch.setattr(config, "EMBEDDING_MODEL", "dummy-embed")
-    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
-    monkeypatch.setattr(config, "EMBEDDING_DTYPE", np.float32)
 
     import core.llm_interface_refactored as llm_interface_refactored
 

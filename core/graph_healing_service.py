@@ -16,22 +16,61 @@ Notes:
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from difflib import SequenceMatcher
-from typing import Any
+from typing import Annotated, Any
 
 import numpy as np
 import structlog
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import ValidationError as SchemaValidationError
 
 import config
-from core.db_manager import neo4j_manager
+from core.embedding_contract import embedding_identity, validate_embedding
 from core.exceptions import ValidationError
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import load_strict_json
 
 logger = structlog.get_logger(__name__)
 
 _ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE = "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
+
+_HealingConfidence = Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)]
+_CONFIDENCE: TypeAdapter[float] = TypeAdapter(_HealingConfidence)
+
+
+class _EnrichmentPayload(BaseModel):
+    """The producer's four required fields; empty strings/lists mean no inference."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    inferred_description: str
+    inferred_traits: list[Annotated[str, Field(pattern=r"^[\p{L}\p{N}-]+$")]]
+    inferred_role: str
+    confidence: _HealingConfidence
+
+
+class _EnrichmentResponseError(ValidationError):
+    """Retain raw attempt evidence outside the printable/logged error message."""
+
+    def __init__(self, message: str, raw_responses: list[str]) -> None:
+        super().__init__(message)
+        self.raw_responses = tuple(raw_responses)
+
+
+def _validated_enrichment(value: Any) -> _EnrichmentPayload:
+    try:
+        return _EnrichmentPayload.model_validate(value)
+    except SchemaValidationError as error:
+        raise ValidationError("Healing enrichment payload requires exactly typed description, traits, role and finite bounded confidence fields") from error
+
+
+def _validated_confidence(value: Any) -> float:
+    try:
+        return _CONFIDENCE.validate_python(value)
+    except SchemaValidationError as error:
+        raise ValidationError("Healing confidence must be a finite number between zero and one") from error
 
 
 class GraphHealingService:
@@ -70,7 +109,7 @@ class GraphHealingService:
                 n.created_chapter AS created_chapter
             ORDER BY n.created_chapter ASC
         """
-        return await neo4j_manager.execute_read_query(query)
+        return await get_services().database.execute_read_query(query)
 
     async def calculate_node_confidence(self, node: dict[str, Any], current_chapter: int = 0) -> float:
         """Calculate a confidence score for a provisional node.
@@ -91,18 +130,18 @@ class GraphHealingService:
         """
         element_id = node["element_id"]
 
-        # Evidence 1: Relationship connectivity (proxy for importance/mentions)
-        # Count both incoming and outgoing relationships
-        rel_query = """
-            MATCH (n)-[r]-()
+        # Fetch relationship count and status in a single query
+        combined_query = """
+            MATCH (n)
             WHERE elementId(n) = $element_id
-            RETURN count(r) AS rel_count
+            OPTIONAL MATCH (n)-[r]-()
+            RETURN count(r) AS rel_count, n.status AS status
         """
-        results = await neo4j_manager.execute_read_query(rel_query, {"element_id": element_id})
+        results = await get_services().database.execute_read_query(combined_query, {"element_id": element_id})
         record = results[0] if results else None
         rel_count = record["rel_count"] if record else 0
 
-        # Normalize: 3 relationships = max score (lowered from 5)
+        # Normalize: 3 relationships = max score
         connectivity_score = min(rel_count / 3, 1.0) * 0.4
 
         # Evidence 2: Attribute completeness
@@ -117,16 +156,9 @@ class GraphHealingService:
         if node.get("traits") and len(node["traits"]) > 0:
             completeness_score += 0.1
 
-        # Check for additional attributes based on node type
-        if node["type"] == "Character":
-            status_query = """
-                MATCH (n)
-                WHERE elementId(n) = $element_id
-                RETURN n.status AS status
-            """
-            results = await neo4j_manager.execute_read_query(status_query, {"element_id": element_id})
-            record = results[0] if results else None
-            if record and record.get("status") and record["status"] != "Unknown":
+        if node["type"] == "Character" and record:
+            status = record.get("status")
+            if status and status != "Unknown":
                 completeness_score += 0.1
 
         # Evidence 3: Age bonus - nodes that survive multiple chapters are likely important
@@ -135,9 +167,9 @@ class GraphHealingService:
         if current_chapter > 0 and created_chapter is not None:
             age = current_chapter - created_chapter
             if age >= self.AGE_GRADUATION_CHAPTERS:
-                age_score = 0.2  # Full bonus for surviving 3+ chapters
+                age_score = 0.2
             elif age >= 1:
-                age_score = 0.1  # Partial bonus for surviving 1-2 chapters
+                age_score = 0.1
 
         total_confidence = completeness_score + connectivity_score + age_score
 
@@ -217,8 +249,9 @@ class GraphHealingService:
                 a bounded retry loop.
 
         Notes:
-            This function expects the prompt contract to be strict JSON-only. It retries
-            JSON decoding failures with an explicit corrective instruction.
+            This function validates raw JSON against the producer schema. It retries
+            JSON decoding failures with an explicit corrective instruction; schema
+            violations fail closed. Rejected raw attempts remain in the error evidence.
         """
         # `element_id` is Neo4j-internal. Keep it internal-only.
         # For cross-module calls (data_access.*), use stable application id (`n.id`).
@@ -265,21 +298,29 @@ class GraphHealingService:
         system_prompt = get_system_prompt("knowledge_agent")
 
         prompt = base_prompt
-        max_attempts = 2
+        max_attempts = config.JSON_PARSE_RETRY_ATTEMPTS
+        raw_responses: list[str] = []
         for attempt in range(1, max_attempts + 1):
-            response_text, _ = await llm_service.async_call_llm(
+            response_text, _ = await get_services().language_model.async_call_llm(
                 prompt=prompt,
                 model_name=model,
                 temperature=0.3,
                 max_tokens=config.MAX_GENERATION_TOKENS,
                 system_prompt=system_prompt,
+                auto_clean_response=False,
+                spacy_cleanup=False,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": "enrich_node_from_context", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": _EnrichmentPayload.model_json_schema()},
+                },
             )
+            raw_responses.append(response_text)
 
             try:
-                enriched = json.loads(response_text)
+                enriched = load_strict_json(response_text)
             except json.JSONDecodeError as error:
                 if attempt == max_attempts:
-                    raise ValidationError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE) from error
+                    raise _EnrichmentResponseError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE, raw_responses) from error
 
                 prompt = (
                     base_prompt
@@ -287,7 +328,13 @@ class GraphHealingService:
                     + "Return ONLY a single valid JSON object with no surrounding text and no markdown code fences."
                 )
                 continue
+            except ValueError as error:
+                raise _EnrichmentResponseError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE, raw_responses) from error
 
+            try:
+                enriched = _validated_enrichment(enriched).model_dump()
+            except ValidationError as error:
+                raise _EnrichmentResponseError(str(error), raw_responses) from error
             logger.info(
                 "Enrichment generated from context",
                 name=node["name"],
@@ -302,15 +349,16 @@ class GraphHealingService:
         raise AssertionError("unreachable: enrich_node_from_context retry loop did not return or raise")
 
     async def apply_enrichment(self, element_id: str, enriched: dict[str, Any]) -> bool:
-        """Apply validated enrichment fields to a Neo4j node."""
-        if not enriched:
+        """Validate the full producer payload before writes; only {} means no mentions."""
+        if isinstance(enriched, dict) and not enriched:
             logger.debug(
                 "apply_enrichment: empty enrichment payload",
                 element_id=element_id,
             )
             return False
 
-        enrichment_confidence = float(enriched.get("confidence", 0) or 0)
+        payload = _validated_enrichment(enriched)
+        enrichment_confidence = payload.confidence
         if enrichment_confidence < 0.6:
             logger.debug(
                 "apply_enrichment: enrichment confidence below apply threshold",
@@ -323,17 +371,17 @@ class GraphHealingService:
         updates: list[str] = []
         params: dict[str, Any] = {"element_id": element_id}
 
-        if enriched.get("inferred_description"):
+        if payload.inferred_description:
             updates.append("n.description = $description")
-            params["description"] = enriched["inferred_description"]
+            params["description"] = payload.inferred_description
 
-        if enriched.get("inferred_traits"):
+        if payload.inferred_traits:
             updates.append("n.traits = apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)")
-            params["new_traits"] = enriched["inferred_traits"]
+            params["new_traits"] = payload.inferred_traits
 
-        if enriched.get("inferred_role"):
+        if payload.inferred_role:
             updates.append("n.role = $role")
-            params["role"] = enriched["inferred_role"]
+            params["role"] = payload.inferred_role
 
         if not updates:
             return False
@@ -345,9 +393,9 @@ class GraphHealingService:
                 n.enriched_at = datetime(),
                 n.enrichment_confidence = $confidence
         """
-        params["confidence"] = enriched.get("confidence", 0.7)
+        params["confidence"] = enrichment_confidence
 
-        await neo4j_manager.execute_write_query(query, params)
+        await get_services().database.execute_write_query(query, params)
         return True
 
     async def get_node_by_element_id(self, element_id: str) -> dict[str, Any] | None:
@@ -369,11 +417,12 @@ class GraphHealingService:
                 n.traits AS traits,
                 n.created_chapter AS created_chapter
         """
-        results = await neo4j_manager.execute_read_query(query, {"element_id": element_id})
+        results = await get_services().database.execute_read_query(query, {"element_id": element_id})
         return results[0] if results else None
 
     async def graduate_node(self, element_id: str, confidence: float) -> bool:
         """Mark a provisional node as graduated in Neo4j."""
+        confidence = _validated_confidence(confidence)
         query = """
             MATCH (n)
             WHERE elementId(n) = $element_id
@@ -382,7 +431,7 @@ class GraphHealingService:
                 n.graduation_confidence = $confidence
             RETURN n.name AS name
         """
-        results = await neo4j_manager.execute_write_query(query, {"element_id": element_id, "confidence": confidence})
+        results = await get_services().database.execute_write_query(query, {"element_id": element_id, "confidence": confidence})
 
         if results:
             record = results[0]
@@ -431,29 +480,42 @@ class GraphHealingService:
                     RETURN
                         n.id AS id,
                         labels(n) AS labels,
-                        n.`{config.ENTITY_EMBEDDING_VECTOR_PROPERTY}` AS embedding_vector
+                        n.`{config.ENTITY_EMBEDDING_VECTOR_PROPERTY}` AS embedding_vector,
+                        n.`{config.ENTITY_EMBEDDING_MODEL_PROPERTY}` AS embedding_model,
+                        n.`{config.ENTITY_EMBEDDING_MODEL_PROPERTY}_identity` AS embedding_identity
                 """
-                embedding_rows = await neo4j_manager.execute_read_query(embedding_query, {"ids": candidate_ids})
+                embedding_rows = await get_services().database.execute_read_query(embedding_query, {"ids": candidate_ids})
                 for row in embedding_rows:
                     node_id = row.get("id")
                     embedding_vector = row.get("embedding_vector")
-                    if node_id and embedding_vector:
-                        embedding_by_id[str(node_id)] = embedding_vector
+                    if node_id and row.get("embedding_identity") == embedding_identity():
+                        try:
+                            embedding_by_id[str(node_id)] = validate_embedding(embedding_vector, model=row.get("embedding_model", ""))
+                        except ValueError:
+                            logger.warning("Ignoring inadmissible stored healing vector")
 
-            # Convert to our format and map id fields to element IDs
+            # Batch-resolve all candidate entity IDs to element IDs in a single query
+            all_candidate_ids = sorted({c["id1"] for c in kg_candidates} | {c["id2"] for c in kg_candidates})
+            element_id_map: dict[str, str] = {}
+            if all_candidate_ids:
+                element_id_query = """
+                    MATCH (n)
+                    WHERE n.id IN $ids
+                    RETURN n.id AS entity_id, elementId(n) AS element_id
+                """
+                element_id_rows = await get_services().database.execute_read_query(element_id_query, {"ids": all_candidate_ids})
+                for row in element_id_rows:
+                    entity_id = row.get("entity_id")
+                    element_id = row.get("element_id")
+                    if entity_id and element_id:
+                        element_id_map[str(entity_id)] = element_id
+
             candidates = []
             for c in kg_candidates:
-                # Get element IDs from entity IDs
-                get_element_id_query = """
-                    MATCH (n)
-                    WHERE n.id = $entity_id
-                    RETURN elementId(n) AS element_id
-                """
+                primary_element_id = element_id_map.get(str(c["id1"]))
+                duplicate_element_id = element_id_map.get(str(c["id2"]))
 
-                primary_results = await neo4j_manager.execute_read_query(get_element_id_query, {"entity_id": c["id1"]})
-                duplicate_results = await neo4j_manager.execute_read_query(get_element_id_query, {"entity_id": c["id2"]})
-
-                if not primary_results or not duplicate_results:
+                if not primary_element_id or not duplicate_element_id:
                     continue
 
                 name_similarity = float(c["similarity"])
@@ -472,9 +534,9 @@ class GraphHealingService:
 
                 candidates.append(
                     {
-                        "primary_id": primary_results[0]["element_id"],
+                        "primary_id": primary_element_id,
                         "primary_name": c["name1"],
-                        "duplicate_id": duplicate_results[0]["element_id"],
+                        "duplicate_id": duplicate_element_id,
                         "duplicate_name": c["name2"],
                         "type": c["labels1"][0] if c.get("labels1") else "Unknown",
                         "similarity": combined_similarity,
@@ -507,14 +569,14 @@ class GraphHealingService:
                 n.description AS description,
                 labels(n)[0] AS type
         """
-        entities = await neo4j_manager.execute_read_query(query)
+        entities = await get_services().database.execute_read_query(query)
 
         if len(entities) < 2:
             return []
 
         # Generate embeddings for all descriptions
         descriptions = [e["description"] for e in entities]
-        embeddings = await llm_service.async_get_embeddings_batch(descriptions)
+        embeddings = await get_services().language_model.async_get_embeddings_batch(descriptions)
 
         # Compare same-type entities
         for i, e1 in enumerate(entities):
@@ -631,7 +693,7 @@ class GraphHealingService:
             AND (x:Chapter OR x:Event)
             RETURN count(x) AS cooccurrences
         """
-        results = await neo4j_manager.execute_read_query(cooccurrence_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
+        results = await get_services().database.execute_read_query(cooccurrence_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
         record = results[0] if results else None
         cooccurrences = record["cooccurrences"] if record else 0
 
@@ -641,7 +703,7 @@ class GraphHealingService:
             WHERE elementId(n) IN [$primary_id, $duplicate_id]
             RETURN elementId(n) AS node_id, type(r) AS rel_type, count(*) AS count
         """
-        rel_patterns = await neo4j_manager.execute_read_query(rel_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
+        rel_patterns = await get_services().database.execute_read_query(rel_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
 
         # Build relationship fingerprints
         primary_rels = {r["rel_type"]: r["count"] for r in rel_patterns if r["node_id"] == primary_id}
@@ -694,8 +756,8 @@ class GraphHealingService:
 
         try:
             # Get entity IDs from element IDs
-            primary_results = await neo4j_manager.execute_read_query(get_id_query, {"element_id": primary_id})
-            duplicate_results = await neo4j_manager.execute_read_query(get_id_query, {"element_id": duplicate_id})
+            primary_results = await get_services().database.execute_read_query(get_id_query, {"element_id": primary_id})
+            duplicate_results = await get_services().database.execute_read_query(get_id_query, {"element_id": duplicate_id})
 
             if not primary_results or not duplicate_results:
                 logger.error(
@@ -754,21 +816,16 @@ class GraphHealingService:
             return False
 
     async def cleanup_orphaned_nodes(self, current_chapter: int) -> dict[str, Any]:
-        """Delete provisional nodes that are both orphaned and stale.
+        """Report stale orphan candidates without inferring deletion ownership.
 
-        Args:
-            current_chapter: Current chapter number used to compute the orphan cutoff window.
-
-        Returns:
-            Summary dict including counts for `nodes_checked` and `nodes_removed`.
-
-        Notes:
-            This cleanup intentionally targets only provisional nodes with no relationships
-            to avoid removing entities that have participated in the graph.
+        Initialization, imports and accepted entities can be isolated and provisional.
+        Only chapter compensation's durable before/after journal authorizes automatic
+        removal; unjournaled candidates require explicit reconciliation.
         """
         results = {
             "nodes_removed": 0,
             "nodes_checked": 0,
+            "nodes_requiring_reconciliation": 0,
         }
 
         # Find orphaned provisional nodes (no relationships, old enough)
@@ -786,36 +843,14 @@ class GraphHealingService:
         """
         cutoff = current_chapter - self.ORPHAN_CLEANUP_CHAPTERS
 
-        orphaned_nodes = await neo4j_manager.execute_read_query(query, {"cutoff_chapter": cutoff})
+        orphaned_nodes = await get_services().database.execute_read_query(query, {"cutoff_chapter": cutoff})
         results["nodes_checked"] = len(orphaned_nodes)
 
         if not orphaned_nodes:
             return results
 
-        # Remove orphaned nodes
-        for node in orphaned_nodes:
-            delete_query = """
-                MATCH (n)
-                WHERE elementId(n) = $element_id
-                DELETE n
-            """
-            try:
-                await neo4j_manager.execute_write_query(delete_query, {"element_id": node["element_id"]})
-                results["nodes_removed"] += 1
-                logger.info(
-                    "Removed orphaned provisional node",
-                    name=node["name"],
-                    type=node["type"],
-                    created_chapter=node["created_chapter"],
-                    current_chapter=current_chapter,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to remove orphaned node",
-                    name=node["name"],
-                    error=str(e),
-                )
-
+        results["nodes_requiring_reconciliation"] = len(orphaned_nodes)
+        logger.warning("Unowned orphan candidates preserved for reconciliation", count=len(orphaned_nodes), current_chapter=current_chapter)
         return results
 
     async def heal_graph(self, current_chapter: int, model: str) -> dict[str, Any]:
@@ -837,7 +872,7 @@ class GraphHealingService:
         """
         results: dict[str, Any] = {
             "chapter": current_chapter,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "apoc_available": True,
             "nodes_enriched": 0,
             "nodes_graduated": 0,
@@ -912,8 +947,28 @@ class GraphHealingService:
                     )
                     continue
 
-                enriched = await self.enrich_node_from_context(node, model)
-                applied = await self.apply_enrichment(node["element_id"], enriched)
+                try:
+                    enriched = await self.enrich_node_from_context(node, model)
+                    applied = await self.apply_enrichment(node["element_id"], enriched)
+                except Exception as enrichment_error:
+                    results["warnings"].append(f"enrich failed ({type(enrichment_error).__name__}): {enrichment_error}")
+                    logger.warning(
+                        "Enrichment failed for node, skipping",
+                        name=node.get("name"),
+                        type=node.get("type"),
+                        element_id=node.get("element_id"),
+                        error=str(enrichment_error),
+                    )
+                    results["actions"].append(
+                        {
+                            "type": "enrich_error",
+                            "name": node.get("name"),
+                            "error": str(enrichment_error),
+                            **({"raw_responses": list(enrichment_error.raw_responses)} if isinstance(enrichment_error, _EnrichmentResponseError) else {}),
+                        }
+                    )
+                    continue
+
                 if not applied:
                     logger.debug(
                         "Enrichment not applied",
@@ -948,8 +1003,6 @@ class GraphHealingService:
                 # `description`/`traits` reflect the applied enrichment.
                 updated_node = await self.get_node_by_element_id(node["element_id"])
                 if updated_node is None:
-                    # Defensive fallback: if reload fails, at least avoid crashing and
-                    # proceed with the original node dict.
                     updated_node = node
 
                 age = current_chapter - (updated_node.get("created_chapter") or current_chapter)
@@ -989,10 +1042,19 @@ class GraphHealingService:
                             "auto_approved": True,
                         }
                     )
+                else:
+                    results["warnings"].append("merge failed or could not be verified; inspect merge diagnostics")
 
         # Step 3: Clean up truly orphaned nodes
-        cleanup_results = await self.cleanup_orphaned_nodes(current_chapter)
+        try:
+            cleanup_results = await self.cleanup_orphaned_nodes(current_chapter)
+        except Exception as cleanup_error:
+            results["warnings"].append(f"cleanup failed ({type(cleanup_error).__name__}): {cleanup_error}")
+            cleanup_results = {"nodes_removed": 0, "nodes_checked": 0}
         results["nodes_removed"] = cleanup_results["nodes_removed"]
+        if cleanup_results.get("nodes_requiring_reconciliation", 0):
+            results["warnings"].append("cleanup preserved unowned orphan candidates requiring reconciliation")
+        results["status"] = "partial" if results["warnings"] else "completed"
 
         if cleanup_results["nodes_removed"] > 0:
             results["actions"].append(

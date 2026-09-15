@@ -1,4 +1,3 @@
-# core/langgraph/initialization/commit_init_node.py
 """Commit initialization artifacts to Neo4j.
 
 This module defines the initialization persistence boundary. It converts
@@ -14,15 +13,11 @@ from typing import Any
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
-    ContentManager,
-    get_character_sheets,
-    get_global_outline,
     require_project_dir,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -33,123 +28,24 @@ logger = structlog.get_logger(__name__)
 
 
 async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeState:
-    """Convert initialization artifacts to Neo4j models and persist them.
-
-    Args:
-        state: Workflow state. Reads character sheets and global outline (preferring
-            externalized refs).
-
-    Returns:
-        Updated state containing:
-        - active_characters: A small in-memory slice of committed character profiles.
-        - world_items: World items extracted from the outline.
-        - initialization_step: `"committed_to_graph"` on success.
-        - current_node: `"commit_initialization"`.
-        - last_error: Cleared on success.
-
-        On errors, returns a state with `has_fatal_error` set and `last_error` populated.
-
-    Notes:
-        This node performs Neo4j writes and invalidates `data_access` read caches after
-        successful persistence.
-    """
-    # Initialize content manager for reading externalized content
-    content_manager = ContentManager(require_project_dir(state))
-
-    # Get character sheets and global outline (from external files)
-    character_sheets = get_character_sheets(state, content_manager)
-    global_outline = get_global_outline(state, content_manager)
-
-    logger.info(
-        "commit_initialization_to_graph: starting initialization data commit",
-        characters=len(character_sheets),
-        has_global_outline=bool(global_outline),
-    )
-
-    if not character_sheets:
-        logger.warning("commit_initialization_to_graph: no character sheets to commit")
+    """Prepare the complete immutable import; graph acceptance belongs to run_parsers."""
+    from core.langgraph.initialization.staged_import import InitializationImport
 
     try:
-        # Step 1: Parse character sheets into CharacterProfile models
-        character_profiles = []
-        if character_sheets:
-            character_profiles = await _parse_character_sheets_to_profiles(
-                character_sheets,
-                model_name=state.get("medium_model", config.MEDIUM_MODEL),
-            )
-
-        # Step 2: Extract world items from outlines
-        world_items = []
-        if global_outline:
-            world_items = await _extract_world_items_from_outline(
-                global_outline,
-                state.get("setting", ""),
-                model_name=state.get("medium_model", config.MEDIUM_MODEL),
-            )
-
-        # Step 3: Commit to Neo4j using direct batch approach
-        if character_profiles or world_items:
-            statements = await _build_entity_persistence_statements(
-                character_profiles,
-                world_items,
-                chapter_number=0,  # Initialization entities exist before any chapters
-            )
-
-            if statements:
-                await neo4j_manager.execute_cypher_batch(statements)
-
-                # P0-1: Cache invalidation after Neo4j writes
-                # Local import avoids eager import side effects / circular deps.
-                from data_access.cache_coordinator import (
-                    clear_character_read_caches,
-                    clear_world_read_caches,
-                )
-
-                cleared_character = clear_character_read_caches()
-                cleared_world = clear_world_read_caches()
-
-                logger.debug(
-                    "commit_initialization_to_graph: executed batch and invalidated caches",
-                    total_statements=len(statements),
-                    cache_cleared={
-                        "character": cleared_character,
-                        "world": cleared_world,
-                    },
-                )
-
-        logger.info(
-            "commit_initialization_to_graph: successfully committed initialization data",
-            characters=len(character_profiles),
-            world_items=len(world_items),
-        )
-
-        # Step 4: Update active_characters with committed profiles
-        # This makes characters immediately available to the generation loop
-        updated_state: NarrativeState = {
-            **state,
-            "active_characters": character_profiles[:3],  # Top 5 for initial context
-            "world_items": world_items,
+        plan = await InitializationImport(require_project_dir(state)).prepare(state)
+        return {
             "current_node": "commit_initialization",
             "last_error": None,
-            "initialization_step": "committed_to_graph",
+            "initialization_step": "initialization_prepared",
+            "initialization_id": plan.identity,
         }
-
-        return updated_state
-
-    except Exception as e:
-        error_msg = f"Failed to commit initialization data: {e}"
-        logger.error(
-            "commit_initialization_to_graph: fatal error during commit",
-            error=str(e),
-            exc_info=True,
-        )
+    except Exception as error:
         return {
-            **state,
             "current_node": "commit_initialization",
-            "last_error": error_msg,
+            "last_error": f"Initialization admission failed: {error}",
+            "initialization_step": "commit_failed",
             "has_fatal_error": True,
             "error_node": "commit_initialization",
-            "initialization_step": "commit_failed",
         }
 
 
@@ -210,10 +106,10 @@ async def _parse_character_sheets_to_profiles(
         # Create CharacterProfile model
         profile = CharacterProfile(
             name=name,
-            description=description,
+            personality_description=description,
             traits=traits,
             status=status,
-            relationships=relationships,  # Now populated from pre-parsed data
+            relationships=relationships,
             created_chapter=0,  # Initialization entities created before chapters
             is_provisional=False,  # Initialization characters are canonical
             updates={
@@ -266,8 +162,8 @@ async def _extract_structured_character_data(name: str, description: str, model_
 
     model = model_name or config.NARRATIVE_MODEL
 
-    for attempt in range(1, 3):
-        response, _ = await llm_service.async_call_llm(
+    for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
+        response, _ = await get_services().language_model.async_call_llm(
             model_name=model,
             prompt=prompt,
             temperature=0.3,
@@ -430,8 +326,8 @@ async def _extract_world_items_from_outline(global_outline: dict, setting: str, 
 
     model = model_name or config.NARRATIVE_MODEL
 
-    for attempt in range(1, 3):
-        response, _ = await llm_service.async_call_llm(
+    for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
+        response, _ = await get_services().language_model.async_call_llm(
             model_name=model,
             prompt=prompt,
             temperature=0.5,
@@ -465,11 +361,9 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     """
     raw_text = response.strip()
 
-    data = _load_json_with_contract_then_salvage(
-        context="world_items_extraction",
-        raw_text=raw_text,
-        expected_root=list,
-    )
+    from core.langgraph.initialization.snapshot import strict_json
+
+    data = strict_json(raw_text)
 
     if not isinstance(data, list):
         raise ValueError("World items extraction must be a JSON array")
@@ -478,7 +372,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
 
     allowed_categories = {"location", "object"}
 
-    from processing.entity_deduplication import generate_entity_id
+    from utils.text_processing import generate_entity_id
 
     for index, item in enumerate(data):
         if not isinstance(item, dict):
@@ -497,6 +391,8 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
 
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"World item at index {index} 'name' must be a non-empty string")
+        if name != name.strip():
+            raise ValueError(f"World item at index {index} 'name' must not have surrounding whitespace")
         if not isinstance(category, str) or category not in allowed_categories:
             raise ValueError(f"World item at index {index} 'category' must be one of {sorted(allowed_categories)}")
         if not isinstance(description, str) or not description.strip():
@@ -504,9 +400,9 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
 
         items.append(
             WorldItem(
-                id=generate_entity_id(name.strip(), category, chapter=0),
-                name=name.strip(),
-                description=description.strip(),
+                id=generate_entity_id(name, category),
+                name=name,
+                description=description,
                 category=category,
                 created_chapter=0,
                 is_provisional=False,
@@ -521,9 +417,93 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     return items
 
 
+async def _build_outline_relationship_statements(
+    relationships: list[dict[str, Any]],
+    chapter_number: int,
+) -> list[tuple[str, dict]]:
+    """Build Cypher statements to persist outline relationships.
+
+    Args:
+        relationships: List of relationship dicts with keys: source_name, target_name, relationship_type, description.
+        chapter_number: Current chapter for tracking (0 for initialization).
+
+    Returns:
+        List of (cypher_query, parameters) tuples.
+    """
+    import hashlib
+
+    apoc_available = await get_services().database.is_apoc_available()
+    assert apoc_available, "APOC procedures required for outline relationship persistence"
+
+    statements: list[tuple[str, dict]] = []
+
+    for rel in relationships:
+        source_name = rel.get("source_name", "")
+        target_name = rel.get("target_name", "")
+        relationship_type = rel.get("relationship_type", "")
+        description = rel.get("description", "")
+        confidence = rel.get("confidence", 0.8)
+
+        if not source_name or not target_name or not relationship_type:
+            logger.warning(
+                "_build_outline_relationship_statements: skipping incomplete relationship",
+                source=source_name,
+                target=target_name,
+                type=relationship_type,
+            )
+            continue
+
+        rel_id_source = f"{relationship_type}|{source_name.strip().lower()}|{target_name.strip().lower()}"
+        rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
+
+        cypher = """
+        MATCH (s {name: $source_name})
+        WHERE s:Character OR s:Location OR s:Event OR s:Item
+        MATCH (t {name: $target_name})
+        WHERE t:Character OR t:Location OR t:Event OR t:Item
+        WITH s, t
+        CALL apoc.merge.relationship(
+            s,
+            $relationship_type,
+            {id: $rel_id},
+            {
+                chapter_added: $chapter,
+                is_provisional: false,
+                confidence: $confidence,
+                description: $description,
+                created_ts: timestamp(),
+                updated_ts: timestamp()
+            },
+            t,
+            {}
+        ) YIELD rel
+        RETURN rel
+        """
+
+        params = {
+            "source_name": source_name,
+            "target_name": target_name,
+            "relationship_type": relationship_type,
+            "rel_id": rel_id,
+            "chapter": chapter_number,
+            "confidence": confidence,
+            "description": description,
+        }
+
+        statements.append((cypher, params))
+
+    logger.info(
+        "_build_outline_relationship_statements: built relationship statements",
+        count=len(statements),
+    )
+
+    return statements
+
+
 async def _build_entity_persistence_statements(
     characters: list[CharacterProfile],
     world_items: list[WorldItem],
+    outline_relationships: list[dict[str, Any]],
     chapter_number: int,
 ) -> list[tuple[str, dict]]:
     """
@@ -535,6 +515,7 @@ async def _build_entity_persistence_statements(
     Args:
         characters: List of CharacterProfile models
         world_items: List of WorldItem models
+        outline_relationships: List of relationship dicts from outline extraction
         chapter_number: Current chapter for tracking (0 for initialization)
 
     Returns:
@@ -552,6 +533,13 @@ async def _build_entity_persistence_statements(
         cypher, params = cypher_builder.world_item_upsert_cypher(item, chapter_number)
         statements.append((cypher, params))
 
+    if outline_relationships:
+        relationship_statements = await _build_outline_relationship_statements(
+            outline_relationships,
+            chapter_number,
+        )
+        statements.extend(relationship_statements)
+
     embedding_statements_count = 0
     if config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE:
         from core.entity_embedding_service import build_entity_embedding_update_statements
@@ -567,6 +555,7 @@ async def _build_entity_persistence_statements(
         "_build_entity_persistence_statements: built statements",
         characters=len(characters),
         world_items=len(world_items),
+        outline_relationships=len(outline_relationships),
         embedding_statements=embedding_statements_count,
         total_statements=len(statements),
     )

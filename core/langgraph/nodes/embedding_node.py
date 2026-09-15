@@ -10,6 +10,8 @@ from typing import Any
 import numpy as np
 import structlog
 
+import config
+from core.embedding_contract import validate_embedding
 from core.langgraph.content_manager import (
     ContentManager,
     get_scene_drafts,
@@ -17,7 +19,7 @@ from core.langgraph.content_manager import (
     save_scene_embeddings,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 
 logger = structlog.get_logger(__name__)
 
@@ -56,7 +58,7 @@ async def generate_scene_embeddings(state: NarrativeState) -> dict[str, Any]:
             "last_error": "Scene embedding generation skipped: no scene drafts found",
         }
 
-    embeddings = await llm_service.async_get_embeddings_batch(scene_drafts)
+    embeddings = await get_services().language_model.async_get_embeddings_batch(scene_drafts)
 
     if len(embeddings) != len(scene_drafts):
         raise ValueError("scene embedding batch result length mismatch")
@@ -79,7 +81,7 @@ async def generate_scene_embeddings(state: NarrativeState) -> dict[str, Any]:
                 raise TypeError("scene embedding values must be numeric; " f"scene_index={scene_index}, value_index={value_index}, got {type(value)}")
             vector.append(float(value))
 
-        scene_embeddings.append(vector)
+        scene_embeddings.append(validate_embedding(vector, model=config.EMBEDDING_MODEL).tolist())
 
     current_version = content_manager.get_latest_version("scene_embeddings", f"chapter_{chapter_number}") + 1
     scene_embeddings_ref = save_scene_embeddings(
@@ -87,6 +89,7 @@ async def generate_scene_embeddings(state: NarrativeState) -> dict[str, Any]:
         scene_embeddings,
         chapter_number,
         current_version,
+        embedding_model=config.EMBEDDING_MODEL,
     )
 
     return {

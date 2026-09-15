@@ -1,3 +1,3 @@
-#! /bin/bash
-find . -type d -name "__pycache__" | xargs rm -rf
-echo "__pycache__ directories cleaned!"
+#!/bin/bash
+printf '%s\n' 'Cache cleanup is disabled: directory names do not prove project ownership.' 'No files were changed. Use PYTHONDONTWRITEBYTECODE=1 to prevent new bytecode caches.' >&2
+exit 2

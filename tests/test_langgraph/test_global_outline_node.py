@@ -1,5 +1,6 @@
 # tests/test_langgraph/test_global_outline_node.py
 import json
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,17 +9,17 @@ from core.langgraph.initialization.global_outline_node import (
     ActOutline,
     GlobalOutlineSchema,
     _build_character_context_from_sheets,
-    _extract_json_from_response,
     _fallback_parse_outline,
     _parse_global_outline,
     _validate_chapter_allocations,
     generate_global_outline,
 )
-from core.langgraph.state import create_initial_state
+from core.langgraph.state import NarrativeState, create_initial_state
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def base_state():
+def base_state() -> NarrativeState:
     """Create a base state for testing."""
     return create_initial_state(
         project_id="test-project",
@@ -34,7 +35,7 @@ def base_state():
 
 
 @pytest.fixture
-def mock_content_manager():
+def mock_content_manager() -> Iterator[MagicMock]:
     """Create a mock ContentManager."""
     with patch("core.langgraph.initialization.global_outline_node.ContentManager") as mock:
         instance = MagicMock()
@@ -48,7 +49,7 @@ def mock_content_manager():
 
 
 @pytest.fixture
-def sample_outline_json():
+def sample_outline_json() -> dict[str, object]:
     """Sample valid outline JSON."""
     return {
         "act_count": 3,
@@ -88,7 +89,13 @@ def sample_outline_json():
                 "starting_state": "Naive",
                 "ending_state": "Wise",
                 "key_moments": ["First failure", "Learning from mentor"],
-            }
+            },
+            {
+                "character_name": "Mentor",
+                "starting_state": "Guarded",
+                "ending_state": "Trusting",
+                "key_moments": ["Meets Hero", "Shares knowledge"],
+            },
         ],
         "thematic_progression": "From innocence to experience",
         "pacing_notes": "Fast-paced action throughout",
@@ -96,9 +103,9 @@ def sample_outline_json():
 
 
 @pytest.fixture
-def mock_llm_service(sample_outline_json):
+def mock_llm_service(sample_outline_json: dict[str, object]) -> Iterator[MagicMock]:
     """Create a mock LLM service."""
-    with patch("core.langgraph.initialization.global_outline_node.llm_service") as mock:
+    with patch_service('language_model') as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
                 json.dumps(sample_outline_json),
@@ -109,7 +116,7 @@ def mock_llm_service(sample_outline_json):
 
 
 @pytest.fixture
-def mock_get_character_sheets():
+def mock_get_character_sheets() -> Iterator[MagicMock]:
     """Mock get_character_sheets function."""
     with patch("core.langgraph.initialization.global_outline_node.get_character_sheets") as mock:
         mock.return_value = {
@@ -126,9 +133,9 @@ def mock_get_character_sheets():
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_success(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
+async def test_generate_global_outline_success(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_character_sheets: MagicMock) -> None:
     """Verify successful generation of global outline."""
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_global_outline(state)
 
@@ -139,44 +146,47 @@ async def test_generate_global_outline_success(base_state, mock_content_manager,
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_empty_response(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
+async def test_generate_global_outline_empty_response(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_character_sheets: MagicMock) -> None:
     """Verify error handling when LLM returns empty response."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_global_outline(state)
 
     assert result["initialization_step"] == "global_outline_failed"
+    assert result["last_error"] is not None
     assert "empty global outline" in result["last_error"]
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_exception(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
+async def test_generate_global_outline_exception(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_character_sheets: MagicMock) -> None:
     """Verify exception handling during generation."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_global_outline(state)
 
     assert result["initialization_step"] == "global_outline_failed"
+    assert result["last_error"] is not None
     assert "Error generating global outline" in result["last_error"]
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_without_characters(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
+async def test_generate_global_outline_without_characters(base_state: NarrativeState, mock_content_manager: MagicMock, mock_llm_service: MagicMock, mock_get_character_sheets: MagicMock, sample_outline_json: dict[str, object]) -> None:
     """Verify generation works without character sheets."""
     mock_get_character_sheets.return_value = {}
+    mock_llm_service.async_call_llm.return_value = (json.dumps({**sample_outline_json, "character_arcs": []}), {})
 
-    state = {**base_state}
+    state: NarrativeState = {**base_state}
 
     result = await generate_global_outline(state)
 
     assert result["initialization_step"] == "global_outline_complete"
 
 
-def test_build_character_context_from_sheets():
+def test_build_character_context_from_sheets() -> None:
     """Verify building character context from sheets."""
     character_sheets = {
         "Hero": {
@@ -198,54 +208,14 @@ def test_build_character_context_from_sheets():
     assert "brave warrior" in result
 
 
-def test_build_character_context_empty():
+def test_build_character_context_empty() -> None:
     """Verify handling of empty character sheets."""
     result = _build_character_context_from_sheets({})
 
     assert result == "No characters defined yet."
 
 
-def test_extract_json_from_response_with_code_blocks():
-    """Verify JSON extraction from markdown code blocks."""
-    response = """```json
-{
-    "key": "value"
-}
-```"""
-
-    result = _extract_json_from_response(response)
-
-    assert "key" in result
-    assert "value" in result
-    assert "```" not in result
-
-
-def test_extract_json_from_response_raw_json():
-    """Verify extraction of raw JSON without code blocks."""
-    response = '{"key": "value", "number": 42}'
-
-    result = _extract_json_from_response(response)
-
-    assert result == response
-
-
-def test_extract_json_from_response_mixed_content():
-    """Verify JSON extraction from mixed content."""
-    response = """Here is the outline:
-
-{
-    "key": "value"
-}
-
-That's the outline."""
-
-    result = _extract_json_from_response(response)
-
-    assert "{" in result
-    assert "key" in result
-
-
-def test_validate_chapter_allocations_valid():
+def test_validate_chapter_allocations_valid() -> None:
     """Verify validation of correct chapter allocations."""
     outline = GlobalOutlineSchema(
         act_count=3,
@@ -284,7 +254,7 @@ def test_validate_chapter_allocations_valid():
     assert errors == []
 
 
-def test_validate_chapter_allocations_no_acts():
+def test_validate_chapter_allocations_no_acts() -> None:
     """Verify validation catches missing acts."""
     outline = GlobalOutlineSchema(
         act_count=3,
@@ -298,11 +268,11 @@ def test_validate_chapter_allocations_no_acts():
 
     errors = _validate_chapter_allocations(outline, 20)
 
-    assert len(errors) > 0
+    assert len(errors) == 1
     assert "No acts defined" in errors[0]
 
 
-def test_validate_chapter_allocations_overlapping_chapters():
+def test_validate_chapter_allocations_overlapping_chapters() -> None:
     """Verify validation catches overlapping chapter ranges."""
     outline = GlobalOutlineSchema(
         act_count=2,
@@ -334,7 +304,7 @@ def test_validate_chapter_allocations_overlapping_chapters():
     assert any("multiple acts" in error for error in errors)
 
 
-def test_validate_chapter_allocations_missing_chapters():
+def test_validate_chapter_allocations_missing_chapters() -> None:
     """Verify validation catches missing chapter allocations."""
     outline = GlobalOutlineSchema(
         act_count=2,
@@ -366,7 +336,7 @@ def test_validate_chapter_allocations_missing_chapters():
     assert any("Missing chapter allocations" in error for error in errors)
 
 
-def test_validate_chapter_allocations_extra_chapters():
+def test_validate_chapter_allocations_extra_chapters() -> None:
     """Verify validation catches extra chapter allocations."""
     outline = GlobalOutlineSchema(
         act_count=1,
@@ -391,7 +361,7 @@ def test_validate_chapter_allocations_extra_chapters():
     assert any("Extra chapter allocations" in error for error in errors)
 
 
-def test_validate_chapter_allocations_wrong_act_numbers():
+def test_validate_chapter_allocations_wrong_act_numbers() -> None:
     """Verify validation catches incorrect act numbering."""
     outline = GlobalOutlineSchema(
         act_count=3,
@@ -423,7 +393,7 @@ def test_validate_chapter_allocations_wrong_act_numbers():
     assert any("Act numbers should be" in error for error in errors)
 
 
-def test_parse_global_outline_valid_json(base_state, sample_outline_json):
+def test_parse_global_outline_valid_json(base_state: NarrativeState, sample_outline_json: dict[str, object]) -> None:
     """Verify parsing of valid JSON outline."""
     response = json.dumps(sample_outline_json)
 
@@ -436,68 +406,57 @@ def test_parse_global_outline_valid_json(base_state, sample_outline_json):
     assert "raw_text" in result
 
 
-def test_parse_global_outline_with_markdown(base_state, sample_outline_json):
-    """Verify parsing of JSON wrapped in markdown."""
+def test_parse_global_outline_with_markdown(base_state: NarrativeState, sample_outline_json: dict[str, object]) -> None:
+    """Reject Markdown wrappers around otherwise valid JSON."""
     response = f"""```json
 {json.dumps(sample_outline_json)}
 ```"""
 
-    result = _parse_global_outline(response, base_state)
-
-    assert result["act_count"] == 3
-    assert len(result["acts"]) == 3
+    with pytest.raises(json.JSONDecodeError):
+        _parse_global_outline(response, base_state)
 
 
-def test_parse_global_outline_invalid_json_uses_fallback(base_state):
-    """Verify fallback parsing when JSON is invalid."""
+def test_parse_global_outline_invalid_json_raises(base_state: NarrativeState) -> None:
+    """Invalid JSON with no parseable structure raises ValueError."""
     response = "This is not valid JSON but contains Act 1, Act 2, and Act 3"
 
-    result = _parse_global_outline(response, base_state)
-
-    assert result["act_count"] == 3
-    assert "Fallback parsing used" in result["validation_errors"][0]
+    with pytest.raises(json.JSONDecodeError):
+        _parse_global_outline(response, base_state)
 
 
-def test_fallback_parse_outline_three_act(base_state):
-    """Verify fallback parser detects 3-act structure."""
+def test_fallback_parse_outline_raises_on_free_text(base_state: NarrativeState) -> None:
+    """Fallback parser raises ValueError instead of producing near-empty structure."""
     response = "Act 1: Setup\nAct 2: Confrontation\nAct 3: Resolution"
 
-    result = _fallback_parse_outline(response, base_state)
-
-    assert result["act_count"] == 3
-    assert result["structure_type"] == "3-act"
-    assert result["raw_text"] == response
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _fallback_parse_outline(response, base_state)
 
 
-def test_fallback_parse_outline_five_act(base_state):
-    """Verify fallback parser detects 5-act structure."""
+def test_fallback_parse_outline_raises_on_five_act(base_state: NarrativeState) -> None:
+    """Fallback parser raises ValueError for free-text five-act structure."""
     response = "Act 1, Act 2, Act 3, Act 4, Act 5 structure"
 
-    result = _fallback_parse_outline(response, base_state)
-
-    assert result["act_count"] == 5
-    assert result["structure_type"] == "5-act"
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _fallback_parse_outline(response, base_state)
 
 
-def test_fallback_parse_outline_default_three_act(base_state):
-    """Verify fallback parser defaults to 3-act."""
+def test_fallback_parse_outline_raises_on_plain_text(base_state: NarrativeState) -> None:
+    """Fallback parser raises ValueError for plain text."""
     response = "Just some outline text without act mentions"
 
-    result = _fallback_parse_outline(response, base_state)
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _fallback_parse_outline(response, base_state)
 
-    assert result["act_count"] == 3
 
-
-def test_fallback_parse_outline_roman_numerals(base_state):
-    """Verify fallback parser recognizes Roman numeral acts."""
+def test_fallback_parse_outline_raises_on_roman_numerals(base_state: NarrativeState) -> None:
+    """Fallback parser raises ValueError for Roman numeral acts."""
     response = "Act I: Setup, Act II: Rising Action, Act III: Climax, Act IV: Falling Action, Act V: Resolution"
 
-    result = _fallback_parse_outline(response, base_state)
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _fallback_parse_outline(response, base_state)
 
-    assert result["act_count"] == 5
 
-
-def test_parse_global_outline_preserves_all_fields(base_state, sample_outline_json):
+def test_parse_global_outline_preserves_all_fields(base_state: NarrativeState, sample_outline_json: dict[str, object]) -> None:
     """Verify all fields from outline are preserved."""
     response = json.dumps(sample_outline_json)
 
@@ -508,15 +467,13 @@ def test_parse_global_outline_preserves_all_fields(base_state, sample_outline_js
     assert result["climax"] == sample_outline_json["climax"]
     assert result["resolution"] == sample_outline_json["resolution"]
     assert result["thematic_progression"] == sample_outline_json["thematic_progression"]
+    assert isinstance(sample_outline_json["character_arcs"], list)
     assert len(result["character_arcs"]) == len(sample_outline_json["character_arcs"])
 
 
-def test_fallback_parse_outline_includes_validation_errors(base_state):
-    """Verify fallback parser includes validation errors."""
+def test_fallback_parse_outline_raises_with_descriptive_message(base_state: NarrativeState) -> None:
+    """Fallback parser raises ValueError with response length details."""
     response = "Some outline text"
 
-    result = _fallback_parse_outline(response, base_state)
-
-    assert "validation_errors" in result
-    assert len(result["validation_errors"]) > 0
-    assert "Fallback parsing used" in result["validation_errors"][0]
+    with pytest.raises(ValueError, match="Response length: 17 chars"):
+        _fallback_parse_outline(response, base_state)

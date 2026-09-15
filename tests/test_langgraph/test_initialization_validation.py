@@ -61,30 +61,18 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
-    Verify that _load_or_create_state emits a warning when initialization
-    artifacts are incomplete, without changing initialization_complete semantics.
+    Verify real empty project storage is reported as incomplete and requires init.
     """
-    # Use tmp_path as BASE_OUTPUT_DIR for this orchestrator instance
-    monkeypatch.setenv("BASE_OUTPUT_DIR", str(tmp_path))
-
-    # Ensure config.settings sees the updated BASE_OUTPUT_DIR if needed
-    # (tests already rely on config.settings; re-import if project uses caching)
-    import importlib
-
-    import config as config_module
-
-    importlib.reload(config_module)
-
-    # Avoid DB dependency by mocking chapter count and character profile lookup
+    # Isolate chapter progress and character profile providers.
     from data_access import chapter_queries as chapter_queries_module
 
-    async def _fake_load_chapter_count_from_db() -> int:
-        return 0
+    async def _fake_load_chapter_progress_from_db() -> chapter_queries_module.ChapterProgress:
+        return chapter_queries_module.ChapterProgress(0, ())
 
     monkeypatch.setattr(
         chapter_queries_module,
-        "load_chapter_count_from_db",
-        _fake_load_chapter_count_from_db,
+        "load_chapter_progress_from_db",
+        _fake_load_chapter_progress_from_db,
     )
 
     from data_access import character_queries as character_queries_module
@@ -99,41 +87,19 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
         _fake_get_character_profiles,
     )
 
-    # Force artifact validation to report missing artifacts regardless of filesystem
-    monkeypatch.setattr(
-        "orchestration.langgraph_orchestrator.validate_initialization_artifacts",
-        lambda _project_dir: (False, ["Missing saga.yaml"]),
-    )
-
-    orchestrator = LangGraphOrchestrator()
+    orchestrator = LangGraphOrchestrator(project_dir=tmp_path)
 
     caplog.set_level("WARNING")
 
     # Act
     state = await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
 
-    # Assert: initialization_complete behavior unchanged (False with no characters)
+    # Empty project artifacts require initialization, independently of graph characters.
     assert state["initialization_complete"] is False
 
     # Assert: warning about incomplete initialization artifacts was logged
     warnings = [record for record in caplog.records if "Initialization artifacts incomplete" in record.getMessage()]
-    # NOTE: This test might be failing due to how pytest captures logs in async tests
-    # or how the orchestrator is initialized. For now, let's just check if caplog is working.
-    # If the list is empty, it means either the log wasn't emitted or captured.
-    # Given previous failures, let's make the assertion optional or debug it.
-    # Reverting to original check but with more flexible message matching if needed.
-
-    # If this fails again, we might need to inspect caplog.text
-    # Since orchestrator initialization might be async or happen before capture,
-    # let's check if we can find the warning in the caplog.text as well.
-    # If we still can't find it, we'll skip this assertion temporarily to unblock other tests,
-    # as the functionality seems to be working in other tests.
-
-    if not warnings:
-        print(f"DEBUG: Captured logs: {[r.getMessage() for r in caplog.records]}")
-
-    # assert warnings, f"Expected warning about incomplete initialization artifacts. Captured: {[r.getMessage() for r in caplog.records]}"
-    pass
+    assert warnings, f"Expected warning about incomplete initialization artifacts. Captured: {[r.getMessage() for r in caplog.records]}"
 
 
 @pytest.mark.asyncio
@@ -148,7 +114,7 @@ async def test_load_or_create_state_no_warning_when_artifacts_complete(
     # Use tmp_path as BASE_OUTPUT_DIR
     import config as config_module
 
-    monkeypatch.setattr(config_module.settings, "BASE_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setitem(vars(config_module), "settings", config_module.settings.model_copy(update={"BASE_OUTPUT_DIR": str(tmp_path)}))
 
     # Create all required artifacts in tmp_path
     _touch(tmp_path / "saga.yaml")
@@ -161,13 +127,13 @@ async def test_load_or_create_state_no_warning_when_artifacts_complete(
 
     from data_access import chapter_queries as chapter_queries_module
 
-    async def _fake_load_chapter_count_from_db() -> int:
-        return 0
+    async def _fake_load_chapter_progress_from_db() -> chapter_queries_module.ChapterProgress:
+        return chapter_queries_module.ChapterProgress(0, ())
 
     monkeypatch.setattr(
         chapter_queries_module,
-        "load_chapter_count_from_db",
-        _fake_load_chapter_count_from_db,
+        "load_chapter_progress_from_db",
+        _fake_load_chapter_progress_from_db,
     )
 
     from data_access import character_queries as character_queries_module
@@ -186,12 +152,9 @@ async def test_load_or_create_state_no_warning_when_artifacts_complete(
 
     caplog.set_level("WARNING")
 
-    # Act
-    state = await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
-
-    # Assert: initialization_complete remains driven solely by character profiles
-    assert state["initialization_complete"] is True
+    with pytest.raises(ValueError, match="Missing initialization receipt"):
+        await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
 
     # Assert: no warning about incomplete artifacts
-    warnings = [record for record in caplog.records if "Initialization artifacts incomplete for" in record.getMessage()]
+    warnings = [record for record in caplog.records if "Initialization artifacts incomplete" in record.getMessage()]
     assert not warnings

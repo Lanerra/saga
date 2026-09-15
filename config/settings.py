@@ -1,4 +1,3 @@
-# config/settings.py
 """
 Define runtime configuration for SAGA.
 
@@ -6,30 +5,27 @@ Settings are loaded at import time by constructing a [`SagaSettings`](config/set
 instance. Values come from the process environment and may be sourced from a `.env` file.
 
 Import-time side effects:
-- Read `.env` via `dotenv.load_dotenv()` (non-overriding) and via Pydantic's configured
-  `env_file=".env"`.
+- Read the current working directory's `.env` via Pydantic's configured `env_file`.
 - Create output directories under `BASE_OUTPUT_DIR`.
 - Configure structlog and attach a handler to the root logger.
 
 Notes:
     Environment variables already present in the process take precedence over values loaded
-    from `.env` during import. Reloading via [`config.loader.reload_settings()`](config/loader.py:35)
-    uses `load_dotenv(override=True)` which can overwrite existing environment variables.
+    from `.env` during import and reload. `config.reload()` validates a replacement
+    for future runs without modifying the process environment or an active run snapshot.
 """
 
 from __future__ import annotations
 
 import logging as stdlib_logging
 import os
-from collections.abc import MutableMapping
-from typing import Any
+from collections.abc import Mapping, MutableMapping
+from types import MappingProxyType
+from typing import Any, Literal
 
 import structlog
-from dotenv import load_dotenv
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-load_dotenv()
 
 logger = structlog.get_logger()
 
@@ -47,7 +43,7 @@ class SchemaEnforcementSettings(BaseSettings):
     ENFORCE_SCHEMA_VALIDATION: bool = Field(default=True, description="Master toggle for schema validation")
 
     REJECT_INVALID_ENTITIES: bool = Field(
-        default=False,
+        default=True,
         description="If True, entities with invalid types are rejected. If False, soft validation (warnings).",
     )
 
@@ -58,8 +54,19 @@ class SchemaEnforcementSettings(BaseSettings):
 
     LOG_SCHEMA_VIOLATIONS: bool = Field(default=True, description="Log detailed warnings when schema violations occur")
 
-    class Config:
-        env_prefix = "SAGA_SCHEMA_"
+    model_config = SettingsConfigDict(env_prefix="SAGA_SCHEMA_")
+
+
+class ValidationSettings(BaseSettings):
+    """Configure validation behavior.
+
+    This settings group controls whether validation checks are performed
+    during chapter generation.
+    """
+
+    ENABLE_VALIDATION: bool = Field(default=True, description="Enable validation checks in the validation node")
+
+    model_config = SettingsConfigDict(env_prefix="SAGA_VALIDATION_")
 
 
 class RelationshipNormalizationSettings(BaseSettings):
@@ -73,7 +80,6 @@ class RelationshipNormalizationSettings(BaseSettings):
         Environment variables use the `SAGA_REL_NORM_` prefix.
     """
 
-    # Master toggle
     ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=True, description="Enable relationship normalization system")
 
     # Strict canonical mode
@@ -88,7 +94,7 @@ class RelationshipNormalizationSettings(BaseSettings):
     )
 
     # Category-specific similarity thresholds
-    SIMILARITY_THRESHOLDS: dict[str, float] = Field(
+    SIMILARITY_THRESHOLDS: Mapping[str, float] = Field(
         default={
             "CHARACTER_CHARACTER": 0.75,
             "CHARACTER_WORLD": 0.70,
@@ -100,7 +106,7 @@ class RelationshipNormalizationSettings(BaseSettings):
 
     # Legacy similarity thresholds (for backward compatibility)
     SIMILARITY_THRESHOLD: float = Field(
-        default=0.85,
+        default=0.75,
         ge=0.0,
         le=1.0,
         description="Cosine similarity threshold for normalizing relationships",
@@ -113,13 +119,6 @@ class RelationshipNormalizationSettings(BaseSettings):
         description="Minimum similarity for ambiguous cases requiring LLM review",
     )
 
-    # Vocabulary management
-    MIN_USAGE_FOR_AUTHORITY: int = Field(
-        default=5,
-        ge=1,
-        description="Relationship must be used this many times before it's authoritative",
-    )
-
     PRUNE_SINGLE_USE_AFTER_CHAPTERS: int = Field(
         default=5,
         ge=1,
@@ -127,23 +126,23 @@ class RelationshipNormalizationSettings(BaseSettings):
     )
 
     MAX_VOCABULARY_SIZE: int = Field(
-        default=100,
+        default=50,
         ge=10,
         description="Maximum number of relationship types to maintain",
     )
 
     # Example retention
     MAX_EXAMPLES_PER_RELATIONSHIP: int = Field(
-        default=5,
+        default=3,
         ge=1,
         description="Maximum example descriptions to keep per relationship type",
     )
 
     # Advanced features
-    USE_LLM_DISAMBIGUATION: bool = Field(default=False, description="Use LLM to disambiguate ambiguous similarity cases")
+    USE_LLM_DISAMBIGUATION: bool = Field(default=True, description="Use LLM to disambiguate ambiguous similarity cases")
 
     LLM_DISAMBIGUATION_JSON_MODE: bool = Field(
-        default=False,
+        default=True,
         description="If True, require strict JSON output for relationship normalization disambiguation",
     )
 
@@ -157,8 +156,7 @@ class RelationshipNormalizationSettings(BaseSettings):
         description="Treat punctuation variations as identical (WORKS_WITH == WORKS-WITH)",
     )
 
-    class Config:
-        env_prefix = "SAGA_REL_NORM_"
+    model_config = SettingsConfigDict(env_prefix="SAGA_REL_NORM_")
 
 
 class SagaSettings(BaseSettings):
@@ -176,9 +174,10 @@ class SagaSettings(BaseSettings):
 
     # API and Model Configuration
     EMBEDDING_API_BASE: str = "http://127.0.0.1:11434"
-    EMBEDDING_API_KEY: str = ""
+    EMBEDDING_API_KEY: SecretStr = Field(default=SecretStr(""), repr=False)
     OPENAI_API_BASE: str = "http://127.0.0.1:8080/v1"
-    OPENAI_API_KEY: str = "nope"
+    OPENAI_API_KEY: SecretStr = Field(default=SecretStr("nope"), repr=False)
+    COMPLETION_CONTENT_FORMAT: Literal["text", "text_parts"] = "text"
 
     EMBEDDING_MODEL: str = "nomic-embed-text:latest"
     EMBEDDING_MAX_INPUT_TOKENS: int = 8192
@@ -188,7 +187,7 @@ class SagaSettings(BaseSettings):
     # Neo4j Connection Settings
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = "saga_password"
+    NEO4J_PASSWORD: str = Field(default="saga_password", repr=False, exclude=True)
     NEO4J_DATABASE: str | None = "neo4j"
 
     # Neo4j Vector Index Configuration (Chapters)
@@ -211,16 +210,15 @@ class SagaSettings(BaseSettings):
 
     # Entity embeddings feature flags
     #
-    # Default off to keep unit tests deterministic and to avoid introducing new
-    # embedding-service dependencies into unrelated workflows. Enable explicitly
-    # when you want entity-level semantic deduplication and merge scoring.
-    ENABLE_ENTITY_EMBEDDING_PERSISTENCE: bool = False
+    # Entity persistence, semantic deduplication and graph healing are enabled.
+    # Offline tests provide explicit synthetic embedding transports at consumers.
+    ENABLE_ENTITY_EMBEDDING_PERSISTENCE: bool = True
     ENABLE_ENTITY_EMBEDDING_DEDUPLICATION: bool = True
     ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING: bool = True
 
     # Entity embedding similarity configuration
     ENTITY_EMBEDDING_DEDUPLICATION_TOP_K: int = 15
-    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.55
+    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.85
 
     # Base Model Definitions
     LARGE_MODEL: str = "qwen3-a3b"
@@ -234,23 +232,25 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_REVISION: float = 0.65
     TEMPERATURE_PLANNING: float = 0.6
     TEMPERATURE_EVALUATION: float = 0.3
-    TEMPERATURE_CONSISTENCY_CHECK: float = 0.2
     TEMPERATURE_KG_EXTRACTION: float = 0.1
     TEMPERATURE_SUMMARY: float = 0.3
-    TEMPERATURE_PATCH: float = 0.7
+    # Global Temperature Override
+    TEMPERATURE_OVERRIDE: float | None = 1.0
+    STRUCTURED_OUTPUT_STRICT: bool = Field(default=False, description="Provider JSON-schema strict flag; local schema and catalog admission remain strict")
 
     FILL_IN: str = ""
 
     # LLM Call Settings & Fallbacks
-    LLM_RETRY_ATTEMPTS: int = 3
-    LLM_RETRY_DELAY_SECONDS: float = 3.0
-    HTTPX_TIMEOUT: float = 600.0
-    ENABLE_LLM_NO_THINK_DIRECTIVE: bool = False
+    LLM_RETRY_ATTEMPTS: int = Field(default=3, ge=1)
+    LLM_RETRY_DELAY_SECONDS: float = Field(default=3.0, gt=0, allow_inf_nan=False)
+    JSON_PARSE_RETRY_ATTEMPTS: int = Field(default=2, ge=1)
+    SCENE_PLAN_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10, description="Maximum scene-plan responses per invocation, including the initial response")
+    HTTPX_TIMEOUT: float = Field(default=600.0, gt=0, allow_inf_nan=False)
     TIKTOKEN_DEFAULT_ENCODING: str = "cl100k_base"
     FALLBACK_CHARS_PER_TOKEN: float = 4.0
 
     # Concurrency and Rate Limiting
-    MAX_CONCURRENT_LLM_CALLS: int = 1
+    MAX_CONCURRENT_LLM_CALLS: int = Field(default=1, ge=1)
     LLM_TOP_P: float = 0.95
 
     # LLM Frequency and Presence Penalties
@@ -258,6 +258,7 @@ class SagaSettings(BaseSettings):
     PRESENCE_PENALTY_DRAFTING: float = 0.0
 
     # Output and File Paths
+    PROJECTS_ROOT: str = "projects"
     BASE_OUTPUT_DIR: str = "output"
     PLOT_OUTLINE_FILE: str = "plot_outline.json"
     CHARACTER_PROFILES_FILE: str = "character_profiles.json"
@@ -268,15 +269,15 @@ class SagaSettings(BaseSettings):
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
     # Generation Parameters
-    # Token budgets (defaults are generous)
-    MAX_CONTEXT_TOKENS: int = 32768
-    MAX_GENERATION_TOKENS: int = 16384
+    # Total context includes the prompt, schema, framing, reasoning and answer.
+    MAX_CONTEXT_TOKENS: int = Field(default=131072, gt=0)
+    MAX_GENERATION_TOKENS: int = Field(default=65536, gt=0)
+    REQUEST_MESSAGE_OVERHEAD_TOKENS: int = Field(default=8, ge=0)
+    REQUEST_REPLY_OVERHEAD_TOKENS: int = Field(default=3, ge=0)
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 3
     TOTAL_CHAPTERS: int = 15
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 12
-    MAX_CONCURRENT_CHAPTERS: int = 1
-
     # Caching
     EMBEDDING_CACHE_SIZE: int = 128
     SUMMARY_CACHE_SIZE: int = 32
@@ -284,49 +285,42 @@ class SagaSettings(BaseSettings):
     TOKENIZER_CACHE_SIZE: int = 10
 
     # Agentic Planning & Prompt Context Snippets
-    MAX_PLANNING_TOKENS: int = 16384
+    MAX_PLANNING_TOKENS: int = Field(default=65536, gt=0)
     TARGET_SCENES_MIN: int = 4
     TARGET_SCENES_MAX: int = 6
 
     # Revision and Validation
+    REVISION_EVALUATION_THRESHOLD: float = 0.85
+    MIN_QUALITY_THRESHOLD: float = 0.7
+    QUALITY_ACCEPTANCE_POLICY: Literal["author", "strict"] = "author"
+    QA_ACCEPTANCE_POLICY: Literal["advisory", "mandatory"] = "advisory"
+    PLOT_STAGNATION_MIN_WORD_COUNT: int = 1500
+    PLOT_STAGNATION_MIN_ENTITIES: int = 1
+    PLOT_STAGNATION_MIN_RELATIONSHIPS: int = 1
+    TARGET_WORD_COUNT: int = 80000
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
-    MAX_SUMMARY_TOKENS: int = 16384
-    MAX_KG_TRIPLE_TOKENS: int = 16384
-    MAX_PREPOP_KG_TOKENS: int = 16384
+    MAX_SUMMARY_TOKENS: int = Field(default=65536, gt=0)
+    MAX_KG_TRIPLE_TOKENS: int = Field(default=65536, gt=0)
+    MAX_PREPOP_KG_TOKENS: int = Field(default=65536, gt=0)
 
     # Quality Assurance Configuration
     ENABLE_QA_CHECKS: bool = True
     QA_CHECK_FREQUENCY: int = 3
     QA_CHECK_CONTRADICTORY_TRAITS: bool = True
-    QA_CHECK_POST_MORTEM_ACTIVITY: bool = True
     QA_DEDUPLICATE_RELATIONSHIPS: bool = True
     QA_CONSOLIDATE_RELATIONSHIPS: bool = True
 
     # Knowledge Graph Entity Filtering (Proper Noun Preference)
     ENTITY_MENTION_THRESHOLD_PROPER_NOUN: int = 1
     ENTITY_MENTION_THRESHOLD_COMMON_NOUN: int = 3
+    RELATIONSHIP_LOWERCASE_TARGET_ALLOWLIST: tuple[str, ...] = ()
 
     # Narrative Agent Configuration
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
 
-    # De-duplication Configuration
-    DEDUPLICATION_USE_SEMANTIC: bool = True
-    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.55
-    DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
-
-    # Duplicate Prevention Settings
-    ENABLE_DUPLICATE_PREVENTION: bool = True
-    DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.6
-    DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = True
-    DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = True
-
-    # Phase 2 Deduplication (Relationship-Based)
-    ENABLE_PHASE2_DEDUPLICATION: bool = True
-    PHASE2_NAME_SIMILARITY_THRESHOLD: float = 0.5
-    PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD: float = 0.6
-
     # Chapter Generation Configuration
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
+    GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT: bool = True
 
     # Narrative Style Defaults
     DEFAULT_NARRATIVE_STYLE: str = "Third-Person, personal with internal monologue"
@@ -341,8 +335,20 @@ class SagaSettings(BaseSettings):
     SIMPLE_LOGGING_MODE: bool = False
 
     # NLP / spaCy configuration
-    SPACY_MODEL: str | None = None  # default None => utils.text_processing uses en_core_web_sm
+    SPACY_MODEL: str | None = None  # default None => utils.text_processing uses en_core_web_lg
     ENABLE_ENTITY_VALIDATION: bool = True  # Enable spaCy-based entity validation during extraction
+
+    # Stage 5: Narrative Generation & Enrichment Configuration
+    # These settings control what can be extracted from narrative text in Stage 5
+    # According to schema design, Stage 5 should only extract physical descriptions and embeddings
+    # It should NOT create new structural entities (Characters, Events, Locations, Items)
+
+    # Physical description extraction settings
+    ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION: bool = True  # Extract physical descriptions from narrative
+    ENABLE_PHYSICAL_DESCRIPTION_VALIDATION: bool = True  # Validate extracted descriptions against existing properties
+
+    # Chapter embedding extraction settings
+    ENABLE_CHAPTER_EMBEDDING_EXTRACTION: bool = True  # Extract chapter embeddings from narrative
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
@@ -353,72 +359,81 @@ class SagaSettings(BaseSettings):
 
     MAIN_NOVEL_INFO_NODE_ID: str = "main_novel_info"
 
-    # Identifier for the root World Container node in the Neo4j graph.
-    # This constant is used throughout the codebase for bootstrapping and
-    # querying world‑level structures.  It was previously defined in the
-    # legacy ``config.py`` file; adding it here restores compatibility.
+    # Shared root identity for world initialization and queries.
     MAIN_WORLD_CONTAINER_NODE_ID: str = "world_container"
-
-    DISABLE_RELATIONSHIP_NORMALIZATION: bool = True
 
     # Enhanced character bootstrap settings
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
 
-    # Relationship Normalization
-    relationship_normalization: RelationshipNormalizationSettings = Field(default_factory=RelationshipNormalizationSettings)
+    # Relationships are canonical from Stage 1 and should not be normalized.
+    relationship_normalization: RelationshipNormalizationSettings = Field(
+        default_factory=lambda: RelationshipNormalizationSettings(
+            ENABLE_RELATIONSHIP_NORMALIZATION=True,
+            STRICT_CANONICAL_MODE=True,
+            STATIC_OVERRIDES_ENABLED=False,
+        )
+    )
 
     # Schema Enforcement
     schema_enforcement: SchemaEnforcementSettings = Field(default_factory=SchemaEnforcementSettings)
 
-    # Legacy Degradation Flags
-    ENABLE_STATUS_IS_ALIAS: bool = False
+    # Validation Settings
+    validation: ValidationSettings = Field(default_factory=lambda: ValidationSettings())
 
-    model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore", populate_by_name=True, hide_input_in_errors=True)
+
+    def model_post_init(self, _context: Any) -> None:
+        if self.EXPECTED_EMBEDDING_DIM != self.NEO4J_VECTOR_DIMENSIONS:
+            logger.warning(
+                "⚠️ Vector dimension mismatch",
+                expected_embedding_dim=self.EXPECTED_EMBEDDING_DIM,
+                neo4j_vector_dimensions=self.NEO4J_VECTOR_DIMENSIONS,
+            )
+
+
+class FrozenRelationshipNormalizationSettings(RelationshipNormalizationSettings):
+    model_config = SettingsConfigDict(frozen=True)
+
+    @field_validator("SIMILARITY_THRESHOLDS")
+    @classmethod
+    def freeze_thresholds(cls, value: Mapping[str, float]) -> Mapping[str, float]:
+        return MappingProxyType(dict(value))
+
+
+class FrozenSchemaEnforcementSettings(SchemaEnforcementSettings):
+    model_config = SettingsConfigDict(frozen=True)
+
+
+class FrozenValidationSettings(ValidationSettings):
+    model_config = SettingsConfigDict(frozen=True)
+
+
+class EffectiveSettings(SagaSettings):
+    """Validated run snapshot; nested configuration is immutable too."""
+
+    relationship_normalization: FrozenRelationshipNormalizationSettings = Field(default_factory=FrozenRelationshipNormalizationSettings)
+    schema_enforcement: FrozenSchemaEnforcementSettings = Field(default_factory=FrozenSchemaEnforcementSettings)
+    validation: FrozenValidationSettings = Field(default_factory=FrozenValidationSettings)
+    model_config = SettingsConfigDict(frozen=True, env_file=None)
 
 
 settings = SagaSettings()
 
 
-# --- Reconstruct objects for backward compatibility ---
-class ModelsCompat:
-    LARGE: str
-    MEDIUM: str
-    SMALL: str
-    NARRATOR: str
+class _Temperatures:
+    DEFAULT: float = 0.7
+
+    def __getattr__(self, name: str) -> Any:
+        from config import get_settings
+
+        if name not in {"INITIAL_SETUP", "DRAFTING", "REVISION", "PLANNING", "EVALUATION", "KG_EXTRACTION", "SUMMARY", "OVERRIDE"}:
+            raise AttributeError(name)
+        return getattr(get_settings(), f"TEMPERATURE_{name}")
 
 
-class TempsCompat:
-    INITIAL_SETUP: float
-    DRAFTING: float
-    REVISION: float
-    PLANNING: float
-    EVALUATION: float
-    CONSISTENCY_CHECK: float
-    KG_EXTRACTION: float
-    SUMMARY: float
-    PATCH: float
-    DEFAULT: float
-
-
-Models = ModelsCompat()
-Models.LARGE = settings.LARGE_MODEL
-Models.MEDIUM = settings.MEDIUM_MODEL
-Models.SMALL = settings.SMALL_MODEL
-Models.NARRATOR = settings.NARRATIVE_MODEL
-
-Temperatures = TempsCompat()
-Temperatures.INITIAL_SETUP = settings.TEMPERATURE_INITIAL_SETUP
-Temperatures.DRAFTING = settings.TEMPERATURE_DRAFTING
-Temperatures.REVISION = settings.TEMPERATURE_REVISION
-Temperatures.PLANNING = settings.TEMPERATURE_PLANNING
-Temperatures.EVALUATION = settings.TEMPERATURE_EVALUATION
-Temperatures.CONSISTENCY_CHECK = settings.TEMPERATURE_CONSISTENCY_CHECK
-Temperatures.KG_EXTRACTION = settings.TEMPERATURE_KG_EXTRACTION
-Temperatures.SUMMARY = settings.TEMPERATURE_SUMMARY
-Temperatures.PATCH = settings.TEMPERATURE_PATCH
-Temperatures.DEFAULT = 0.7  # Set default explicitly
+Temperatures = _Temperatures()
 
 
 # Update module level variables for backward compatibility
@@ -532,8 +547,8 @@ def simple_log_format_rich(logger: Any, name: str, event_dict: MutableMapping[st
             if key.startswith("_"):
                 continue
             # Format value nicely
-            if isinstance(value, str) and len(value) > 50:
-                value_str = f"{value[:47]}..."
+            if isinstance(value, str) and len(value) > 200:
+                value_str = f"{value[:197]}..."
             else:
                 value_str = str(value)
             context_parts.append(f"[dim]{key}[/dim]={value_str}")
@@ -591,8 +606,8 @@ def simple_log_format_plain(logger: Any, name: str, event_dict: MutableMapping[s
             if key.startswith("_"):
                 continue
             # Format value nicely
-            if isinstance(value, str) and len(value) > 50:
-                value_str = f"{value[:47]}..."
+            if isinstance(value, str) and len(value) > 200:
+                value_str = f"{value[:197]}..."
             else:
                 value_str = str(value)
             context_parts.append(f"{key}={value_str}")
@@ -658,5 +673,3 @@ handler.setFormatter(simple_formatter)
 root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
-
-REVISION_EVALUATION_THRESHOLD = 0.85

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from core.graph_healing_service import GraphHealingService
+from tests.fakes.service_context import patch_service
 
 
 @pytest.mark.asyncio
@@ -42,6 +43,7 @@ async def test_enrich_node_from_context_uses_stable_id_for_boundary_call() -> No
     assert enriched == {}
 
     get_ctx.assert_awaited_once()
+    assert get_ctx.await_args is not None
     _args, kwargs = get_ctx.await_args
 
     # Stable id should be used for boundary calls when available.
@@ -61,8 +63,8 @@ async def test_identify_provisional_nodes_returns_stable_id_field() -> None:
     """
     service = GraphHealingService()
 
-    with patch(
-        "core.graph_healing_service.neo4j_manager.execute_read_query",
+    with patch_service(
+        'database.execute_read_query',
         new=AsyncMock(return_value=[]),
     ) as exec_read:
         out = await service.identify_provisional_nodes()

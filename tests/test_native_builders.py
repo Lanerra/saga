@@ -8,24 +8,26 @@ from models import CharacterProfile, WorldItem
 class TestCharacterUpsertCypher:
     """Tests for character upsert Cypher generation."""
 
-    def test_character_upsert_basic(self):
+    def test_character_upsert_basic(self) -> None:
         """Test basic character upsert Cypher."""
-        profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]})
+        profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"], "relationships": {"Bob": {"type": "FRIEND_OF", "description": "A declared friend"}}})
 
         cypher, params = NativeCypherBuilder.character_upsert_cypher(profile, 1)
 
-        assert "MERGE (c:Character {name: $name})" in cypher
+        assert "WITH 'Character' AS entity_label, $name AS entity_name, $id AS supplied_id" in cypher
         assert params["name"] == "Alice"
         assert params["description"] == "A hero"
         assert params["chapter_number"] == 1
 
         # Contract: builder-created relationships must be visible to profile reads
         # that filter by r.source_profile_managed.
-        assert "source_profile_managed: true" in cypher
+        assert len(params["relationship_data"]) == 1
+        assert params["relationship_data"][0]["properties"]["source_profile_managed"] is True
+        assert "rel_data.properties" in cypher
         # Contract: traits are now stored as node properties
         assert "SET c.traits = $trait_data" in cypher
 
-    def test_character_upsert_with_relationships(self):
+    def test_character_upsert_with_relationships(self) -> None:
         """Test character upsert with relationships."""
         profile = CharacterProfile.from_dict(
             "Alice",
@@ -38,30 +40,30 @@ class TestCharacterUpsertCypher:
 
         cypher, params = NativeCypherBuilder.character_upsert_cypher(profile, 1)
 
-        assert "MERGE (c:Character {name: $name})" in cypher
+        assert "WITH 'Character' AS entity_label, $name AS entity_name, $id AS supplied_id" in cypher
         assert params["name"] == "Alice"
 
-    def test_character_upsert_empty_traits(self):
+    def test_character_upsert_empty_traits(self) -> None:
         """Test character upsert with no traits."""
         profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": []})
 
         cypher, params = NativeCypherBuilder.character_upsert_cypher(profile, 1)
 
-        assert "MERGE (c:Character {name: $name})" in cypher
+        assert "WITH 'Character' AS entity_label, $name AS entity_name, $id AS supplied_id" in cypher
         assert params["name"] == "Alice"
 
 
 class TestWorldItemUpsertCypher:
     """Tests for world item upsert Cypher generation."""
 
-    def test_world_item_upsert_basic(self):
+    def test_world_item_upsert_basic(self) -> None:
         """Test basic world item upsert Cypher."""
         item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle"})
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 
-        # P0.2: world upserts must write one canonical world label (derived from category)
-        assert "MERGE (w:Location {id: $id})" in cypher
+        assert "RETURN node AS w" in cypher
+        assert params["primary_label"] == "Location"
         assert "id" in params
         assert params["name"] == "Castle"
         assert params["category"] == "Locations"
@@ -73,7 +75,7 @@ class TestWorldItemUpsertCypher:
         assert "apoc.merge.node" in cypher
         assert "world_item_target_label_allowlist" in params
 
-    def test_world_item_upsert_with_goals(self):
+    def test_world_item_upsert_with_goals(self) -> None:
         """Test world item upsert with goals."""
         item = WorldItem.from_dict(
             "Locations",
@@ -83,19 +85,21 @@ class TestWorldItemUpsertCypher:
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 
-        assert "MERGE (w:Location" in cypher
-        assert "goals" in params or "goals" in str(cypher)
+        assert "RETURN node AS w" in cypher
+        assert params["primary_label"] == "Location"
+        assert params["goals"] == ["Protect the realm"]
 
-    def test_world_item_upsert_with_rules(self):
+    def test_world_item_upsert_with_rules(self) -> None:
         """Test world item upsert with rules."""
         item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle", "rules": ["No running"]})
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 
-        assert "MERGE (w:Location" in cypher
-        assert "rules" in params or "rules" in str(cypher)
+        assert "RETURN node AS w" in cypher
+        assert params["primary_label"] == "Location"
+        assert params["rules"] == ["No running"]
 
-    def test_world_item_upsert_nested_properties(self):
+    def test_world_item_upsert_nested_properties(self) -> None:
         """Test world item upsert with nested properties."""
         item = WorldItem.from_dict(
             "Locations",
@@ -108,10 +112,10 @@ class TestWorldItemUpsertCypher:
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 
-        assert "MERGE (w" in cypher
+        assert "RETURN node AS w" in cypher
         assert "id" in params
 
-    def test_world_item_upsert_relationship_target_label_and_id(self):
+    def test_world_item_upsert_relationship_target_label_and_id(self) -> None:
         """World relationship targets can optionally specify target_label + target_id (allowlisted)."""
         item = WorldItem.from_dict(
             "Locations",

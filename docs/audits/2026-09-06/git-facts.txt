@@ -1,0 +1,46 @@
+4ce8870388b54e19ead91c86c10273e0fdd32e61
+## refactor/kg-schema...saga/refactor/kg-schema [ahead 1]
+ M config/settings.py
+ M core/__init__.py
+ D core/knowledge_graph_service.py
+ M core/langgraph/nodes/commit_node.py
+ M core/langgraph/nodes/context_retrieval_node.py
+ M core/langgraph/nodes/scene_extraction.py
+ M core/langgraph/state.py
+ M pyproject.toml
+ M tests/core/langgraph/nodes/test_commit_node.py
+ M tests/core/langgraph/nodes/test_context_retrieval_node.py
+ M tests/core/langgraph/nodes/test_scene_extraction.py
+ M tests/core/langgraph/subgraphs/test_generation_subgraph.py
+ D tests/test_knowledge_graph_service.py
+ M tests/test_langgraph/conftest.py
+ M tests/test_scene_extraction_validation.py
+?? .claude/
+?? core/langgraph/nodes/commit_entity_conversion.py
+?? core/langgraph/nodes/commit_graph_ops.py
+?? core/langgraph/nodes/commit_validation.py
+?? core/langgraph/nodes/context_character_retrieval.py
+?? core/langgraph/nodes/context_plot_retrieval.py
+?? core/langgraph/nodes/context_scene_retrieval.py
+?? core/langgraph/nodes/context_world_retrieval.py
+?? core/langgraph/nodes/scene_extraction_normalization.py
+?? core/langgraph/nodes/scene_extraction_parsing.py
+?? core/langgraph/nodes/scene_extraction_validation.py
+?? docs/CODEBASE_AUDIT_REPORT.md
+?? docs/CURRENT_STATE_AUDIT.md
+?? docs/audits/
+?? docs/field-audit-20260505.md
+?? genres.txt
+?? settings.txt
+?? task.txt
+?? themes.txt
+?? verify_split.py
+?? verify_subgraph.py
+count: 3836
+size: 21.46 MiB
+in-pack: 24113
+packs: 5
+size-pack: 31.58 MiB
+prune-packable: 3827
+garbage: 0
+size-garbage: 0 bytes

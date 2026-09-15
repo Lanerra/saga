@@ -13,7 +13,7 @@ Notes:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 import structlog
 
@@ -24,13 +24,29 @@ from core.langgraph.content_manager import (
     require_project_dir,
     set_extracted_relationships,
 )
-from core.langgraph.state import ExtractedRelationship, NarrativeState
+from core.langgraph.state import ContentRef, ExtractedRelationship, NarrativeState
 from core.relationship_normalization_service import normalization_service
 
 logger = structlog.get_logger(__name__)
 
 
-async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
+class RelationshipNormalizationUpdate(TypedDict, total=False):
+    """Node output, including legacy telemetry outside the checkpoint schema."""
+
+    extracted_relationships_ref: ContentRef
+    extracted_relationships: list[ExtractedRelationship | dict[str, object]]
+    relationship_vocabulary: dict[str, Any]
+    relationship_vocabulary_size: int
+    relationships_normalized_this_chapter: int
+    relationships_novel_this_chapter: int
+    relationships_rejected_this_chapter: int
+    relationships_property_converted_this_chapter: int
+    relationship_rejection_rate: float
+    last_pruned_chapter: int
+    current_node: str
+
+
+async def normalize_relationships(state: NarrativeState) -> RelationshipNormalizationUpdate:
     """Normalize extracted relationship types against accumulated vocabulary.
 
     Args:
@@ -84,16 +100,8 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
     # Convert dicts to ExtractedRelationship objects
     extracted_rels = []
     for rel_dict in extracted_rels_dicts:
-        try:
-            rel = ExtractedRelationship(**rel_dict)
-            extracted_rels.append(rel)
-        except Exception as e:
-            logger.warning(
-                "Failed to parse extracted relationship",
-                rel_dict=rel_dict,
-                error=str(e),
-            )
-            continue
+        rel = ExtractedRelationship(**rel_dict)
+        extracted_rels.append(rel)
 
     # Process each relationship
     normalized_rels = []
@@ -123,10 +131,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
         if config.REL_NORM_STRICT_CANONICAL_MODE and not was_normalized and normalized_type == original_type:
             canonical_result = await normalization_service.map_to_canonical(original_type)
             if canonical_result[0] is None:  # None means rejected
-                rejected_count += 1
-                if canonical_result[3]:  # is_property=True
-                    property_count += 1
-                continue  # Skip adding this relationship
+                raise ValueError("Strict canonical relationship normalization rejected the batch")
 
         # Check if novel (before updating vocabulary)
         is_novel = False
@@ -172,7 +177,6 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
 
     # Calculate rejection metrics
     total_processed = len(extracted_rels)
-    accepted_count = total_processed - rejected_count
     rejection_rate = (rejected_count / total_processed) if total_processed > 0 else 0.0
 
     # Log statistics

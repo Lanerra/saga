@@ -1,0 +1,21 @@
+claude/audit-cypher-queries-017LaWwjqzHKgGcPW3ZEs3i4               202794d [saga/claude/audit-cypher-queries-017LaWwjqzHKgGcPW3ZEs3i4: gone] cleanup: remove audit summary
+  claude/deduplication-before-relationships-01RsdsTnWSUpt4ijXjfzNWnT 912f004 [saga/claude/deduplication-before-relationships-01RsdsTnWSUpt4ijXjfzNWnT: gone] feat(deduplication): implement two-phase deduplication with relationship context
+  claude/fix-context-retrieval-errors-017mdXpeEvAesgzzfFYGLrC1       43d12a5 [saga/claude/fix-context-retrieval-errors-017mdXpeEvAesgzzfFYGLrC1: gone] fix(langgraph): fail fast on extraction and commit errors
+  claude/fix-dual-extraction-01AC6YddYEhFL1AG4CNrf9LN                f68126f [saga/claude/fix-dual-extraction-01AC6YddYEhFL1AG4CNrf9LN: gone] feat: remove deprecated Phase 1 extraction implementation
+  claude/langgraph-permissive-relationships-01JPgBya9pheVqjAHiwQXRN5 e68ee39 [saga/claude/langgraph-permissive-relationships-01JPgBya9pheVqjAHiwQXRN5: gone] docs: remove bootstrap and test command examples from CLAUDE.md
+  claude/langgraph-workflow-integration-0163LdS6JqacyWVCxKj7FGVJ     a363c2d [saga/claude/langgraph-workflow-integration-0163LdS6JqacyWVCxKj7FGVJ: gone] fix(commit-node): correct traits and relationships extraction from ExtractedEntity
+  claude/langgraph-workflow-integration-016vmCbWgVsPyZrbD8Ec7py7     031280f [saga/claude/langgraph-workflow-integration-016vmCbWgVsPyZrbD8Ec7py7: gone] fix(extraction): preserve entity types in relationships for proper node creation
+  claude/langgraph-workflow-integration-018RVCvrdj52VRppwxW2Se6b     25b71cf [saga/claude/langgraph-workflow-integration-018RVCvrdj52VRppwxW2Se6b: gone] feat(traits): enforce single-word traits with uniqueness and validation
+  claude/langgraph-workflow-integration-01DKJVxBymr71it3fQAiiB9w     cc551c9 [saga/claude/langgraph-workflow-integration-01DKJVxBymr71it3fQAiiB9w: gone] refactor: complete removal of deprecated plot_outline field
+  claude/langgraph-workflow-integration-01LmwNHQfxuFKY7rEi7St9bf     00bd20f [saga/claude/langgraph-workflow-integration-01LmwNHQfxuFKY7rEi7St9bf: gone] feat(deduplication): add first name matching for character nodes
+  claude/langgraph-workflow-integration-01Pe1dwqXQhpkCmexwzdbAPg     8079ef1 [saga/claude/langgraph-workflow-integration-01Pe1dwqXQhpkCmexwzdbAPg: gone] feat: significant cleanup with explicit exports and type hints
+  claude/langgraph-workflow-integration-01VS6bh7aukov1zSPAPJKnvw     eb58a0d [saga/claude/langgraph-workflow-integration-01VS6bh7aukov1zSPAPJKnvw: gone] feat(traits): add orphaned trait cleanup and migration utilities
+  claude/merge-langgraph-feature-01AKrksgRYtjqUJ8BEYRWh1z            7c91dde [saga/claude/merge-langgraph-feature-01AKrksgRYtjqUJ8BEYRWh1z: gone] fix(queries): remove strict Entity label requirement in Cypher queries
+  claude/merge-langgraph-reduce-bloat-01FUT9cYcdRA7Z8GFPec3sXn       ce3bd37 [saga/claude/merge-langgraph-reduce-bloat-01FUT9cYcdRA7Z8GFPec3sXn: gone] fix(langgraph): reduce relationship type bloat in knowledge graph
+  claude/state-mutation-safety-011evTuPM9hTdE9aEZgWy53R              616f241 [saga/claude/state-mutation-safety-011evTuPM9hTdE9aEZgWy53R: gone] fix(langgraph): prevent state mutation in extraction nodes
+  codex/implement-saga-bootstrap-feature                             8e2b01f [saga/codex/implement-saga-bootstrap-feature: gone] refactor(core): update LLM service method call in ProjectBootstrapper
+  dev                                                                be9a92c [saga/dev: ahead 4] feat(data-access): update chapter metadata and rename character description
+  feature/langgraph                                                  41d4676 [saga/feature/langgraph: gone] docs: revamp README for clearer onboarding and scope
+  feature/spacy                                                      d24a2d6 [saga/feature/spacy: gone] feat(core/langgraph): implement relationship semantic inference and validation
+  master                                                             865a391 [saga/master] feat(core/langgraph): implement relationship semantic inference and validation
+* refactor/kg-schema                                                 4ce8870 [saga/refactor/kg-schema: ahead 1] Deduplicate _should_continue_or_error into subgraphs/_shared.py

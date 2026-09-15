@@ -8,8 +8,10 @@ global outline when present, otherwise a balanced fallback allocation is used.
 
 from __future__ import annotations
 
+import json
+
 import structlog
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 import config
 from core.langgraph.content_manager import (
@@ -20,7 +22,7 @@ from core.langgraph.content_manager import (
 )
 from core.langgraph.initialization.chapter_allocation import choose_act_ranges
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -148,8 +150,7 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
 
     Notes:
         This node performs LLM I/O and writes act outlines to disk via `ContentManager`.
-        JSON/schema contract violations for a single act are handled by skipping that
-        act outline rather than crashing the entire initialization run.
+        Any failed selected act fails the collection without publishing a partial artifact.
     """
     logger.info(
         "generate_act_outlines: starting act outline generation",
@@ -167,20 +168,18 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
         error_msg = "No global outline available for act outline generation"
         logger.error("generate_act_outlines: missing global outline")
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "act_outlines",
             "initialization_step": "act_outlines_failed",
         }
 
-    act_count_raw = global_outline.get("act_count", 3)
-    act_count = act_count_raw if isinstance(act_count_raw, int) and not isinstance(act_count_raw, bool) else 3
-    if act_count <= 0:
-        act_count = 3
+    act_count = global_outline.get("act_count")
+    if not isinstance(act_count, int) or isinstance(act_count, bool) or act_count <= 0:
+        raise ValueError(f"global_outline.act_count must be a positive integer, got {act_count!r}")
 
-    total_chapters = state.get("total_chapters", 20)
-    if not isinstance(total_chapters, int) or isinstance(total_chapters, bool) or total_chapters < 0:
-        total_chapters = 20
+    total_chapters = state.get("total_chapters")
+    if not isinstance(total_chapters, int) or isinstance(total_chapters, bool) or total_chapters is None or total_chapters <= 0:
+        raise ValueError(f"state.total_chapters must be a positive integer, got {total_chapters!r}")
 
     # Prefer explicit act ranges from global outline when present; otherwise compute
     # balanced ranges that cover all chapters exactly once and distribute remainder.
@@ -208,7 +207,7 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
                 total_acts=act_count,
                 chapters_in_act=chapters_in_act,
             )
-        except ValueError as error:
+        except (ValueError, ValidationError) as error:
             logger.warning(
                 "generate_act_outlines: act outline JSON/schema contract violated",
                 act_number=act_num,
@@ -225,16 +224,17 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
 
             act_outlines[act_num] = act_outline
         else:
-            logger.warning(
-                "generate_act_outlines: failed to generate act",
-                act_number=act_num,
-            )
+            return {
+                "last_error": f"Failed to generate required act outline: {act_num}",
+                "current_node": "act_outlines",
+                "has_fatal_error": True,
+                "initialization_step": "act_outlines_failed",
+            }
 
     if not act_outlines:
         error_msg = "Failed to generate any act outlines"
         logger.error("generate_act_outlines: no outlines generated")
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "act_outlines",
             "initialization_step": "act_outlines_failed",
@@ -255,7 +255,7 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
 
         # Ensure each entry is self-describing (required for v2 list format).
         if act_outline.get("act_number") != act_number:
-            act_outline = {**act_outline, "act_number": act_number}
+            raise ValueError(f"Act outline identity mismatch: {act_number}")
 
         acts_externalized.append(act_outline)
 
@@ -277,7 +277,6 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "act_outlines_ref": act_outlines_ref,
         "current_node": "act_outlines",
         "last_error": None,
@@ -314,12 +313,13 @@ async def _generate_single_act_outline(
     act_role = _get_act_role(act_number, total_acts)
 
     # Build context strings
-    character_context = _build_character_summary(character_sheets)
-    global_outline_text = global_outline.get("raw_text", "")
+    character_context = json.dumps(character_sheets, ensure_ascii=False)
+    global_outline_text = json.dumps({key: value for key, value in global_outline.items() if key != "raw_text"}, ensure_ascii=False)
 
     prompt = render_prompt(
         "initialization/generate_act_outline.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
@@ -334,16 +334,22 @@ async def _generate_single_act_outline(
         },
     )
 
+    schema = ActOutlineSchema.model_json_schema()
+    for name, value in {"act_number": act_number, "total_acts": total_acts, "act_role": act_role, "chapters_in_act": chapters_in_act}.items():
+        schema["properties"][name]["enum"] = [value]
+
     try:
-        data, usage = await llm_service.async_call_llm_json_object(
+        data, usage = await get_services().language_model.async_call_llm_json_object(
             model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,
             max_tokens=config.MAX_GENERATION_TOKENS,
             allow_fallback=True,
-            auto_clean_response=True,
+            auto_clean_response=False,
             system_prompt=get_system_prompt("initialization"),
             max_attempts=2,
+            reject_duplicate_keys=True,
+            response_format={"type": "json_schema", "json_schema": {"name": "act_outline", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": schema}},
         )
 
         outline = ActOutlineSchema.model_validate(data)
@@ -377,7 +383,7 @@ async def _generate_single_act_outline(
 
         return act_outline
 
-    except ValueError:
+    except (ValueError, ValidationError):
         raise
     except Exception as e:
         logger.error(
@@ -400,6 +406,10 @@ def _get_act_role(act_number: int, total_acts: int) -> str:
     Returns:
         String describing the act's role in the story structure
     """
+    if total_acts == 1:
+        return "Setup/Confrontation/Climax/Resolution"
+    if total_acts == 2 and act_number == 1:
+        return "Setup/Rising Action"
     if act_number == 1:
         return "Setup/Introduction"
     elif act_number == total_acts:
@@ -416,30 +426,6 @@ def _get_act_role(act_number: int, total_acts: int) -> str:
         return "Development"
     else:
         return "Development"
-
-
-def _build_character_summary(character_sheets: dict[str, dict]) -> str:
-    """
-    Build a concise summary of characters for act outline generation.
-
-    Args:
-        character_sheets: Dictionary of character sheets
-
-    Returns:
-        Formatted string summarizing characters
-    """
-    if not character_sheets:
-        return "No characters defined."
-
-    summaries = []
-    for name, sheet in character_sheets.items():
-        is_protag = sheet.get("is_protagonist", False)
-        role = "Protagonist" if is_protag else "Character"
-        # Get first sentence or 100 chars of description
-        desc = sheet.get("description", "")
-        summaries.append(f"- **{name}** ({role}): {desc}")
-
-    return "\n".join(summaries)
 
 
 __all__ = ["generate_act_outlines"]

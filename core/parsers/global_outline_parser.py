@@ -1,0 +1,752 @@
+# core/parsers/global_outline_parser.py
+"""Parse global outline and create Stage 2 knowledge graph entities.
+
+This module provides the GlobalOutlineParser class that:
+1. Reads global outline from JSON files
+2. Creates MajorPlotPoint Event nodes (4 per story)
+3. Creates Location nodes (major locations without names)
+4. Creates Item nodes
+5. Enriches Character nodes with arc properties
+6. Persists to Neo4j using the existing data access layer
+
+Based on: docs/schema-design.md - Stage 2: Global Outline
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from typing import Any
+
+import structlog
+
+import config
+from core.service_context import get_services
+from data_access.location_queries import persist_locations
+from models.kg_models import Location, MajorPlotPoint, WorldItem
+from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import try_load_json_from_response
+from utils.text_processing import generate_entity_id
+
+logger = structlog.get_logger(__name__)
+
+
+class GlobalOutlineParser:
+    """Parse global outline and create Stage 2 knowledge graph entities.
+
+    This parser handles Stage 2 of the knowledge graph construction:
+    - MajorPlotPoint Event node creation (4 per story)
+    - Location node creation (major locations)
+    - Item node creation
+    - Character node enrichment with arc properties
+    - Persistence to Neo4j
+
+    Attributes:
+        global_outline_path: Path to global outline JSON file
+        chapter_number: Chapter number for provenance (0 for initialization)
+    """
+
+    def __init__(self, global_outline_path: str = "global_outline/main_v1.json", chapter_number: int = 0):
+        """Initialize the GlobalOutlineParser.
+
+        Args:
+            global_outline_path: Path to global outline JSON file
+            chapter_number: Chapter number for provenance (0 for initialization)
+        """
+        self.global_outline_path = global_outline_path
+        self.chapter_number = chapter_number
+        self._world_items_cache: list[WorldItem] | None = None
+
+    async def parse_global_outline(self) -> dict[str, Any]:
+        """Parse global outline from JSON file.
+
+        Returns:
+            Dictionary containing parsed global outline data
+
+        Raises:
+            ValueError: If global outline file cannot be read or parsed
+            DatabaseError: If there are issues persisting to Neo4j
+        """
+        try:
+            # Read the global outline JSON file
+            with open(self.global_outline_path, encoding="utf-8") as f:
+                global_outline_data = json.load(f)
+        except FileNotFoundError as e:
+            logger.error(f"Global outline file not found: {self.global_outline_path}", exc_info=True)
+            raise ValueError(f"Global outline file not found: {self.global_outline_path}") from e
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in global outline file: {self.global_outline_path}", exc_info=True)
+            raise ValueError(f"Invalid JSON in global outline file: {self.global_outline_path}") from e
+
+        return global_outline_data
+
+    def _generate_event_id(self, event_name: str, sequence_order: int) -> str:
+        """Generate a stable ID for an event.
+
+        Args:
+            event_name: Name of the event
+            sequence_order: Sequence order of the event (1-4)
+
+        Returns:
+            Generated event ID
+        """
+        # Use SHA256 hash of event name + sequence order for stable ID
+        hash_input = f"{event_name}_{sequence_order}"
+        hash_obj = hashlib.sha256(hash_input.encode("utf-8"))
+        hash_hex = hash_obj.hexdigest()[:16]  # Use first 16 chars for brevity
+        return f"event_{hash_hex}"
+
+    def _parse_major_plot_points(self, global_outline_data: dict[str, Any]) -> list[MajorPlotPoint]:
+        """Parse major plot points from global outline data.
+
+        Args:
+            global_outline_data: Parsed global outline data
+
+        Returns:
+            List of MajorPlotPoint instances
+
+        Raises:
+            ValueError: If required plot points are missing or invalid
+        """
+        # Major plot points should be in the global outline
+        # They are typically: inciting_incident, midpoint, climax, resolution
+        plot_points = []
+
+        # Define the expected sequence order for each plot point type
+        plot_point_mapping = {
+            "inciting_incident": 1,
+            "midpoint": 2,
+            "climax": 3,
+            "resolution": 4,
+        }
+
+        for plot_point_type, sequence_order in plot_point_mapping.items():
+            plot_point_name = global_outline_data.get(plot_point_type, "")
+            if not plot_point_name:
+                logger.warning(f"Missing plot point: {plot_point_type}")
+                continue
+
+            # Generate a stable ID for this plot point
+            event_id = self._generate_event_id(plot_point_name, sequence_order)
+
+            # Create MajorPlotPoint
+            plot_point = MajorPlotPoint(
+                id=event_id,
+                name=plot_point_name,
+                description=global_outline_data.get(plot_point_type, ""),
+                sequence_order=sequence_order,
+                created_chapter=0,
+                is_provisional=False,
+                created_ts=global_outline_data.get("created_ts"),
+                updated_ts=global_outline_data.get("updated_ts"),
+            )
+
+            plot_points.append(plot_point)
+
+        # Validate we have exactly 4 major plot points
+        if len(plot_points) != 4:
+            logger.error(f"Expected 4 major plot points, got {len(plot_points)}")
+            raise ValueError(f"Expected 4 major plot points, got {len(plot_points)}")
+
+        return plot_points
+
+    async def _parse_locations(self, global_outline_data: dict[str, Any]) -> list[Location]:
+        """Parse locations from global outline data.
+
+        Extracts locations from narrative text using LLM-based extraction.
+
+        Args:
+            global_outline_data: Parsed global outline data
+
+        Returns:
+            List of Location instances
+        """
+        if self._world_items_cache is None:
+            self._world_items_cache = await self._extract_world_items_from_outline(global_outline_data)
+
+        locations = []
+        for item in self._world_items_cache:
+            if item.category == "location":
+                location = Location(
+                    id=item.id,
+                    name=item.name,
+                    description=item.description,
+                    category="Location",
+                    created_chapter=0,
+                    is_provisional=False,
+                    created_ts=item.created_ts,
+                    updated_ts=item.updated_ts,
+                )
+                locations.append(location)
+
+        return locations
+
+    async def _parse_items(self, global_outline_data: dict[str, Any]) -> list[WorldItem]:
+        """Parse items from global outline data.
+
+        Extracts items (objects) from narrative text using LLM-based extraction.
+
+        Args:
+            global_outline_data: Parsed global outline data
+
+        Returns:
+            List of WorldItem instances
+        """
+        if self._world_items_cache is None:
+            self._world_items_cache = await self._extract_world_items_from_outline(global_outline_data)
+
+        items = []
+        for item in self._world_items_cache:
+            if item.category == "object":
+                items.append(item)
+
+        return items
+
+    def _parse_character_arcs(self, global_outline_data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        """Parse character arcs from global outline data.
+
+        Args:
+            global_outline_data: Parsed global outline data
+
+        Returns:
+            Dictionary mapping character names to their arc data
+        """
+        character_arcs = {}
+
+        if "character_arcs" in global_outline_data:
+            for arc_data in global_outline_data["character_arcs"]:
+                character_name = arc_data.get("character_name", "")
+                if not character_name:
+                    continue
+
+                character_arcs[character_name] = {
+                    "arc_start": arc_data.get("starting_state", ""),
+                    "arc_end": arc_data.get("ending_state", ""),
+                    "arc_key_moments": arc_data.get("key_moments", []),
+                }
+
+        return character_arcs
+
+    async def _extract_world_items_from_outline(self, global_outline_data: dict[str, Any]) -> list[WorldItem]:
+        """Extract world items (locations and objects) from global outline using LLM.
+
+        This method extracts locations and items from the narrative text in the global outline
+        using LLM-based entity extraction.
+
+        Args:
+            global_outline_data: Parsed global outline data
+
+        Returns:
+            List of WorldItem instances (with category="location" or category="object")
+        """
+        outline_text = global_outline_data.get("raw_text", "")
+        if not outline_text:
+            outline_text = json.dumps(global_outline_data, indent=2)
+
+        prompt = render_prompt(
+            "knowledge_agent/extract_world_items_lines.j2",
+            {
+                "setting": global_outline_data.get("setting", ""),
+                "outline_text": outline_text,
+            },
+        )
+
+        for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
+            try:
+                response, _ = await get_services().language_model.async_call_llm(
+                    model_name=config.NARRATIVE_MODEL,
+                    prompt=prompt,
+                    temperature=0.5,
+                    max_tokens=config.MAX_GENERATION_TOKENS,
+                    allow_fallback=True,
+                    auto_clean_response=True,
+                    system_prompt=get_system_prompt("knowledge_agent"),
+                )
+
+                return self._parse_world_items_extraction(response)
+            except (json.JSONDecodeError, ValueError) as e:
+                if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
+                    logger.warning("Failed to extract world items", attempts=attempt, error_type=type(e).__name__)
+                    return []
+
+        return []
+
+    def _parse_world_items_extraction(self, response: str) -> list[WorldItem]:
+        """Parse LLM response into WorldItem models.
+
+        Args:
+            response: LLM response (JSON array)
+
+        Returns:
+            List of WorldItem models
+
+        Raises:
+            ValueError: If the output violates the JSON/schema contract
+        """
+        raw_text = response.strip()
+
+        data, candidates_tried, parse_errors = try_load_json_from_response(raw_text)
+
+        if data is None:
+            raise ValueError(f"Failed to parse JSON from response. Errors: {parse_errors}")
+
+        if not isinstance(data, list):
+            raise ValueError("World items extraction must be a JSON array")
+
+        items: list[WorldItem] = []
+        allowed_categories = {"location", "object"}
+
+        for index, item in enumerate(data):
+            if not isinstance(item, dict):
+                raise ValueError(f"World item at index {index} must be a JSON object")
+
+            required_keys = {"name", "category", "description"}
+            missing_keys = required_keys - set(item.keys())
+            if missing_keys:
+                logger.warning("World item at index %d missing required keys: %s", index, missing_keys)
+                continue
+
+            name = item["name"]
+            category = item["category"]
+            description = item["description"]
+
+            if not isinstance(name, str) or not name.strip():
+                logger.warning("World item at index %d has invalid name", index)
+                continue
+            if not isinstance(category, str) or category not in allowed_categories:
+                logger.warning("World item at index %d has invalid category: %s (expected one of %s)", index, category, sorted(allowed_categories))
+                continue
+            if not isinstance(description, str) or not description.strip():
+                logger.warning("World item at index %d has invalid description", index)
+                continue
+
+            items.append(
+                WorldItem(
+                    id=generate_entity_id(name.strip(), category),
+                    name=name.strip(),
+                    description=description.strip(),
+                    category=category,
+                    created_chapter=0,
+                    is_provisional=False,
+                )
+            )
+
+        logger.info(
+            "_parse_world_items_extraction: extracted world items",
+            count=len(items),
+        )
+
+        return items
+
+    async def create_major_plot_point_nodes(self, plot_points: list[MajorPlotPoint]) -> bool:
+        """Create MajorPlotPoint Event nodes in Neo4j.
+
+        Args:
+            plot_points: List of MajorPlotPoint instances to create
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Build Cypher query for creating event nodes
+            cypher_queries = []
+
+            for plot_point in plot_points:
+                query = """
+                MERGE (e:Event {id: $id})
+                ON CREATE SET 
+                    e.name = $name,
+                    e.description = $description,
+                    e.event_type = $event_type,
+                    e.sequence_order = $sequence_order,
+                    e.created_chapter = $created_chapter,
+                    e.is_provisional = $is_provisional,
+                    e.created_ts = timestamp(),
+                    e.updated_ts = timestamp()
+                ON MATCH SET 
+                    e.name = $name,
+                    e.description = $description,
+                    e.event_type = $event_type,
+                    e.sequence_order = $sequence_order,
+                    e.created_chapter = $created_chapter,
+                    e.is_provisional = $is_provisional,
+                    e.updated_ts = timestamp()
+                """
+
+                params = {
+                    "id": plot_point.id,
+                    "name": plot_point.name,
+                    "description": plot_point.description,
+                    "event_type": plot_point.event_type,
+                    "sequence_order": plot_point.sequence_order,
+                    "created_chapter": plot_point.created_chapter,
+                    "is_provisional": plot_point.is_provisional,
+                }
+
+                cypher_queries.append((query, params))
+
+            # Execute all queries
+            for query, params in cypher_queries:
+                await get_services().database.execute_write_query(query, params)
+
+            logger.info("Successfully created %d MajorPlotPoint event nodes", len(plot_points), extra={"chapter": self.chapter_number})
+
+            return True
+
+        except Exception as e:
+            logger.error("Error creating MajorPlotPoint nodes: %s", str(e), exc_info=True)
+            return False
+
+    async def create_location_nodes(self, locations: list[Location]) -> bool:
+        """Create Location nodes in Neo4j.
+
+        Args:
+            locations: List of Location instances to create
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await persist_locations(locations)
+
+            logger.info("Successfully created %d Location nodes", len(locations), extra={"chapter": self.chapter_number})
+
+            return True
+
+        except Exception as e:
+            logger.error("Error creating Location nodes: %s", str(e), exc_info=True)
+            return False
+
+    async def create_item_nodes(self, items: list[WorldItem]) -> bool:
+        """Create Item nodes in Neo4j.
+
+        Args:
+            items: List of WorldItem instances to create
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Build Cypher query for creating item nodes
+            cypher_queries = []
+
+            for item in items:
+                query = """
+                MERGE (i:Item {id: $id})
+                ON CREATE SET 
+                    i.name = $name,
+                    i.description = $description,
+                    i.category = $category,
+                    i.created_chapter = $created_chapter,
+                    i.is_provisional = $is_provisional,
+                    i.created_ts = timestamp(),
+                    i.updated_ts = timestamp()
+                ON MATCH SET 
+                    i.name = $name,
+                    i.description = $description,
+                    i.category = $category,
+                    i.created_chapter = $created_chapter,
+                    i.is_provisional = $is_provisional,
+                    i.updated_ts = timestamp()
+                """
+
+                params = {
+                    "id": item.id,
+                    "name": item.name,
+                    "description": item.description,
+                    "category": item.category,
+                    "created_chapter": item.created_chapter,
+                    "is_provisional": item.is_provisional,
+                }
+
+                cypher_queries.append((query, params))
+
+            # Execute all queries
+            for query, params in cypher_queries:
+                await get_services().database.execute_write_query(query, params)
+
+            logger.info("Successfully created %d Item nodes", len(items), extra={"chapter": self.chapter_number})
+
+            return True
+
+        except Exception as e:
+            logger.error("Error creating Item nodes: %s", str(e), exc_info=True)
+            return False
+
+    async def enrich_character_arcs(self, character_arcs: dict[str, dict[str, Any]]) -> bool:
+        """Enrich Character nodes with arc properties.
+
+        Args:
+            character_arcs: Dictionary mapping character names to arc data
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Build Cypher query for updating character arcs
+            cypher_queries = []
+
+            for character_name, arc_data in character_arcs.items():
+                query = """
+                MATCH (c:Character {name: $character_name})
+                SET c.arc_start = $arc_start,
+                    c.arc_end = $arc_end,
+                    c.arc_key_moments = $arc_key_moments,
+                    c.updated_ts = timestamp()
+                """
+
+                params = {
+                    "character_name": character_name,
+                    "arc_start": arc_data.get("arc_start", ""),
+                    "arc_end": arc_data.get("arc_end", ""),
+                    "arc_key_moments": arc_data.get("arc_key_moments", []),
+                }
+
+                cypher_queries.append((query, params))
+
+            # Execute all queries
+            for query, params in cypher_queries:
+                await get_services().database.execute_write_query(query, params)
+
+            logger.info("Successfully enriched %d Character nodes with arc properties", len(character_arcs), extra={"chapter": self.chapter_number})
+
+            return True
+
+        except Exception as e:
+            logger.error("Error enriching Character arcs: %s", str(e), exc_info=True)
+            return False
+
+    async def _get_all_characters(self) -> list[str]:
+        """Get all character names from Neo4j.
+
+        Returns:
+            List of character names
+        """
+        try:
+            query = "MATCH (c:Character) RETURN c.name as name ORDER BY c.name"
+            result = await get_services().database.execute_read_query(query, {})
+            return [record["name"] for record in result if record.get("name")]
+        except Exception as e:
+            logger.error("Error fetching character names: %s", str(e), exc_info=True)
+            return []
+
+    async def _extract_item_possessions(self, global_outline_data: dict[str, Any], characters: list[str], items: list[WorldItem]) -> dict[str, str]:
+        """Extract Character-Item possession relationships using LLM.
+
+        Args:
+            global_outline_data: Parsed global outline data
+            characters: List of character names
+            items: List of items
+
+        Returns:
+            Dictionary mapping character names to item names
+        """
+        outline_text = global_outline_data.get("raw_text", "")
+        if not outline_text:
+            outline_text = json.dumps(global_outline_data, indent=2)
+
+        prompt = render_prompt(
+            "knowledge_agent/extract_item_possession.j2",
+            {
+                "outline_text": outline_text,
+                "known_characters": characters,
+                "known_items": [{"name": item.name, "description": item.description} for item in items],
+            },
+        )
+
+        for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
+            try:
+                response, _ = await get_services().language_model.async_call_llm(
+                    model_name=config.NARRATIVE_MODEL,
+                    prompt=prompt,
+                    temperature=0.3,
+                    max_tokens=config.MAX_GENERATION_TOKENS,
+                    allow_fallback=True,
+                    auto_clean_response=True,
+                    system_prompt=get_system_prompt("knowledge_agent"),
+                )
+
+                data, _, _ = try_load_json_from_response(response)
+                if not data or not isinstance(data, dict) or "possessions" not in data:
+                    logger.warning("No possessions key in LLM response", response_length=len(response))
+                    if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
+                        return {}
+                    continue
+
+                possessions = {}
+                for possession in data["possessions"]:
+                    character = possession.get("character", "")
+                    item = possession.get("item", "")
+                    if character and item:
+                        possessions[character] = item
+
+                logger.info("Parsed item possessions", character_count=len(possessions), extra={"chapter": 0})
+                return possessions
+
+            except (json.JSONDecodeError, ValueError) as e:
+                if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
+                    logger.warning("Failed to extract item possessions", attempts=attempt, error_type=type(e).__name__)
+                    return {}
+
+        return {}
+
+    async def create_item_possession_relationships(self, possessions: dict[str, str]) -> bool:
+        """Create Character -[POSSESSES]-> Item relationships in Neo4j.
+
+        Args:
+            possessions: Dictionary mapping character names to item names
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cypher_queries = []
+
+            for character_name, item_name in possessions.items():
+                query = """
+                MATCH (c:Character {name: $character_name})
+                MATCH (i:Item)
+                WHERE i.name = $item_name OR i.name CONTAINS $item_name OR $item_name CONTAINS i.name
+                MERGE (c)-[r:POSSESSES]->(i)
+                SET r.acquired_chapter = 0,
+                    r.created_ts = timestamp(),
+                    r.updated_ts = timestamp()
+                """
+
+                params = {
+                    "character_name": character_name,
+                    "item_name": item_name,
+                }
+
+                cypher_queries.append((query, params))
+
+            for query, params in cypher_queries:
+                await get_services().database.execute_write_query(query, params)
+
+            logger.info("Successfully created %d POSSESSES relationships", len(possessions), extra={"chapter": self.chapter_number})
+
+            return True
+
+        except Exception as e:
+            logger.error("Error creating POSSESSES relationships: %s", str(e), exc_info=True)
+            return False
+
+    async def parse_and_persist(self) -> tuple[bool, str]:
+        """Parse global outline and persist to Neo4j.
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            # Step 1: Parse global outline
+            logger.info("Parsing global outline from %s", self.global_outline_path)
+            global_outline_data = await self.parse_global_outline()
+
+            if not global_outline_data:
+                return False, "No data found in global outline"
+
+            logger.info("Parsed global outline data", extra={"chapter": self.chapter_number})
+
+            # Step 2: Parse major plot points
+            logger.info("Parsing major plot points from global outline")
+            plot_points = self._parse_major_plot_points(global_outline_data)
+
+            if not plot_points:
+                return False, "No major plot points found in global outline"
+
+            logger.info("Parsed %d major plot points", len(plot_points), extra={"chapter": self.chapter_number})
+
+            # Step 3: Parse locations
+            logger.info("Parsing locations from global outline")
+            locations = await self._parse_locations(global_outline_data)
+
+            if not locations:
+                logger.warning("No locations found in global outline")
+
+            logger.info("Parsed %d locations", len(locations), extra={"chapter": self.chapter_number})
+
+            # Step 4: Parse items
+            logger.info("Parsing items from global outline")
+            items = await self._parse_items(global_outline_data)
+
+            if not items:
+                logger.warning("No items found in global outline")
+
+            logger.info("Parsed %d items", len(items), extra={"chapter": self.chapter_number})
+
+            # Step 5: Parse character arcs
+            logger.info("Parsing character arcs from global outline")
+            character_arcs = self._parse_character_arcs(global_outline_data)
+
+            if not character_arcs:
+                logger.warning("No character arcs found in global outline")
+
+            logger.info("Parsed %d character arcs", len(character_arcs), extra={"chapter": self.chapter_number})
+
+            # Step 6: Create major plot point nodes
+            logger.info("Creating MajorPlotPoint event nodes in Neo4j")
+            plot_points_success = await self.create_major_plot_point_nodes(plot_points)
+
+            if not plot_points_success:
+                return False, "Failed to create MajorPlotPoint nodes"
+
+            # Step 7: Create location nodes
+            logger.info("Creating Location nodes in Neo4j")
+            locations_success = await self.create_location_nodes(locations)
+
+            if not locations_success:
+                return False, "Failed to create Location nodes"
+
+            # Step 8: Create item nodes
+            logger.info("Creating Item nodes in Neo4j")
+            items_success = await self.create_item_nodes(items)
+
+            if not items_success:
+                return False, "Failed to create Item nodes"
+
+            # Step 9: Enrich character arcs
+            logger.info("Enriching Character nodes with arc properties")
+            character_arcs_success = await self.enrich_character_arcs(character_arcs)
+
+            if not character_arcs_success:
+                return False, "Failed to enrich Character arcs"
+
+            # Step 10: Get all characters for item possession extraction
+            logger.info("Fetching character names for item possession extraction")
+            characters = await self._get_all_characters()
+
+            # Step 11: Extract item possessions
+            possessions = {}
+            if characters and items:
+                logger.info("Extracting item possessions from global outline")
+                possessions = await self._extract_item_possessions(global_outline_data, characters, items)
+
+                if not possessions:
+                    logger.info("No item possessions found in global outline")
+
+                logger.info("Parsed %d item possessions", len(possessions), extra={"chapter": self.chapter_number})
+
+            # Step 12: Create item possession relationships
+            if possessions:
+                logger.info("Creating Character -[POSSESSES]-> Item relationships in Neo4j")
+                possessions_success = await self.create_item_possession_relationships(possessions)
+
+                if not possessions_success:
+                    return False, "Failed to create POSSESSES relationships"
+
+            return (
+                True,
+                f"Successfully parsed and persisted "
+                f"{len(plot_points)} MajorPlotPoints, "
+                f"{len(locations)} Locations, "
+                f"{len(items)} Items, "
+                f"{len(character_arcs)} Character arcs, and "
+                f"{len(possessions)} Character-Item POSSESSES relationships",
+            )
+
+        except Exception as e:
+            logger.error("Error in parse_and_persist: %s", str(e), exc_info=True)
+            return False, f"Error parsing and persisting global outline: {str(e)}"
+
+
+__all__ = ["GlobalOutlineParser", "MajorPlotPoint"]

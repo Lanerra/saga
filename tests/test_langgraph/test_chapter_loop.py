@@ -129,7 +129,7 @@ async def test_workflow_loops_to_next_chapter(sample_state: NarrativeState) -> N
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
     mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
     mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "draft_ref": {"path": "mock_draft"}, "draft_word_count": 1, "current_node": "assemble_chapter"})
-    mock_normalize = MagicMock(side_effect=lambda s: {**s, "current_node": "normalize_relationships"})
+    mock_narrative_enrichment = MagicMock(side_effect=lambda s: {**s, "current_node": "narrative_enrichment"})
     mock_commit = MagicMock(side_effect=lambda s: {**s, "current_node": "commit"})
     mock_validate = MagicMock(side_effect=lambda s: {**s, "current_node": "validate", "needs_revision": False})
     mock_summarize = MagicMock(side_effect=lambda s: {**s, "current_node": "summarize"})
@@ -143,7 +143,7 @@ async def test_workflow_loops_to_next_chapter(sample_state: NarrativeState) -> N
         patch("core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph", return_value=mock_extract),
         patch("core.langgraph.workflow.generate_scene_embeddings", mock_gen_scene_embeddings),
         patch("core.langgraph.workflow.assemble_chapter", mock_assemble_chapter),
-        patch("core.langgraph.workflow.normalize_relationships", mock_normalize),
+        patch("core.langgraph.workflow.enrich_narrative", mock_narrative_enrichment),
         patch("core.langgraph.workflow.commit_to_graph", mock_commit),
         patch("core.langgraph.subgraphs.validation.create_validation_subgraph", return_value=mock_validate),
         patch("core.langgraph.workflow.summarize_chapter", mock_summarize),

@@ -2,16 +2,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
 
-from core.langgraph.content_manager import ContentManager, load_scene_embeddings
+from core.langgraph.content_manager import ContentManager, ContentRef, load_scene_embeddings
 from core.langgraph.nodes.embedding_node import generate_scene_embeddings
+from tests.fakes.service_context import patch_service
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=3, EMBEDDING_DTYPE="float32")
 async def test_generate_scene_embeddings_persists_and_returns_ref(tmp_path: Path) -> None:
     project_dir = str(tmp_path / "proj")
     manager = ContentManager(project_dir)
@@ -34,8 +36,8 @@ async def test_generate_scene_embeddings_persists_and_returns_ref(tmp_path: Path
         np.array([0.4, 0.5, 0.6], dtype=np.float32),
     ]
 
-    with patch(
-        "core.langgraph.nodes.embedding_node.llm_service.async_get_embeddings_batch",
+    with patch_service(
+        'language_model.async_get_embeddings_batch',
         new=AsyncMock(return_value=fake_embeddings),
     ):
         update = await generate_scene_embeddings(state)  # type: ignore[arg-type]
@@ -43,7 +45,7 @@ async def test_generate_scene_embeddings_persists_and_returns_ref(tmp_path: Path
     assert update["current_node"] == "generate_scene_embeddings"
     assert update.get("scene_embeddings_ref"), "generate_scene_embeddings must set scene_embeddings_ref on success"
 
-    scene_embeddings_ref = update["scene_embeddings_ref"]
+    scene_embeddings_ref: ContentRef = update["scene_embeddings_ref"]
     assert isinstance(scene_embeddings_ref, dict)
     assert scene_embeddings_ref["path"].endswith(".json")
 
@@ -98,6 +100,7 @@ async def test_generate_scene_embeddings_empty_scenes_sets_last_error(tmp_path: 
 
 
 @pytest.mark.asyncio
+@pytest.mark.run_settings(EXPECTED_EMBEDDING_DIM=2)
 async def test_generate_scene_embeddings_single_scene_chapter(tmp_path: Path) -> None:
     project_dir = str(tmp_path / "proj")
     manager = ContentManager(project_dir)
@@ -117,8 +120,8 @@ async def test_generate_scene_embeddings_single_scene_chapter(tmp_path: Path) ->
 
     fake_embeddings = [np.array([0.25, 0.5], dtype=np.float32)]
 
-    with patch(
-        "core.langgraph.nodes.embedding_node.llm_service.async_get_embeddings_batch",
+    with patch_service(
+        'language_model.async_get_embeddings_batch',
         new=AsyncMock(return_value=fake_embeddings),
     ):
         update = await generate_scene_embeddings(state)  # type: ignore[arg-type]

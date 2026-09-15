@@ -8,7 +8,7 @@ This package re-exports the public workflow API (state schema, node entrypoints,
 graph builders, and visualization utilities) for use by orchestrators and tests.
 """
 
-from core.langgraph.graph_context import build_context_from_graph, get_key_events
+from core.langgraph.graph_context import build_context_from_graph
 from core.langgraph.nodes import (
     commit_to_graph,
     finalize_chapter,
@@ -24,7 +24,7 @@ from core.langgraph.state import (
     State,
     create_initial_state,
 )
-from core.langgraph.subgraphs.generation import generate_chapter
+from core.langgraph.subgraphs.generation import create_generation_subgraph
 from core.langgraph.visualization import (
     print_workflow_summary,
     visualize_workflow,
@@ -32,7 +32,6 @@ from core.langgraph.visualization import (
 from core.langgraph.workflow import (
     create_checkpointer,
     create_full_workflow_graph,
-    should_revise_or_continue,
 )
 
 __all__ = [
@@ -47,17 +46,15 @@ __all__ = [
     "commit_to_graph",
     "validate_consistency",
     # Canonical generation API (scene-based subgraph)
-    "generate_chapter",
+    "create_generation_subgraph",
     "revise_chapter",
     "summarize_chapter",
     "finalize_chapter",
     # Context
     "build_context_from_graph",
-    "get_key_events",
     # Workflow
     "create_checkpointer",
     "create_full_workflow_graph",
-    "should_revise_or_continue",
     # Visualization
     "visualize_workflow",
     "print_workflow_summary",

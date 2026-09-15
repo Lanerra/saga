@@ -15,7 +15,23 @@ Notes:
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Awaitable, Callable
+from functools import wraps
+from typing import Any, cast
+
+
+def guard_graph_cache[Cached: Callable[..., Awaitable[Any]]](cached: Cached) -> Cached:
+    """Verify the exclusive owner before serving even an in-memory graph hit."""
+    @wraps(cached)
+    async def guarded(*arguments: Any, **keywords: Any) -> Any:
+        from core.service_context import get_services
+
+        await get_services().database.verify_project_ownership()
+        return await cached(*arguments, **keywords)
+
+    for name in ("cache_clear", "cache_info", "cache_invalidate", "cache_close"):
+        setattr(guarded, name, getattr(cached, name))
+    return cast(Cached, guarded)
 
 
 def _best_effort_cache_clear(fn: Any) -> bool:

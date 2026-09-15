@@ -1,0 +1,14 @@
+NAMED IDENTITY CONTRACT:
+{% if eligible_entities is defined %}
+ELIGIBLE SCENE IDENTITIES (closed set, selected catalog IDs and semantic labels):
+{{ eligible_entities | tojson }}
+- Entity keys and BOTH relationship endpoints must copy a name from this list exactly. IDs are supplied context, not output fields; never invent or rewrite them.
+- Sentence capitalization and a matching source span do not authorize another identity. Do not add crowds, descriptors or newly coined names to this list.
+- This task selects existing identities; it does not discover new ones. If the list is empty, return the specified empty collection. Examples and protagonist metadata cannot extend the list.
+{% endif %}
+- Copy exact spelling, capitalization and punctuation from a complete name in the chapter text, including articles and apostrophes. The Hague, King's Cross and Father O'Brien are valid names when the text names them that way.
+- Do not invent names, titles, event labels, aliases or IDs from descriptions. Capitalizing "the rain gauge", "the community hall", "the valley" or "her father" does not make a named entity. A name mentioned only in the context/title or these examples is not evidence in the chapter.
+- Exclude unnamed people/groups, generic objects/places, abstract concepts, goals/actions and possessive attributes from BOTH relationship endpoints and entity keys. "Mara's father" and "Mara's decision" are descriptors, unlike the proper name "King's Cross".
+- A named entity must also have the requested semantic kind: an instrument is not a Location, a ledger is not an Event, and a valley is not a Character. Do not use AFFECTED_BY for an object or LOCATED_AT for another person.
+- Only assert relationships explicitly supported by the text, with the correct direction. Shared presence is not an alliance. Do not infer a friendship or mentorship solely to fill a relationship slot.
+- If the text has no eligible named entities or relationships for this task, return the specified empty object/array. Limits are maxima, not quotas. Never fill them with unnamed or invented entries.

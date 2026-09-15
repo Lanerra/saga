@@ -16,13 +16,14 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import OrderedDict
 from typing import Any
 
 import numpy as np
 import structlog
 
 import config
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from prompts.prompt_renderer import render_prompt
 from utils.similarity import numpy_cosine_similarity
 
@@ -35,11 +36,32 @@ class RelationshipNormalizationService:
     The primary entrypoint is [`core.relationship_normalization_service.RelationshipNormalizationService.normalize_relationship_type()`](core/relationship_normalization_service.py:33).
     """
 
+    EMBEDDING_CACHE_MAX_SIZE = 1024
+    REJECTED_CACHE_MAX_SIZE = 2048
+
     def __init__(self) -> None:
         """Initialize the service and in-memory embedding cache."""
-        self.embedding_cache: dict[str, np.ndarray] = {}
+        self.embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self.canonical_embeddings: dict[str, np.ndarray] = {}
-        self.rejected_cache: set[str] = set()
+        self.rejected_cache: OrderedDict[str, None] = OrderedDict()
+
+    def _cache_embedding(self, key: str, value: np.ndarray) -> None:
+        """Store an embedding in the LRU-bounded cache."""
+        if key in self.embedding_cache:
+            self.embedding_cache.move_to_end(key)
+        else:
+            if len(self.embedding_cache) >= self.EMBEDDING_CACHE_MAX_SIZE:
+                self.embedding_cache.popitem(last=False)
+            self.embedding_cache[key] = value
+
+    def _reject(self, rel_type: str) -> None:
+        """Record a rejected relationship type in the LRU-bounded cache."""
+        if rel_type in self.rejected_cache:
+            self.rejected_cache.move_to_end(rel_type)
+        else:
+            if len(self.rejected_cache) >= self.REJECTED_CACHE_MAX_SIZE:
+                self.rejected_cache.popitem(last=False)
+            self.rejected_cache[rel_type] = None
 
     async def map_to_canonical(self, rel_type: str, category_hint: str = "DEFAULT") -> tuple[str | None, bool, float, bool]:
         """Map a relationship type to its canonical form using strict enforcement.
@@ -50,7 +72,7 @@ class RelationshipNormalizationService:
 
         Returns:
             Tuple of `(canonical_type, was_normalized, similarity_score, is_property)`.
-            
+
             - `canonical_type`: The canonical relationship type, or None if rejected.
             - `was_normalized`: True if the input was normalized to a different type.
             - `similarity_score`: Cosine similarity when semantic matching was used, 1.0 for exact matches.
@@ -60,7 +82,7 @@ class RelationshipNormalizationService:
             This method enforces strict canonicalization and rejects unknown types
             when STRICT_CANONICAL_MODE is enabled.
         """
-        from models.kg_constants import RELATIONSHIP_TYPES, STATIC_RELATIONSHIP_MAP, PROPERTY_RELATIONSHIPS
+        from models.kg_constants import PROPERTY_RELATIONSHIPS, RELATIONSHIP_TYPES, STATIC_RELATIONSHIP_MAP
 
         # 0. Check rejection cache
         if rel_type in self.rejected_cache:
@@ -84,31 +106,31 @@ class RelationshipNormalizationService:
 
         # 5. Semantic Match (only if not in strict mode)
         if config.REL_NORM_STRICT_CANONICAL_MODE:
-            self.rejected_cache.add(rel_type)
+            self._reject(rel_type)
             return None, False, 0.0, False
 
         await self._ensure_canonical_embeddings()
         incoming_embedding = await self._get_embedding(canonical_input)
-        
+
         if incoming_embedding is None:
-            self.rejected_cache.add(rel_type)
+            self._reject(rel_type)
             return None, False, 0.0, False
-            
+
         best_match = None
         best_similarity = 0.0
-        
+
         for canonical_type, canonical_emb in self.canonical_embeddings.items():
             sim = numpy_cosine_similarity(incoming_embedding, canonical_emb)
             if sim > best_similarity:
                 best_similarity = sim
                 best_match = canonical_type
-                
+
         threshold = self._get_threshold(category_hint)
-        
+
         if best_similarity > threshold:
             return best_match, True, best_similarity, False
         else:
-            self.rejected_cache.add(rel_type)
+            self._reject(rel_type)
             return None, False, best_similarity, False
 
     async def normalize_relationship_type(
@@ -149,7 +171,7 @@ class RelationshipNormalizationService:
         # Use strict canonical mode if enabled
         if config.REL_NORM_STRICT_CANONICAL_MODE:
             canonical_type, was_normalized, similarity, is_property = await self.map_to_canonical(rel_type)
-            
+
             if canonical_type is None:
                 if is_property:
                     logger.info(
@@ -164,7 +186,7 @@ class RelationshipNormalizationService:
                     )
                 # Return original type but mark as normalized to False
                 return rel_type, False, 0.0
-            
+
             logger.info(
                 "Strict canonical normalization",
                 original=rel_type,
@@ -286,11 +308,14 @@ class RelationshipNormalizationService:
 
         from models.kg_constants import RELATIONSHIP_TYPES
 
-        for rel_type in RELATIONSHIP_TYPES:
-            if rel_type not in self.canonical_embeddings:
-                embedding = await self._get_embedding(rel_type)
-                if embedding is not None:
-                    self.canonical_embeddings[rel_type] = embedding
+        uncached_types = [rt for rt in RELATIONSHIP_TYPES if rt not in self.canonical_embeddings]
+        if not uncached_types:
+            return
+
+        embeddings = await get_services().language_model.async_get_embeddings_batch(uncached_types)
+        for rel_type, embedding in zip(uncached_types, embeddings, strict=False):
+            if embedding is not None:
+                self.canonical_embeddings[rel_type] = embedding
 
     def _get_threshold(self, category: str) -> float:
         """Get the similarity threshold for a given category.
@@ -316,11 +341,18 @@ class RelationshipNormalizationService:
 
             If embeddings cannot be computed, returns `("", 0.0)`.
         """
-        # Get embedding for new type
+        uncached_types: list[str] = []
         if rel_type not in self.embedding_cache:
-            embedding = await self._get_embedding(rel_type)
-            if embedding is not None:
-                self.embedding_cache[rel_type] = embedding
+            uncached_types.append(rel_type)
+        for vocab_type in vocabulary_types:
+            if vocab_type not in self.embedding_cache:
+                uncached_types.append(vocab_type)
+
+        if uncached_types:
+            batch_embeddings = await get_services().language_model.async_get_embeddings_batch(uncached_types)
+            for text, embedding in zip(uncached_types, batch_embeddings, strict=False):
+                if embedding is not None:
+                    self._cache_embedding(text, embedding)
 
         new_embedding = self.embedding_cache.get(rel_type)
         if new_embedding is None:
@@ -334,21 +366,10 @@ class RelationshipNormalizationService:
         best_similarity = 0.0
 
         for vocab_type in vocabulary_types:
-            # Get cached or compute embedding
-            if vocab_type not in self.embedding_cache:
-                embedding = await self._get_embedding(vocab_type)
-                if embedding is not None:
-                    self.embedding_cache[vocab_type] = embedding
-
             vocab_embedding = self.embedding_cache.get(vocab_type)
             if vocab_embedding is None:
-                logger.warning(
-                    "Failed to get embedding for vocabulary type",
-                    type=vocab_type,
-                )
                 continue
 
-            # Compute cosine similarity
             similarity = numpy_cosine_similarity(new_embedding, vocab_embedding)
 
             if similarity > best_similarity:
@@ -364,7 +385,7 @@ class RelationshipNormalizationService:
             This is best-effort. Failures return None and are logged.
         """
         try:
-            embedding = await llm_service.async_get_embedding(text)
+            embedding = await get_services().language_model.async_get_embedding(text)
             return embedding
         except Exception as e:
             logger.error(
@@ -416,7 +437,7 @@ class RelationshipNormalizationService:
         )
 
         if use_json_mode:
-            data, _ = await llm_service.async_call_llm_json_object(
+            data, _ = await get_services().language_model.async_call_llm_json_object(
                 model_name=config.SMALL_MODEL,
                 prompt=prompt,
                 max_tokens=config.MAX_GENERATION_TOKENS,
@@ -447,7 +468,7 @@ class RelationshipNormalizationService:
             return decision_should_normalize
 
         try:
-            response, _ = await llm_service.async_call_llm(
+            response, _ = await get_services().language_model.async_call_llm(
                 model_name=config.SMALL_MODEL,
                 prompt=prompt,
                 max_tokens=config.MAX_GENERATION_TOKENS,

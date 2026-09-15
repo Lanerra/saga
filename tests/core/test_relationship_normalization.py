@@ -1,19 +1,27 @@
 # tests/core/test_relationship_normalization.py
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
 
 from core.relationship_normalization_service import RelationshipNormalizationService
+from tests.fakes.service_context import patch_service
+
+
+@pytest.fixture(autouse=True)
+def _enable_normalization() -> Iterator[None]:
+    with patch("config.ENABLE_RELATIONSHIP_NORMALIZATION", True):
+        yield
 
 
 @pytest.fixture
-def service():
+def service() -> RelationshipNormalizationService:
     return RelationshipNormalizationService()
 
 
 @pytest.mark.asyncio
-async def test_normalize_exact_match(service):
+async def test_normalize_exact_match(service: RelationshipNormalizationService) -> None:
     vocabulary = {"LOVES": {"canonical_type": "LOVES"}}
 
     normalized, was_norm, sim = await service.normalize_relationship_type("LOVES", "They are friends", vocabulary, 1)
@@ -24,7 +32,7 @@ async def test_normalize_exact_match(service):
 
 
 @pytest.mark.asyncio
-async def test_normalize_case_variant(service):
+async def test_normalize_case_variant(service: RelationshipNormalizationService) -> None:
     vocabulary = {"LOVES": {"canonical_type": "LOVES"}}
 
     normalized, was_norm, sim = await service.normalize_relationship_type("loves", "They are friends", vocabulary, 1)
@@ -35,56 +43,24 @@ async def test_normalize_case_variant(service):
 
 
 @pytest.mark.asyncio
-async def test_normalize_punctuation_variant(service):
-    # This test uses legacy mode (non-strict canonical)
-    with patch("config.REL_NORM_STRICT_CANONICAL_MODE", False):
+async def test_normalize_punctuation_variant(service: RelationshipNormalizationService) -> None:
+    with (
+        patch("config.REL_NORM_STRICT_CANONICAL_MODE", False),
+        patch_service('language_model.async_get_embeddings_batch', new_callable=AsyncMock, return_value=[np.array([1.0, 0.0]), np.array([1.0, 0.0])]) as embeddings,
+    ):
         vocabulary = {"LOVES": {"canonical_type": "LOVES"}}
 
         normalized, was_norm, sim = await service.normalize_relationship_type("LOVES-WITH", "They are friends", vocabulary, 1)
 
         assert normalized == "LOVES"
         assert was_norm is True
-        # Similarity will be high but not exactly 1.0 since it goes through semantic matching
-        assert sim > 0.9
+        assert sim == 1.0
+        embeddings.assert_awaited_once_with(["LOVES_WITH", "LOVES"])
 
 
 @pytest.mark.asyncio
-async def test_normalize_semantic_similarity(service):
-    # This test uses legacy mode (non-strict canonical)
-    with patch("config.REL_NORM_STRICT_CANONICAL_MODE", False):
-        vocabulary = {
-            "LOVES": {
-                "canonical_type": "LOVES",
-                "embedding": np.array([1.0, 0.0, 0.0]),
-            }
-        }
-
-        # Mock embedding for new type to be very similar
-        # ADORES -> [0.9, 0.1, 0.0]
-
-        with patch(
-            "core.relationship_normalization_service.llm_service.async_get_embedding",
-            new_callable=AsyncMock,
-        ) as mock_embed:
-            # First call is for "ADORES", second might be for LOVES if not in cache (but we put it in cache via dict implicitly? No, service has its own cache)
-            # We need to ensure service.embedding_cache has the vocab embedding or mocks return it
-
-            # Pre-populate service cache for vocabulary to simplify
-            service.embedding_cache["LOVES"] = np.array([1.0, 0.0, 0.0])
-
-            mock_embed.return_value = np.array([0.9, 0.1, 0.0])
-
-            normalized, was_norm, sim = await service.normalize_relationship_type("ADORES", "Working together", vocabulary, 1)
-
-            # 0.9 / (1 * sqrt(0.82)) ~= 0.99
-            assert normalized == "LOVES"
-            assert was_norm is True
-            assert sim > 0.85  # Default threshold
-
-
-@pytest.mark.asyncio
-async def test_normalize_novel_relationship(service):
-    # This test uses legacy mode (non-strict canonical)
+async def test_normalize_semantic_similarity(service: RelationshipNormalizationService) -> None:
+    """Similar relationship type is normalized to existing vocabulary entry."""
     with patch("config.REL_NORM_STRICT_CANONICAL_MODE", False):
         vocabulary = {
             "LOVES": {
@@ -95,14 +71,36 @@ async def test_normalize_novel_relationship(service):
 
         service.embedding_cache["LOVES"] = np.array([1.0, 0.0, 0.0])
 
-        # TRUSTS -> [0.0, 1.0, 0.0] -> Orthogonal, sim = 0
-
-        with patch(
-            "core.relationship_normalization_service.llm_service.async_get_embedding",
+        with patch_service(
+            'language_model.async_get_embeddings_batch',
             new_callable=AsyncMock,
-        ) as mock_embed:
-            mock_embed.return_value = np.array([0.0, 1.0, 0.0])
+            return_value=[np.array([0.9, 0.1, 0.0])],
+        ):
+            normalized, was_norm, sim = await service.normalize_relationship_type("ADORES", "Working together", vocabulary, 1)
 
+            assert normalized == "LOVES"
+            assert was_norm is True
+            assert sim > 0.85
+
+
+@pytest.mark.asyncio
+async def test_normalize_novel_relationship(service: RelationshipNormalizationService) -> None:
+    """Dissimilar relationship type is kept as novel."""
+    with patch("config.REL_NORM_STRICT_CANONICAL_MODE", False):
+        vocabulary = {
+            "LOVES": {
+                "canonical_type": "LOVES",
+                "embedding": np.array([1.0, 0.0, 0.0]),
+            }
+        }
+
+        service.embedding_cache["LOVES"] = np.array([1.0, 0.0, 0.0])
+
+        with patch_service(
+            'language_model.async_get_embeddings_batch',
+            new_callable=AsyncMock,
+            return_value=[np.array([0.0, 1.0, 0.0])],
+        ):
             normalized, was_norm, sim = await service.normalize_relationship_type("TRUSTS", "Deep affection", vocabulary, 1)
 
             assert normalized == "TRUSTS"
@@ -110,8 +108,8 @@ async def test_normalize_novel_relationship(service):
             assert sim < 0.85
 
 
-def test_update_vocabulary_usage(service):
-    vocabulary = {}
+def test_update_vocabulary_usage(service: RelationshipNormalizationService) -> None:
+    vocabulary: dict[str, dict[str, object]] = {}
 
     # First usage
     vocab = service.update_vocabulary_usage(vocabulary, "TEST_REL", "Description 1", 1, False)
@@ -129,7 +127,7 @@ def test_update_vocabulary_usage(service):
     assert len(vocab["TEST_REL"]["example_descriptions"]) == 2
 
 
-def test_prune_vocabulary(service):
+def test_prune_vocabulary(service: RelationshipNormalizationService) -> None:
     vocabulary = {
         "KEEP_ME": {"usage_count": 10, "last_used_chapter": 10},
         "KEEP_ME_TOO": {"usage_count": 1, "last_used_chapter": 10},
@@ -150,14 +148,14 @@ def test_prune_vocabulary(service):
 
 
 @pytest.mark.asyncio
-async def test_llm_disambiguate_json_normalize(service):
+async def test_llm_disambiguate_json_normalize(service: RelationshipNormalizationService) -> None:
     existing_usage = {
         "usage_count": 3,
         "example_descriptions": ["Example one", "Example two"],
     }
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         new_callable=AsyncMock,
     ) as mock_call:
         mock_call.return_value = ({"decision": "NORMALIZE"}, None)
@@ -174,14 +172,14 @@ async def test_llm_disambiguate_json_normalize(service):
 
 
 @pytest.mark.asyncio
-async def test_llm_disambiguate_json_distinct(service):
+async def test_llm_disambiguate_json_distinct(service: RelationshipNormalizationService) -> None:
     existing_usage = {
         "usage_count": 3,
         "example_descriptions": ["Example one", "Example two"],
     }
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         new_callable=AsyncMock,
     ) as mock_call:
         mock_call.return_value = ({"decision": "DISTINCT"}, None)
@@ -198,11 +196,11 @@ async def test_llm_disambiguate_json_distinct(service):
 
 
 @pytest.mark.asyncio
-async def test_llm_disambiguate_json_rejects_invalid_keyset(service):
+async def test_llm_disambiguate_json_rejects_invalid_keyset(service: RelationshipNormalizationService) -> None:
     existing_usage = {"usage_count": 1, "example_descriptions": []}
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         new_callable=AsyncMock,
     ) as mock_call:
         mock_call.return_value = ({"decision": "NORMALIZE", "extra": "nope"}, None)
@@ -218,11 +216,11 @@ async def test_llm_disambiguate_json_rejects_invalid_keyset(service):
 
 
 @pytest.mark.asyncio
-async def test_llm_disambiguate_json_rejects_missing_decision(service):
+async def test_llm_disambiguate_json_rejects_missing_decision(service: RelationshipNormalizationService) -> None:
     existing_usage = {"usage_count": 1, "example_descriptions": []}
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         new_callable=AsyncMock,
     ) as mock_call:
         mock_call.return_value = ({}, None)
@@ -238,11 +236,11 @@ async def test_llm_disambiguate_json_rejects_missing_decision(service):
 
 
 @pytest.mark.asyncio
-async def test_llm_disambiguate_json_rejects_non_string_decision(service):
+async def test_llm_disambiguate_json_rejects_non_string_decision(service: RelationshipNormalizationService) -> None:
     existing_usage = {"usage_count": 1, "example_descriptions": []}
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         new_callable=AsyncMock,
     ) as mock_call:
         mock_call.return_value = ({"decision": 123}, None)
@@ -258,11 +256,11 @@ async def test_llm_disambiguate_json_rejects_non_string_decision(service):
 
 
 @pytest.mark.asyncio
-async def test_llm_disambiguate_json_rejects_invalid_enum(service):
+async def test_llm_disambiguate_json_rejects_invalid_enum(service: RelationshipNormalizationService) -> None:
     existing_usage = {"usage_count": 1, "example_descriptions": []}
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         new_callable=AsyncMock,
     ) as mock_call:
         mock_call.return_value = ({"decision": "normalize"}, None)
@@ -278,11 +276,11 @@ async def test_llm_disambiguate_json_rejects_invalid_enum(service):
 
 
 @pytest.mark.asyncio
-async def test_llm_disambiguate_legacy_substring_behavior(service):
+async def test_llm_disambiguate_legacy_substring_behavior(service: RelationshipNormalizationService) -> None:
     existing_usage = {"usage_count": 1, "example_descriptions": []}
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_call_llm",
+    with patch_service(
+        'language_model.async_call_llm',
         new_callable=AsyncMock,
     ) as mock_call:
         mock_call.return_value = ("normalize", None)

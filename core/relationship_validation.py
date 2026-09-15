@@ -19,7 +19,15 @@ import structlog
 
 from models.kg_constants import (
     CHARACTER_EMOTIONAL_RELATIONSHIPS,
+    CHARACTER_EVENT_RELATIONSHIPS,
+    CHARACTER_ITEM_RELATIONSHIPS,
+    CHARACTER_LOCATION_RELATIONSHIPS,
     CHARACTER_SOCIAL_RELATIONSHIPS,
+    EVENT_ITEM_RELATIONSHIPS,
+    EVENT_LOCATION_RELATIONSHIPS,
+    EVENT_TEMPORAL_RELATIONSHIPS,
+    LOCATION_ITEM_RELATIONSHIPS,
+    LOCATION_SPATIAL_RELATIONSHIPS,
     RELATIONSHIP_TYPES,
     VALID_NODE_LABELS,
 )
@@ -247,7 +255,7 @@ VALIDATION_RULES = [
         relationship_types={"HAS_ABILITY", "SKILLED_IN", "WEAK_IN"},
         valid_source_types=SENTIENT_TYPES,
         valid_target_types=QUALITY_TYPES | ABSTRACT_TYPES | {"Skill"},
-        rule_name="ability_trait",
+        rule_name="ability_skill",
         rationale="[INFO] Abilities are typically possessed by sentient beings",
     ),
 ]
@@ -271,7 +279,7 @@ class RelationshipValidator:
             enable_strict_mode: If True, enforce rules as hard failures. If False, treat
                 rule violations as informational diagnostics.
         """
-        self.rules = VALIDATION_RULES
+        self.rules = STRICT_SEMANTIC_RULES if enable_strict_mode else VALIDATION_RULES
         self.known_relationship_types = RELATIONSHIP_TYPES
         self.known_node_labels = VALID_NODE_LABELS
         self.enable_strict_mode = enable_strict_mode

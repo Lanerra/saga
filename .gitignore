@@ -1,37 +1,50 @@
-# Python cache and logs
+# Python and analysis caches
 __pycache__/
 *.py[cod]
+.mypy_cache/
+.ruff_cache/
 
 # Test and coverage outputs
 .coverage
+.coverage.*
 htmlcov/
 .pytest_cache/
 
-# Runtime logs and debug outputs
-output/
+# Local runtime data (including symlinked directories)
+/output
+/projects
+/neo4j
+/novel_output-*
 
 # OS files
 .DS_Store
-.venv/
-neo4j/
-novel_output-*/
-.clineignore
-.gitignore
+.venv
+/.venv-runtime
+/requirements.candidate.lock
+
+# Credentials and local agent/campaign state
 .env
-AIStory4.txt
-purge.sh
-stats.sh
-story-text.txt
-user_story_elements.ba*
-chorus.md
-story-test.txt
-.aider*
-.gitignore
-add_paths.sh
-.clinerules/PROJECT_CONSTRAINTS.md
-Bootstrap-KG-Ch4.png
-.gitignore
-User-KG-Ch4.png
-src/
-.kilocode/
-projects/
+.env.*
+!/.env.example
+/.claude/settings.local.json
+/.saga-repair
+/.hermes
+/.clineignore
+/.aider*
+/.kilocode
+
+# Original author data remains local and is never a source payload
+/AIStory4.txt
+/story-text.txt
+/user_story_elements.ba*
+/chorus.md
+/story-test.txt
+/Bootstrap-KG-Ch4.png
+/User-KG-Ch4.png
+
+# Quarantined local sources require separate content review before inclusion
+/src
+/purge.sh
+/stats.sh
+/add_paths.sh
+/.clinerules/PROJECT_CONSTRAINTS.md

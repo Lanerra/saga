@@ -1,6 +1,7 @@
 # utils/text_processing.py
+import hashlib
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 
@@ -11,9 +12,6 @@ except Exception:  # pragma: no cover - if rapidfuzz missing
     partial_ratio_alignment = None  # type: ignore[assignment]
 
 logger = structlog.get_logger(__name__)
-
-if TYPE_CHECKING:  # pragma: no cover - for type hints only
-    pass
 
 
 def normalize_entity_name(text: str) -> str:
@@ -52,6 +50,29 @@ def _normalize_for_id(text: str) -> str:
     return text
 
 
+def generate_entity_id(name: str, category: str) -> str:
+    """Generate a deterministic entity ID.
+
+    Args:
+        name: Entity name.
+        category: Entity category (for world items) or `"character"` for characters.
+
+    Returns:
+        A stable identifier derived from a normalized form of `name` and `category`.
+    """
+    if not isinstance(name, str):
+        raise TypeError("name must be a string")
+    if not isinstance(category, str):
+        raise TypeError("category must be a string")
+
+    normalized_name = re.sub(r"[^\w\s]", "", name.lower().strip())
+    normalized_name = re.sub(r"\s+", "_", normalized_name)
+
+    content_hash = hashlib.md5(f"{normalized_name}_{category}".encode()).hexdigest()[:12]
+
+    return f"entity_{content_hash}"
+
+
 async def get_context_snippet_for_patch(original_text: str, problem: dict[str, Any], max_chars: int) -> str:
     """Return a context snippet around the problem's quote or start of text.
 
@@ -76,30 +97,26 @@ async def get_context_snippet_for_patch(original_text: str, problem: dict[str, A
 
 
 def validate_world_item_fields(category: str, name: str, item_id: str, allow_empty_name: bool = False) -> tuple[str, str, str]:
-    """Validate and normalize WorldItem core fields, providing defaults for missing values."""
-    # Validate category
-    if not category or not isinstance(category, str) or not category.strip():
-        category = "other"
+    """Validate and normalize WorldItem core fields.
 
-    # Validate name
-    # Only set default name if allow_empty_name is False and name is actually missing/empty
-    if (not allow_empty_name) and (not name or not isinstance(name, str) or not name.strip()):
-        name = "unnamed_element"
+    Raises:
+        ValueError: If category is missing/empty, or if name is missing/empty
+            (when allow_empty_name is False).
+    """
+    if not isinstance(category, str) or not category.strip():
+        raise ValueError(f"WorldItem category must be a non-empty string, got {category!r}")
 
-    # Validate ID: ensure deterministic, human-readable if possible
+    if not allow_empty_name and (not isinstance(name, str) or not name.strip()):
+        raise ValueError(f"WorldItem name must be a non-empty string, got {name!r}")
+
     if not item_id or not isinstance(item_id, str) or not item_id.strip():
         import hashlib
 
-        norm_cat = _normalize_for_id(category) or "other"
-        norm_name = _normalize_for_id(name) or "unnamed"
-        base = f"{norm_cat}_{norm_name}"
-        # If either part is too short or generic, append a stable hash for uniqueness
-        # Use 12-character hash to reduce collision probability (2^48 space)
-        if norm_name in {"", "unnamed"} or norm_cat in {"", "other"}:
-            suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:12]
-            item_id = f"{base}_{suffix}"
-        else:
-            item_id = base
+        norm_cat = _normalize_for_id(category)
+        norm_name = _normalize_for_id(name) if name else ""
+        base = f"{norm_cat}_{norm_name}" if norm_name else norm_cat
+        suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:12]
+        item_id = f"{base}_{suffix}"
 
     return category, name, item_id
 
@@ -115,7 +132,7 @@ def classify_category_label(category: str) -> str:
         category: The category string to classify
 
     Returns:
-        Canonical Neo4j label: "Location", "Item" "Event",
+        Canonical Neo4j label: "Location", "Item", "Event",
         "Character", or "Chapter". Defaults to "Item" if ambiguous.
 
     Examples:
@@ -244,7 +261,7 @@ def classify_category_label(category: str) -> str:
         "supernatural",
         "background",
     ]:
-        return "Trait"
+        return "Character"
 
     if c in [
         "person",
@@ -355,64 +372,12 @@ def validate_and_filter_traits(traits: list[str]) -> list[str]:
     return valid_traits
 
 
-class SpaCyModelManager:
-    """Lazily loads and stores the spaCy model used across the project."""
+def _get_spacy_nlp() -> Any | None:
+    """Return the shared spaCy Language model, or None if unavailable."""
+    from core.spacy_service import get_spacy_service
 
-    def __init__(self) -> None:
-        self._nlp: Any | None = None
-
-    @property
-    def nlp(self) -> Any | None:
-        return self._nlp
-
-    def load(self) -> None:
-        """Load the spaCy model if it hasn't been loaded yet.
-
-        The import is performed lazily to avoid hard dependency and heavy
-        startup costs in single-user CLI mode. Defaults to a small model,
-        overridable by config (settings.SPACY_MODEL) or env.
-        """
-        if self._nlp is not None:
-            return
-        try:  # import spacy lazily
-            import spacy
-        except Exception:
-            logger.error("spaCy library not installed. Install with: pip install spacy. " "spaCy-dependent features will be disabled.")
-            self._nlp = None
-            return
-
-        # Choose model: prefer config setting, default to lightweight model
-        model_name = None
-        try:
-            import config  # local import to avoid cycles
-
-            model_name = getattr(config.settings, "SPACY_MODEL", None)
-        except Exception:
-            model_name = None
-        if not model_name:
-            model_name = "en_core_web_sm"
-
-        try:
-            self._nlp = spacy.load(model_name)
-            logger.info("spaCy model '%s' loaded.", model_name)
-        except OSError:
-            logger.error(
-                "spaCy model '%s' not found. Install with: python -m spacy download %s. " "spaCy-dependent features will be disabled.",
-                model_name,
-                model_name,
-            )
-            self._nlp = None
-        except Exception as e:
-            logger.error("Failed to load spaCy model '%s': %s", model_name, e)
-            self._nlp = None
-
-
-spacy_manager = SpaCyModelManager()
-
-
-def load_spacy_model_if_needed() -> None:
-    """Load the spaCy model using the shared manager if needed."""
-    spacy_manager.load()
+    service = get_spacy_service()
+    return service.nlp
 
 
 def _normalize_text_for_matching(text: str) -> str:
@@ -437,7 +402,6 @@ def _token_similarity(a: str, b: str) -> float:
 
 async def find_quote_and_sentence_offsets_with_spacy(doc_text: str, quote_text_from_llm: str) -> tuple[int, int, int, int] | None:
     """Locate quote and sentence offsets within ``doc_text``."""
-    load_spacy_model_if_needed()
     if not quote_text_from_llm.strip() or not doc_text.strip():
         logger.debug("find_quote_offsets: Empty quote_text or doc_text.")
         return None
@@ -541,7 +505,7 @@ async def find_quote_and_sentence_offsets_with_spacy(doc_text: str, quote_text_f
         original_doc=doc_text,
         query_text=quote_text_from_llm,
         segment_type="sentence",
-        min_similarity_threshold=0.65,
+        min_similarity_threshold=0.6,
     )
 
     if semantic_sentence_match:
@@ -564,7 +528,6 @@ async def find_quote_and_sentence_offsets_with_spacy(doc_text: str, quote_text_f
 
 def get_text_segments(text: str, segment_level: str = "paragraph") -> list[tuple[str, int, int]]:
     """Segment text into paragraphs or sentences with offsets."""
-    load_spacy_model_if_needed()
     segments: list[tuple[str, int, int]] = []
 
     if not text.strip():
@@ -609,8 +572,9 @@ def get_text_segments(text: str, segment_level: str = "paragraph") -> list[tuple
             segments.append((text.strip(), 0, len(text)))
 
     elif segment_level == "sentence":
-        if spacy_manager.nlp:
-            doc = spacy_manager.nlp(text)
+        nlp = _get_spacy_nlp()
+        if nlp:
+            doc = nlp(text)
             for sent in doc.sents:
                 sent_text_stripped = sent.text.strip()
                 if sent_text_stripped:

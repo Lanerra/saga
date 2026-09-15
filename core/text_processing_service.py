@@ -11,7 +11,6 @@ Notes:
     be treated as an approximation.
 """
 
-import functools
 import re
 from typing import Any
 
@@ -19,7 +18,7 @@ import structlog
 import tiktoken
 
 import config
-from core.spacy_service import SpacyService
+from core.spacy_service import get_spacy_service
 
 logger = structlog.get_logger(__name__)
 
@@ -37,7 +36,6 @@ class TokenizerService:
             "fallback_used": 0,
         }
 
-    @functools.lru_cache(maxsize=config.TOKENIZER_CACHE_SIZE)  # noqa: B019
     def get_tokenizer(self, model_name: str) -> tiktoken.Encoding | None:
         """Return a cached `tiktoken` encoder for a model name.
 
@@ -64,7 +62,7 @@ class TokenizerService:
             try:
                 encoder = tiktoken.encoding_for_model(model_name)
             except KeyError:
-                logger.debug(f"No direct tiktoken encoding for '{model_name}'. " f"Using default '{config.TIKTOKEN_DEFAULT_ENCODING}'.")
+                logger.debug(f"No direct tiktoken encoding for '{model_name}'. Using default '{config.TIKTOKEN_DEFAULT_ENCODING}'.")
                 encoder = tiktoken.get_encoding(config.TIKTOKEN_DEFAULT_ENCODING)
 
             self._tokenizer_cache[model_name] = encoder
@@ -72,7 +70,7 @@ class TokenizerService:
             return encoder
 
         except KeyError:
-            logger.error(f"Default tiktoken encoding '{config.TIKTOKEN_DEFAULT_ENCODING}' also not found. " f"Token counting will fall back to character-based heuristic for '{model_name}'.")
+            logger.error(f"Default tiktoken encoding '{config.TIKTOKEN_DEFAULT_ENCODING}' also not found. Token counting will fall back to character-based heuristic for '{model_name}'.")
             return None
 
         except Exception as e:
@@ -105,9 +103,8 @@ class TokenizerService:
         else:
             # Fallback to character-based estimation
             self._stats["fallback_used"] += 1
-            char_count = len(text)
-            token_estimate = int(char_count / config.FALLBACK_CHARS_PER_TOKEN)
-            logger.warning(f"count_tokens: Failed to get tokenizer for '{model_name}'. " f"Falling back to character-based estimate: {char_count} chars -> ~{token_estimate} tokens.")
+            token_estimate = len(text.encode("utf-8"))
+            logger.warning("Token encoding unavailable; using conservative UTF-8 byte budget", model=model_name)
             return token_estimate
 
     def truncate_text_by_tokens(
@@ -132,60 +129,29 @@ class TokenizerService:
             When `tiktoken` encoding is unavailable, this uses a character-based fallback
             approximation.
         """
-        if not text:
+        if type(max_tokens) is not int or max_tokens < 0:
+            raise ValueError("Text token budget must be a nonnegative integer")
+        if not text or max_tokens == 0:
             return ""
-
         encoder = self.get_tokenizer(model_name)
 
-        if not encoder:
-            # Fallback to character-based truncation
-            self._stats["fallback_used"] += 1
-            max_chars = int(max_tokens * config.FALLBACK_CHARS_PER_TOKEN)
-            logger.warning(f"truncate_text_by_tokens: Failed to get tokenizer for '{model_name}'. " f"Falling back to character-based truncation: {max_tokens} tokens -> ~{max_chars} chars.")
-            if len(text) > max_chars:
-                effective_max_chars = max_chars - len(truncation_marker)
-                if effective_max_chars < 0:
-                    effective_max_chars = 0
-                return text[:effective_max_chars] + truncation_marker
+        def measure(value: str) -> int:
+            return len(encoder.encode(value, allowed_special="all")) if encoder else len(value.encode("utf-8"))
+
+        if measure(text) <= max_tokens:
             return text
-
-        tokens = encoder.encode(text, allowed_special="all")
-        if len(tokens) <= max_tokens:
-            return text
-
-        # Calculate tokens needed for truncation marker
-        marker_tokens_len = 0
-        if truncation_marker:
-            marker_tokens_len = len(encoder.encode(truncation_marker, allowed_special="all"))
-
-        content_tokens_to_keep = max_tokens - marker_tokens_len
-        effective_truncation_marker = truncation_marker
-
-        if content_tokens_to_keep < 0:
-            logger.debug(f"Truncation marker ('{truncation_marker}' -> {marker_tokens_len} tokens) " f"is longer than max_tokens ({max_tokens}). Using empty marker.")
-            content_tokens_to_keep = max_tokens
-            effective_truncation_marker = ""
-
-        truncated_content_tokens = tokens[:content_tokens_to_keep]
-
-        # Ensure we keep at least one token if possible
-        if not truncated_content_tokens and max_tokens > 0 and tokens:
-            logger.debug("Truncated content to 0 tokens due to marker length. " "Attempting to keep 1 token of content.")
-            truncated_content_tokens = tokens[:1]
-            effective_truncation_marker = ""
-
-        try:
-            decoded_text = encoder.decode(truncated_content_tokens)
-            return decoded_text + effective_truncation_marker
-        except Exception as e:
-            logger.error(
-                f"Error decoding truncated tokens for model '{model_name}': {e}. " f"Falling back to simpler char-based truncation.",
-                exc_info=True,
-            )
-            # Fallback to character-based truncation
-            avg_chars_per_token = len(text) / len(tokens) if len(tokens) > 0 else config.FALLBACK_CHARS_PER_TOKEN
-            estimated_char_limit_for_content = int(content_tokens_to_keep * avg_chars_per_token)
-            return text[:estimated_char_limit_for_content] + effective_truncation_marker
+        marker = truncation_marker if measure(truncation_marker) < max_tokens else ""
+        lower, upper = 0, len(text)
+        retained = marker
+        while lower <= upper:
+            middle = (lower + upper) // 2
+            candidate = text[:middle] + marker
+            if measure(candidate) <= max_tokens:
+                retained = candidate
+                lower = middle + 1
+            else:
+                upper = middle - 1
+        return retained
 
     def get_statistics(self) -> dict[str, Any]:
         """Get tokenizer service statistics."""
@@ -225,48 +191,34 @@ class ResponseCleaningService:
             "no_think",
         ]
 
-        self._compiled_patterns = self._compile_cleaning_patterns()
+        self._patterns: dict[str, re.Pattern[str]] = {}
+        self._phrase_patterns: list[re.Pattern[str]] = []
+        self._compile_cleaning_patterns()
 
-    def _compile_cleaning_patterns(self) -> dict[str, re.Pattern | list[re.Pattern]]:
-        """Compile regex patterns used for response cleaning.
-
-        Optimization: Uses alternation to combine multiple tag patterns into single regexes,
-        reducing the number of pattern matching operations from 44+ to 4 for think tag removal.
-        """
+    def _compile_cleaning_patterns(self) -> None:
+        """Compile patterns for outer artifacts, never answer-interior rewriting."""
         tag_alternation = "|".join(re.escape(tag) for tag in self._think_tags)
 
-        patterns: dict[str, re.Pattern | list[re.Pattern]] = {
-            "think_blocks": re.compile(
-                rf"<\s*(?:{tag_alternation})\s*>.*?<\s*/\s*(?:{tag_alternation})\s*>",
-                flags=re.DOTALL | re.IGNORECASE,
-            ),
-            "think_self_closing": re.compile(
-                rf"<\s*(?:{tag_alternation})\s*/\s*>",
-                flags=re.IGNORECASE,
-            ),
-            "think_opening": re.compile(
-                rf"<\s*(?:{tag_alternation})\s*>",
-                flags=re.IGNORECASE,
-            ),
-            "think_closing": re.compile(
-                rf"<\s*/\s*(?:{tag_alternation})\s*>",
+        self._patterns = {
+            "reasoning_tag": re.compile(
+                rf"<\s*(/?)\s*({tag_alternation})\s*(/?)\s*>",
                 flags=re.IGNORECASE,
             ),
             "think_boundary": re.compile(
-                r"<\s*/\s*think\s*>",
-                flags=re.IGNORECASE,
+                r"^[ \t]*<\s*/\s*think\s*>[ \t]*(?:\r?\n|$)",
+                flags=re.IGNORECASE | re.MULTILINE,
             ),
             "code_blocks": re.compile(
-                r"```(?:[a-zA-Z0-9_-]+)?\s*(.*?)\s*```",
+                r"\A\s*```(?:[a-zA-Z0-9_-]+)?[ \t]*\r?\n(.*?)\r?\n```\s*\Z",
                 flags=re.DOTALL,
             ),
             "chapter_headers": re.compile(
-                r"^\s*Chapter \d+\s*[:\-—]?\s*(.*?)\s*$",
-                flags=re.MULTILINE | re.IGNORECASE,
+                r"\A[ \t]*Chapter \d+[ \t]*[:\-—]?[ \t]*([^\r\n]*)(?:\r?\n|$)",
+                flags=re.IGNORECASE,
             ),
         }
 
-        phrase_patterns = [
+        phrase_pattern_strings = [
             r"^\s*(Okay,\s*)?(Sure,\s*)?(Here's|Here is)\s+(the|your)\s+[\w\s]+?:\s*",
             r"^\s*I've written the\s+[\w\s]+?\s+as requested:\s*",
             r"^\s*Certainly! Here is the text:\s*",
@@ -280,12 +232,34 @@ class ResponseCleaningService:
             r"\s*\[END SYSTEM OUTPUT\]\s*$",
         ]
 
-        patterns["common_phrases"] = [
-            re.compile(pattern_str, flags=re.IGNORECASE | re.MULTILINE)
-            for pattern_str in phrase_patterns
-        ]
+        self._phrase_patterns = [re.compile(pattern_string, flags=re.IGNORECASE) for pattern_string in phrase_pattern_strings]
 
-        return patterns
+    def _remove_reasoning_prefix(self, text: str) -> str:
+        """Consume balanced leading reasoning blocks or fail on incomplete markup."""
+        text = text.strip()
+        pattern = self._patterns["reasoning_tag"]
+        if pattern.match(text) is None and not text.startswith(("{", "[")):
+            boundary = self._patterns["think_boundary"].search(text)
+            if boundary is not None:
+                text = text[boundary.end() :].lstrip()
+        while (opening := pattern.match(text)) is not None:
+            if opening.group(1):
+                raise ValueError("Unexpected closing reasoning tag")
+            stack: list[str] = []
+            for tag in pattern.finditer(text):
+                closing, name, self_closing = tag.groups()
+                name = name.lower()
+                if closing:
+                    if self_closing or not stack or stack.pop() != name:
+                        raise ValueError("Mismatched reasoning tags")
+                elif not self_closing:
+                    stack.append(name)
+                if not stack:
+                    text = text[tag.end() :].lstrip()
+                    break
+            else:
+                raise ValueError("Incomplete reasoning block")
+        return text
 
     def clean_response(self, text: str) -> str:
         """Clean common artifacts from an LLM text response.
@@ -308,67 +282,38 @@ class ResponseCleaningService:
 
         self._stats["responses_cleaned"] += 1
         original_length = len(text)
-        cleaned_text = text
+        cleaned_text = text.strip()
 
-        # Remove think tags and similar content
-        text_before_think_removal = cleaned_text
+        # Removing an outer fence or lead-in can expose a reasoning prefix.
+        # Each pass only consumes boundaries; answer interiors remain literal.
+        while True:
+            before_pass = cleaned_text
+            cleaned_text = self._remove_reasoning_prefix(cleaned_text)
+            if cleaned_text != before_pass:
+                self._stats["think_tags_removed"] += 1
 
-        last_think_closing_tag_end_index = -1
-        think_boundary_pattern = self._compiled_patterns["think_boundary"]
-        for match in think_boundary_pattern.finditer(cleaned_text):
-            last_think_closing_tag_end_index = match.end()
+            if self._patterns["code_blocks"].search(cleaned_text):
+                self._stats["code_blocks_cleaned"] += 1
+            cleaned_text = self._patterns["code_blocks"].sub(r"\1", cleaned_text).strip()
+            cleaned_text = self._patterns["chapter_headers"].sub("\\1\n", cleaned_text).strip()
 
-        if last_think_closing_tag_end_index != -1:
-            cleaned_text = cleaned_text[last_think_closing_tag_end_index:]
-
-        cleaned_text = self._compiled_patterns["think_blocks"].sub("", cleaned_text)
-        cleaned_text = self._compiled_patterns["think_self_closing"].sub("", cleaned_text)
-        cleaned_text = self._compiled_patterns["think_opening"].sub("", cleaned_text)
-        cleaned_text = self._compiled_patterns["think_closing"].sub("", cleaned_text)
-
-        if len(cleaned_text) < len(text_before_think_removal):
-            self._stats["think_tags_removed"] += 1
-            logger.debug(f"clean_response: Removed think tag content. " f"Length before: {len(text_before_think_removal)}, after: {len(cleaned_text)}.")
-
-        # Remove code blocks
-        code_blocks_pattern = self._compiled_patterns["code_blocks"]
-        if code_blocks_pattern.search(cleaned_text):
-            self._stats["code_blocks_cleaned"] += 1
-        cleaned_text = code_blocks_pattern.sub(r"\1", cleaned_text)
-
-        # Remove chapter headers
-        chapter_headers_pattern = self._compiled_patterns["chapter_headers"]
-        cleaned_text = chapter_headers_pattern.sub(r"\1", cleaned_text).strip()
-
-        # Remove common phrases
-        for pattern in self._compiled_patterns["common_phrases"]:
-            original_text = cleaned_text
-            if pattern.pattern.startswith("^"):
-                # Apply repeatedly for patterns that should be removed from start
-                while True:
-                    new_text = pattern.sub("", cleaned_text, count=1).strip()
-                    if new_text == cleaned_text:
-                        break
-                    cleaned_text = new_text
-            else:
+            for pattern in self._phrase_patterns:
+                original_text = cleaned_text
                 cleaned_text = pattern.sub("", cleaned_text, count=1).strip()
+                if cleaned_text != original_text:
+                    self._stats["phrases_removed"] += 1
 
-            if len(cleaned_text) < len(original_text):
-                self._stats["phrases_removed"] += 1
+            if cleaned_text == before_pass:
+                break
 
         # Final normalization
-        final_text = cleaned_text.strip()
-
-        # Normalize multiple newlines
-        final_text = re.sub(r"\n\s*\n(\s*\n)+", "\n\n", final_text)
-        final_text = re.sub(r"\n{3,}", "\n\n", final_text)
-
+        final_text = cleaned_text
         # Track significant reductions
         if original_length > 0 and len(final_text) < original_length:
             reduction_percentage = ((original_length - len(final_text)) / original_length) * 100
             if reduction_percentage > 0.5:
                 self._stats["significant_reductions"] += 1
-                logger.debug(f"Cleaning reduced text length from {original_length} to {len(final_text)} " f"({reduction_percentage:.1f}% reduction).")
+                logger.debug(f"Cleaning reduced text length from {original_length} to {len(final_text)} ({reduction_percentage:.1f}% reduction).")
 
         return final_text
 
@@ -384,7 +329,7 @@ class ResponseCleaningService:
         }
 
 
-# Streaming processing removed; only non-streaming responses are supported.
+# Provider responses are processed as complete messages.
 
 
 class TextProcessingService:
@@ -394,7 +339,7 @@ class TextProcessingService:
         """Initialize the text processing service with all sub-services."""
         self.tokenizer = TokenizerService()
         self.response_cleaner = ResponseCleaningService()
-        self.spacy_service = SpacyService()
+        self.spacy_service = get_spacy_service()
 
         logger.info("TextProcessingService initialized with all sub-services")
 
@@ -477,9 +422,7 @@ def clean_text_with_spacy(text: str, aggressive: bool = False) -> str:
     Returns:
         Cleaned text. Falls back to regex-based cleaning if spaCy not available.
     """
-    from core.spacy_service import SpacyService
-    spacy_service = SpacyService()
-    return spacy_service.clean_text(text, aggressive)
+    return get_spacy_service().clean_text(text, aggressive)
 
 
 def extract_sentences_with_spacy(text: str) -> list[str]:
@@ -491,6 +434,4 @@ def extract_sentences_with_spacy(text: str) -> list[str]:
     Returns:
         List of sentences. Falls back to regex-based splitting if spaCy not available.
     """
-    from core.spacy_service import SpacyService
-    spacy_service = SpacyService()
-    return spacy_service.extract_sentences(text)
+    return get_spacy_service().extract_sentences(text)

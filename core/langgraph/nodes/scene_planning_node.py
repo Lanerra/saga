@@ -7,11 +7,11 @@ shape, externalizes it, and ensures any newly introduced characters exist in
 Neo4j (as provisional stubs) so downstream context retrieval can resolve them.
 """
 
-import json
 from json import JSONDecodeError
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 import structlog
+from pydantic import BaseModel, ConfigDict, StringConstraints, TypeAdapter, ValidationError
 
 import config
 from core.langgraph.content_manager import (
@@ -20,12 +20,15 @@ from core.langgraph.content_manager import (
     require_project_dir,
     save_chapter_plan,
 )
+from core.langgraph.initialization.catalog import select_catalog
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.project_config import allocate_word_target
+from core.service_context import get_services
 from data_access.character_queries import get_all_character_names, sync_characters
 from models.agent_models import SceneDetail
 from models.kg_models import CharacterProfile
-from prompts.prompt_renderer import get_system_prompt, render_prompt
+from prompts.prompt_renderer import compact_json, get_system_prompt, render_prompt
+from utils.common import load_strict_json
 from utils.text_processing import normalize_entity_name
 
 logger = structlog.get_logger(__name__)
@@ -43,6 +46,22 @@ _SCENE_REQUIRED_KEYS: tuple[str, ...] = (
 )
 
 _SCENE_PLAN_CONTRACT_ERROR_PREFIX = "Scene plan contract violation:"
+
+
+_SceneText = Annotated[str, StringConstraints(pattern=r"\S")]
+
+
+class _ScenePlanEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
+
+    title: _SceneText
+    pov_character: _SceneText
+    setting: _SceneText
+    characters: list[_SceneText]
+    plot_point: _SceneText
+    conflict: _SceneText
+    outcome: _SceneText
+    beats: list[_SceneText]
 
 
 def _validate_scene_plan_structure(scenes: Any) -> list[str]:
@@ -65,6 +84,10 @@ def _validate_scene_plan_structure(scenes: Any) -> list[str]:
         errors.append(f"Expected a JSON array of scenes, got {type(scenes).__name__}")
         return errors
 
+    if not scenes:
+        errors.append("Scene plan must contain at least one scene")
+        return errors
+
     for i, scene in enumerate(scenes):
         if not isinstance(scene, dict):
             errors.append(f"Scene[{i}] must be an object, got {type(scene).__name__}")
@@ -78,10 +101,10 @@ def _validate_scene_plan_structure(scenes: Any) -> list[str]:
         if extra_keys:
             errors.append(f"Scene[{i}] has unexpected keys: {extra_keys}")
 
-        if "characters" in scene:
-            chars = scene.get("characters")
-            if not isinstance(chars, list) or not all(isinstance(c, str) and c.strip() for c in chars):
-                errors.append(f"Scene[{i}].characters must be a non-empty list of character name strings")
+        try:
+            _ScenePlanEntry.model_validate(scene)
+        except ValidationError:
+            errors.append(f"Scene[{i}] requires non-empty text fields and arrays of non-empty strings for characters and beats")
 
     return errors
 
@@ -108,9 +131,11 @@ def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, An
         raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} empty response; expected a JSON array of scene objects.")
 
     try:
-        parsed = json.loads(response_stripped)
+        parsed = load_strict_json(response_stripped)
     except JSONDecodeError as e:
         raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} invalid JSON; expected a JSON array of scene objects. " f"JSONDecodeError at pos {e.pos}: {e.msg}") from e
+    except ValueError as e:
+        raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} ambiguous or nonstandard JSON") from e
 
     if isinstance(parsed, dict):
         raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} top-level JSON must be an array, not an object.")
@@ -129,6 +154,7 @@ def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, An
 async def _ensure_scene_characters_exist(
     chapter_plan: list[dict],
     chapter_number: int,
+    *, eligible_characters: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Ensure all characters referenced by the plan exist in Neo4j.
 
@@ -144,31 +170,13 @@ async def _ensure_scene_characters_exist(
         This function performs Neo4j I/O and is best-effort. Failures are logged and
         do not raise, because the workflow can still proceed without stubs.
     """
-    # Extract all unique character names from scene plans
-    scene_characters = set()
+    scene_characters: set[str] = set()
     for scene in chapter_plan:
-        # Check various possible field names for character lists
-        for field in ["characters", "characters_involved", "character_list", "cast"]:
-            chars = scene.get(field)
-            if chars:
-                if isinstance(chars, list):
-                    for char in chars:
-                        if isinstance(char, str) and char.strip():
-                            clean_name = normalize_entity_name(char)
-                            if clean_name:
-                                scene_characters.add(clean_name)
-                        elif isinstance(char, dict) and char.get("name"):
-                            clean_name = normalize_entity_name(char["name"])
-                            if clean_name:
-                                scene_characters.add(clean_name)
-                elif isinstance(chars, str):
-                    # Comma-separated list
-                    for c in chars.split(","):
-                        if c.strip():
-                            clean_name = normalize_entity_name(c)
-                            if clean_name:
-                                scene_characters.add(clean_name)
-                break
+        chars = scene["characters"]
+        for char in chars:
+            clean_name = char if eligible_characters is not None else normalize_entity_name(char)
+            if clean_name:
+                scene_characters.add(clean_name)
 
     if not scene_characters:
         logger.debug("_ensure_scene_characters_exist: no characters found in scene plans")
@@ -202,9 +210,12 @@ async def _ensure_scene_characters_exist(
 
     stub_profiles = []
     for char_name in new_characters:
+        if eligible_characters is not None and char_name not in eligible_characters:
+            raise ValueError("New character requires explicit upstream admission before provisional graph creation")
         stub = CharacterProfile(
             name=char_name,
-            description=f"Character appearing in chapter {chapter_number}. Role and background to be developed through narrative.",
+            id=eligible_characters[char_name]["id"] if eligible_characters is not None else "",
+            personality_description=f"Character appearing in chapter {chapter_number}. Role and background to be developed through narrative.",
             traits=["to_be_developed"],  # Marker trait for provisional characters
             relationships={},
             status="Active",  # Default to Active so they can participate in scenes
@@ -213,21 +224,11 @@ async def _ensure_scene_characters_exist(
         )
         stub_profiles.append(stub)
 
-    try:
-        success = await sync_characters(stub_profiles, chapter_number)
-        if success:
-            logger.info(
-                "_ensure_scene_characters_exist: successfully created stub profiles",
-                count=len(stub_profiles),
-            )
-        else:
-            logger.warning("_ensure_scene_characters_exist: failed to persist stub profiles")
-    except Exception as e:
-        logger.error(
-            "_ensure_scene_characters_exist: error persisting stub profiles",
-            error=str(e),
-            exc_info=True,
-        )
+    await sync_characters(stub_profiles, chapter_number)
+    logger.info(
+        "_ensure_scene_characters_exist: successfully created stub profiles",
+        count=len(stub_profiles),
+    )
 
 
 async def plan_scenes(state: NarrativeState) -> NarrativeState:
@@ -243,13 +244,16 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         - current_scene_index: Reset for drafting loop.
         - current_node: `"plan_scenes"`.
 
-        If the outline is missing, returns an error update and does not set
-        `has_fatal_error`.
+        Missing outlines and exhausted planning failures invalidate the plan and
+        return a fatal error update before retrieval or drafting can run.
 
     Notes:
         This node performs LLM I/O and may create provisional character stubs in
         Neo4j for any newly introduced names in the plan.
     """
+    if state.get("has_fatal_error", False) or state.get("revision_rollback_failure") is not None:
+        return {}
+
     logger.info(
         "plan_scenes: planning scenes for chapter",
         chapter=state.get("current_chapter", 1),
@@ -266,41 +270,73 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         logger.error("plan_scenes: no outline found for chapter", chapter=chapter_number)
         return {
             "last_error": f"No outline found for chapter {chapter_number}",
+            "has_fatal_error": True,
+            "error_node": "plan_scenes",
+            "chapter_plan_ref": None,
+            "chapter_plan_scene_count": 0,
+            "current_scene_index": 0,
             "current_node": "plan_scenes",
         }
 
-    # Determine number of scenes (heuristic or config)
-    # For now, we'll ask for 3-5 scenes depending on complexity, or just default to 3
-    num_scenes = 4
-
-    base_prompt = render_prompt(
-        "narrative_agent/plan_scenes.j2",
-        {
-            "novel_title": state.get("title", ""),
-            "novel_genre": state.get("genre", ""),
-            "novel_theme": state.get("theme", ""),
-            "chapter_number": chapter_number,
-            "outline": outline,
-            "num_scenes": num_scenes,
-        },
-    )
-
-    max_attempts = 3
+    max_attempts = config.settings.SCENE_PLAN_MAX_ATTEMPTS
     correction_instruction = (
         "\n\nYour last response was invalid. "
         "Return ONLY valid JSON. "
         "The top-level JSON value MUST be a single array (not an object). "
         'Do not wrap the array in an object like {"scenes": [...]} and do not include any extra text.'
+        " Recheck the requested exact scene count, field types, and ordered exhaustive beat partition. "
+        "Do not omit, reorder, rewrite, invent, or deduplicate selected beats."
     )
 
-    prompt = base_prompt
-
     try:
+        chapter_target = allocate_word_target(
+            state.get("target_word_count", config.TARGET_WORD_COUNT),
+            state.get("total_chapters", config.TOTAL_CHAPTERS),
+            chapter_number,
+        )
+        catalog = select_catalog(state, retained_chapter_outline=True)
+        eligible_characters = {candidate["name"]: candidate for candidate in catalog.candidates("Character")}
+        requested_scenes = config.TARGET_SCENES_MIN
+        if type(requested_scenes) is not int or requested_scenes < 1:
+            raise ValueError("Requested scene count must be a positive integer")
+        number_of_scenes = min(requested_scenes, chapter_target)
+        selected_beats = TypeAdapter(list[_SceneText], config=ConfigDict(strict=True, hide_input_in_errors=True)).validate_python(outline.get("key_beats"))
+        scene_word_targets = [allocate_word_target(chapter_target, number_of_scenes, position) for position in range(1, number_of_scenes + 1)]
+        base_prompt = render_prompt(
+            "narrative_agent/plan_scenes.j2",
+            {
+                "novel_title": state.get("title", ""),
+                "novel_genre": state.get("genre", ""),
+                "novel_theme": state.get("theme", ""),
+                "narrative_style": state.get("narrative_style", config.DEFAULT_NARRATIVE_STYLE),
+                "chapter_target_word_count": chapter_target,
+                "chapter_number": chapter_number,
+                "outline": outline,
+                "num_scenes": number_of_scenes,
+            },
+        )
+        base_prompt += (
+            "\n\nELIGIBLE PLANNED CHARACTER IDENTITIES (JSON): " + compact_json(list(eligible_characters.values()))
+            + "\nUse only these exact names for characters and pov_character. Do not invent or rename characters. "
+            "Novel identities require explicit upstream admission before planning; provisional graph stubs do not admit names."
+        )
+        base_prompt += (
+            f"\n\nExact admission requirements: Return exactly {number_of_scenes} scenes. "
+            "Every text field, including pov_character, must contain non-whitespace text; "
+            "characters and beats must be arrays of non-whitespace strings. "
+            "Concatenating beats in scene order must equal the selected ordered list exactly, including duplicates. "
+            "Copy each selected beat verbatim; do not omit, reorder, rewrite, or invent beats. "
+            "A scene's beats may be []; the 1-3 beats recommendation does not override the exact count or exhaustive partition. "
+            "characters may also be []. Use the computed word targets to size scenes, without adding output fields."
+            f"\nSelected ordered key_beats (JSON): {compact_json(selected_beats)}"
+            f"\nScene word targets in order (not output fields): {compact_json(scene_word_targets)}"
+        )
+        prompt = base_prompt
         scenes_untyped: list[dict[str, Any]] = []
         parsed_successfully = False
 
         for attempt in range(1, max_attempts + 1):
-            response, _ = await llm_service.async_call_llm(
+            response, _ = await get_services().language_model.async_call_llm(
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=0.7,
@@ -310,6 +346,13 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
 
             try:
                 scenes_untyped = _parse_scene_plan_json_from_llm_response(response)
+                if len(scenes_untyped) != number_of_scenes:
+                    raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} expected exactly {number_of_scenes} scenes, got {len(scenes_untyped)}.")
+                if [beat for scene in scenes_untyped for beat in scene["beats"]] != selected_beats:
+                    raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} scene beats must form an ordered exhaustive partition of selected chapter key_beats, including duplicates.")
+                for scene in scenes_untyped:
+                    if any(name not in eligible_characters for name in [*scene["characters"], scene["pov_character"]]):
+                        raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} novel character requires explicit upstream admission before planning.")
                 parsed_successfully = True
                 break
             except ValueError as e:
@@ -326,11 +369,12 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         if not parsed_successfully:
             raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} no valid scene plan produced after retries.")
 
+        allocate_word_target(chapter_target, len(scenes_untyped), 1)
         scenes = cast(list[SceneDetail], scenes_untyped)
 
         logger.info("plan_scenes: successfully planned scenes", count=len(scenes))
 
-        await _ensure_scene_characters_exist(scenes_untyped, chapter_number)
+        await _ensure_scene_characters_exist(scenes_untyped, chapter_number, eligible_characters=eligible_characters)
 
         content_manager = ContentManager(require_project_dir(state))
 
@@ -362,5 +406,10 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         logger.error("plan_scenes: error planning scenes", error=str(e))
         return {
             "last_error": ("Error planning scenes: " + str(e) + " | Expected: JSON array of scene objects with exactly these keys: " + ", ".join(_SCENE_REQUIRED_KEYS)),
+            "has_fatal_error": True,
+            "error_node": "plan_scenes",
+            "chapter_plan_ref": None,
+            "chapter_plan_scene_count": 0,
+            "current_scene_index": 0,
             "current_node": "plan_scenes",
         }

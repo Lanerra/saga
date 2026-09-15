@@ -4,19 +4,20 @@ from unittest.mock import AsyncMock
 import pytest
 
 import config
+from core.service_context import get_services
 from data_access import plot_queries
 
 
 @pytest.mark.asyncio
-async def test_plot_point_exists(monkeypatch):
-    async def fake_read(query, params=None):
+async def test_plot_point_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_read(query: str, params: dict[str, object] | None = None) -> list[dict[str, int]]:
         assert "MATCH (ni:NovelInfo" in query
         assert (params or {}).get("novel_id") == config.MAIN_NOVEL_INFO_NODE_ID
         assert (params or {}).get("desc") == "a"
         return [{"cnt": 1}]
 
     monkeypatch.setattr(
-        plot_queries.neo4j_manager,
+        get_services().database,
         "execute_read_query",
         AsyncMock(side_effect=fake_read),
     )
@@ -24,14 +25,14 @@ async def test_plot_point_exists(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_last_plot_point_id(monkeypatch):
-    async def fake_read(query, params=None):
+async def test_get_last_plot_point_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_read(query: str, params: dict[str, object] | None = None) -> list[dict[str, str]]:
         assert "MATCH (ni:NovelInfo" in query
         assert (params or {}).get("novel_id") == config.MAIN_NOVEL_INFO_NODE_ID
         return [{"id": "pp_1"}]
 
     monkeypatch.setattr(
-        plot_queries.neo4j_manager,
+        get_services().database,
         "execute_read_query",
         AsyncMock(side_effect=fake_read),
     )

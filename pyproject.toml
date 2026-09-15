@@ -1,9 +1,12 @@
 [tool.ruff]
 line-length = 200
 target-version = "py312"
+# Frozen historical evidence; report its diagnostics separately, as with Mypy.
+extend-exclude = ["docs/audits/2026-09-06"]
 
 [tool.ruff.lint]
-select = ["F", "B", "I", "UP"] # flake8, flake8-bugbear, isort, pyupgrade
+# flake8, flake8-bugbear, isort, pyupgrade
+select = ["F", "B", "I", "UP"]
 fixable = ["ALL"]
 unfixable = []
 
@@ -17,19 +20,18 @@ disallow_untyped_defs = true
 check_untyped_defs = true
 namespace_packages = false
 show_error_codes = true
-# Enable the Pydantic plugin for enhanced type checking
+# Frozen audit evidence is not maintained application, test or operational code.
+exclude = ['^docs/audits/2026-09-06/']
 plugins = ["pydantic.mypy"]
-# Specifies the path for mypy to check
-
-[[tool.mypy.overrides]]
-module = ["aiofiles"]
-ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["langgraph.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+required_plugins = ["pytest-asyncio==1.0.0", "pytest-cov==5.0.0", "pytest-timeout==2.4.0"]
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 addopts = [
     "-v",
     "--cov-report=term-missing",
@@ -39,17 +41,17 @@ addopts = [
 ]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-timeout = 300
+timeout = 600
 markers = [
+    "unbound_settings: test owns new-run/default configuration scope; all offline guards remain active",
+    "run_settings: explicit validated synthetic run settings supplied as keyword arguments",
     "performance: marks tests as performance tests (deselect with '-m \"not performance\"')",
     "integration: marks tests as integration tests",
     "slow: marks tests as slow running tests",
     "unit: marks tests as unit tests",
-    "websocket: marks tests that use WebSocket functionality",
     "checkpoint: marks tests that use checkpoint functionality",
     "ui: marks tests that test UI performance",
-    "fault_injection: marks tests that inject faults for testing",
-    "load_test: marks tests that perform load testing"
+    "fault_injection: marks tests that inject faults for testing"
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

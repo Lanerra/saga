@@ -6,21 +6,38 @@ This module enforces SAGA's canonical node-label contract at key boundaries:
 - Persistence boundaries require canonical labels to prevent unsafe Cypher label
   interpolation.
 
-Notes:
-    This module avoids duplicating type-hint information in docstrings. When a
-    value is rejected, the error message is intended to be actionable for prompt
-    authors and pipeline maintainers.
+## Entity Type Validation Pipeline
+
+Four functions validate entity types at different layers. Each serves a
+distinct role in the pipeline:
+
+1. **Inference** — `kg_queries._infer_specific_node_type()`:
+   Converts free-form category hints to canonical labels. Used during
+   extraction when an entity's label has not yet been determined.
+   Lenient: falls back to "Item" for unknown inputs.
+
+2. **Validation** — `schema_validator.validate_entity_type()` (this module):
+   Validates and optionally normalizes a type string. Returns
+   (is_valid, normalized_name, error_message). Used by Pydantic model
+   validators and general-purpose checks.
+
+3. **Persistence** — `schema_validator.canonicalize_entity_type_for_persistence()`:
+   Strict pre-commit check. Raises `ValueError` if the label is not
+   canonical. Callers MUST use this before any Cypher parameter dict
+   preparation.
+
+4. **Cypher Interpolation** — `kg_queries._get_cypher_labels()`:
+   Final safety boundary before labels are interpolated into Cypher query
+   strings. Returns `":Label"` format. Rejects any label not in the
+   application allowlist. Labels are not parameterizable in Neo4j, so
+   this is the last line of defense against injection.
 """
 
 from typing import Any
 
 import structlog
 
-from config import (
-    ENFORCE_SCHEMA_VALIDATION,
-    LOG_SCHEMA_VIOLATIONS,
-    NORMALIZE_COMMON_VARIANTS,
-)
+import config
 from models.kg_constants import (
     LABEL_NORMALIZATION_MAP,
     SUGGESTED_CATEGORIES,
@@ -34,10 +51,17 @@ logger = structlog.get_logger(__name__)
 class SchemaValidationService:
     """Validate and normalize entity labels and categories."""
 
-    def __init__(self) -> None:
-        self.enabled = ENFORCE_SCHEMA_VALIDATION
-        self.normalize_variants = NORMALIZE_COMMON_VARIANTS
-        self.log_violations = LOG_SCHEMA_VIOLATIONS
+    @property
+    def enabled(self) -> bool:
+        return config.ENFORCE_SCHEMA_VALIDATION
+
+    @property
+    def normalize_variants(self) -> bool:
+        return config.NORMALIZE_COMMON_VARIANTS
+
+    @property
+    def log_violations(self) -> bool:
+        return config.LOG_SCHEMA_VIOLATIONS
 
     def validate_entity_type(self, type_name: str) -> tuple[bool, str, str | None]:
         """Validate and (optionally) normalize an entity type label.
@@ -275,10 +299,11 @@ def validate_node_labels(labels: list[str]) -> list[str]:
     for label in labels:
         if not isinstance(label, str) or not label.strip():
             errors.append("Node labels must be non-empty strings")
+            continue
 
         # Apply schema validation
         is_valid, _, err = schema_validator.validate_entity_type(label)
-        if not is_valid and ENFORCE_SCHEMA_VALIDATION:
+        if not is_valid and config.ENFORCE_SCHEMA_VALIDATION:
             errors.append(f"Invalid label '{label}': {err}")
 
         elif not label[0].isupper():
@@ -287,16 +312,3 @@ def validate_node_labels(labels: list[str]) -> list[str]:
             errors.append(f"Node label '{label}' should only contain alphanumeric characters")
 
     return errors
-
-
-def validate_world_item(item: WorldItem) -> list[str]:
-    """Validate a `WorldItem` instance.
-
-    Args:
-        item: World item to validate.
-
-    Returns:
-        Validation error strings. An empty list means the item is valid.
-    """
-    # Use centralized validation logic to eliminate code duplication
-    return validate_kg_object(item)

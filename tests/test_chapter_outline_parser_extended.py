@@ -1,0 +1,414 @@
+# tests/test_chapter_outline_parser_extended.py
+"""Extended tests for ChapterOutlineParser implementation.
+
+This module provides extended tests for the ChapterOutlineParser class
+to verify that it correctly implements all schema requirements from
+docs/schema-design.md, including:
+
+1. Character lookup functionality
+2. ActKeyEvent lookup functionality
+3. FEATURES_CHARACTER relationship creation
+4. INVOLVES relationship creation
+5. PART_OF relationship creation (SceneEvent → ActKeyEvent)
+"""
+
+import json
+import os
+import tempfile
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from core.parsers import ChapterOutlineParser
+from models.kg_models import CharacterProfile
+from tests.fakes.service_context import patch_service
+
+
+@pytest.fixture
+def sample_chapter_outline_with_characters() -> dict[str, object]:
+    """Create sample chapter outline data with character references for testing."""
+    return {
+        "chapter_number": 1,
+        "act_number": 1,
+        "title": "The Beginning",
+        "summary": "The hero's journey begins",
+        "scenes": [
+            {
+                "scene_index": 0,
+                "title": "Opening Scene",
+                "pov_character": "Hero",
+                "setting": "A dark forest",
+                "plot_point": "The hero enters the forest",
+                "conflict": "Danger lurks",
+                "outcome": "The hero survives",
+                "beats": ["Hero hears rustling", "Shadow appears", "Hero draws weapon"],
+                "events": [{"name": "Forest Encounter", "description": "The hero encounters danger", "conflict": "Tension builds", "outcome": "Hero escapes", "pov_character": "Hero"}],
+                "location": {"name": "Dark Forest", "description": "A dense, dark forest"},
+            }
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_character_lookup() -> None:
+    """Test that _get_character_by_name correctly queries characters."""
+    parser = ChapterOutlineParser()
+
+    # Mock the character query function
+    with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
+        mock_query.return_value = CharacterProfile(name="Test Character", personality_description="Test description", traits=["brave", "strong"], status="Active")
+
+        # Test the character lookup
+        result = await parser._get_character_by_name("Test Character")
+
+        # Verify the query was called
+        assert mock_query.called
+        assert mock_query.call_args[0][0] == "Test Character"
+
+        # Verify the result
+        assert result is not None
+        assert result.name == "Test Character"
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_character_lookup_not_found() -> None:
+    """Test that _get_character_by_name returns None when character not found."""
+    parser = ChapterOutlineParser()
+
+    # Mock the character query function to return None
+    with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
+        mock_query.return_value = None
+
+        # Test the character lookup
+        result = await parser._get_character_by_name("NonExistent Character")
+
+        # Verify the result is None
+        assert result is None
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_act_key_events_for_act() -> None:
+    """_get_act_key_events_for_act returns all events sorted by sequence."""
+    parser = ChapterOutlineParser()
+
+    with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_query:
+        mock_query.return_value = [
+            {"id": "event_1", "name": "First Event", "description": "First", "sequence_in_act": 1},
+            {"id": "event_2", "name": "Second Event", "description": "Second", "sequence_in_act": 2},
+        ]
+
+        result = await parser._get_act_key_events_for_act(1)
+
+        assert mock_query.called
+        assert len(result) == 2
+        assert result[0]["id"] == "event_1"
+        assert result[1]["id"] == "event_2"
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_act_key_events_for_act_empty() -> None:
+    """_get_act_key_events_for_act returns empty list when no events found."""
+    parser = ChapterOutlineParser()
+
+    with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_query:
+        mock_query.return_value = []
+
+        result = await parser._get_act_key_events_for_act(999)
+
+        assert result == []
+
+
+def test_find_best_act_key_event_matches_by_word_overlap() -> None:
+    """_find_best_act_key_event selects the event with most word overlap."""
+    from models.kg_models import SceneEvent
+
+    parser = ChapterOutlineParser()
+
+    scene_event = SceneEvent(
+        id="se_1",
+        name="The hero enters the dark forest",
+        description="The hero enters the dark forest",
+        chapter_number=1,
+        act_number=1,
+        scene_index=0,
+        conflict="",
+        outcome="",
+        pov_character="Hero",
+        created_chapter=1,
+    )
+
+    act_key_events = [
+        {"id": "ake_1", "name": "Hero arrives at castle", "description": "The hero reaches the castle gates", "sequence_in_act": 1},
+        {"id": "ake_2", "name": "Journey through dark forest", "description": "The hero enters the dark forest path", "sequence_in_act": 2},
+    ]
+
+    result = parser._find_best_act_key_event(scene_event, act_key_events)
+
+    assert result is not None
+    assert result["id"] == "ake_2"
+
+
+def test_find_best_act_key_event_returns_none_for_empty() -> None:
+    """_find_best_act_key_event returns None when no candidates exist."""
+    from models.kg_models import SceneEvent
+
+    parser = ChapterOutlineParser()
+
+    scene_event = SceneEvent(
+        id="se_1",
+        name="test event",
+        description="test",
+        chapter_number=1,
+        act_number=1,
+        scene_index=0,
+        conflict="",
+        outcome="",
+        pov_character="",
+        created_chapter=1,
+    )
+
+    assert parser._find_best_act_key_event(scene_event, []) is None
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_features_character_relationship() -> None:
+    """Test that FEATURES_CHARACTER relationships are created correctly."""
+    # Create a temporary chapter outline file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(
+            {
+                "chapter_number": 1,
+                "act_number": 1,
+                "title": "Test Chapter",
+                "summary": "Test summary",
+                "scene_description": "Test setting",
+                "plot_point": "Test plot point",
+                "key_beats": ["TestCharacter enters the forest", "TestCharacter draws weapon"],
+            },
+            f,
+        )
+        temp_file = f.name
+
+    try:
+        parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
+
+        chapter_outline_data = await parser.parse_chapter_outline()
+        chapter = parser._parse_chapter(chapter_outline_data)
+        character_names = ["TestCharacter"]
+        scenes = parser._parse_scenes(chapter_outline_data, character_names)
+        events = parser._parse_scene_events(chapter_outline_data, character_names)
+        locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
+
+        assert len(scenes) == 1
+
+        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_char_query:
+            mock_char_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
+
+            with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_read:
+                mock_read.side_effect = [
+                    [{"name": "TestCharacter"}],
+                    [],
+                    [],
+                ]
+
+                with patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write:
+                    await parser.create_relationships([chapter], scenes, events, locations)
+
+                    assert mock_write.called
+
+                    for call_args in mock_write.call_args_list:
+                        query = call_args[0][0]
+                        if "FEATURES_CHARACTER" in query:
+                            assert "is_pov = true" in query or "is_pov = false" in query
+                            assert "MATCH (c:Character {name: $character_name})" in query
+                            break
+                    else:
+                        pytest.fail("FEATURES_CHARACTER relationship query not found")
+
+    finally:
+        if os.path.exists(temp_file):
+            os.unlink(temp_file)
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_involves_relationship() -> None:
+    """Test that INVOLVES relationships are created correctly."""
+    # Create a temporary chapter outline file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(
+            {
+                "chapter_number": 1,
+                "act_number": 1,
+                "title": "Test Chapter",
+                "summary": "Test summary",
+                "scene_description": "Test setting",
+                "plot_point": "Test plot point",
+                "key_beats": ["TestCharacter enters the forest", "TestCharacter draws weapon"],
+            },
+            f,
+        )
+        temp_file = f.name
+
+    try:
+        parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
+
+        chapter_outline_data = await parser.parse_chapter_outline()
+        chapter = parser._parse_chapter(chapter_outline_data)
+        character_names = ["TestCharacter"]
+        scenes = parser._parse_scenes(chapter_outline_data, character_names)
+        events = parser._parse_scene_events(chapter_outline_data, character_names)
+        locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
+
+        assert len(events) == 2
+
+        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_char_query:
+            mock_char_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
+
+            with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_read:
+                mock_read.side_effect = [
+                    [{"name": "TestCharacter"}],
+                    [],
+                    [],
+                ]
+
+                with patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write:
+                    await parser.create_relationships([chapter], scenes, events, locations)
+
+                    assert mock_write.called
+
+                    for call_args in mock_write.call_args_list:
+                        query = call_args[0][0]
+                        if "INVOLVES" in query:
+                            assert "r.role = $role" in query
+                            assert "MATCH (c:Character {name: $character_name})" in query
+                            break
+                    else:
+                        pytest.fail("INVOLVES relationship query not found")
+
+    finally:
+        if os.path.exists(temp_file):
+            os.unlink(temp_file)
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_part_of_relationship() -> None:
+    """PART_OF relationships (SceneEvent -> ActKeyEvent) are created correctly."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(
+            {
+                "chapter_number": 1,
+                "act_number": 1,
+                "title": "Test Chapter",
+                "summary": "Test summary",
+                "scene_description": "Test setting",
+                "plot_point": "Test plot point",
+                "key_beats": ["TestCharacter enters the forest", "TestCharacter draws weapon"],
+            },
+            f,
+        )
+        temp_file = f.name
+
+    try:
+        parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
+
+        chapter_outline_data = await parser.parse_chapter_outline()
+        chapter = parser._parse_chapter(chapter_outline_data)
+        character_names = ["TestCharacter"]
+        scenes = parser._parse_scenes(chapter_outline_data, character_names)
+        events = parser._parse_scene_events(chapter_outline_data, character_names)
+        locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
+
+        assert len(events) == 2
+
+        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_char_query:
+            mock_char_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
+
+            with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_read:
+                mock_read.side_effect = [
+                    [{"name": "TestCharacter"}],
+                    [
+                        {"id": "act_key_event_1", "name": "TestCharacter enters the forest", "description": "The hero enters the forest", "sequence_in_act": 1},
+                        {"id": "act_key_event_2", "name": "TestCharacter draws weapon", "description": "Drawing the weapon", "sequence_in_act": 2},
+                    ],
+                    [],
+                ]
+
+                with patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write:
+                    await parser.create_relationships([chapter], scenes, events, locations)
+
+                    assert mock_write.called
+
+                    for call_args in mock_write.call_args_list:
+                        query = call_args[0][0]
+                        if "PART_OF" in query and "ake:Event" in query:
+                            assert "MATCH (ake:Event {id: $ake_id})" in query
+                            break
+                    else:
+                        pytest.fail("PART_OF relationship query not found")
+
+    finally:
+        if os.path.exists(temp_file):
+            os.unlink(temp_file)
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_all_relationships_created() -> None:
+    """Test that all required relationships are created in one pass."""
+    # Create a temporary chapter outline file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(
+            {
+                "chapter_number": 1,
+                "act_number": 1,
+                "title": "Test Chapter",
+                "summary": "Test summary",
+                "scene_description": "Test setting",
+                "plot_point": "Test plot point",
+                "key_beats": ["TestCharacter enters the forest", "TestCharacter draws weapon"],
+            },
+            f,
+        )
+        temp_file = f.name
+
+    try:
+        parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
+
+        chapter_outline_data = await parser.parse_chapter_outline()
+        chapter = parser._parse_chapter(chapter_outline_data)
+        character_names = ["TestCharacter"]
+        scenes = parser._parse_scenes(chapter_outline_data, character_names)
+        events = parser._parse_scene_events(chapter_outline_data, character_names)
+        locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
+
+        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_char_query:
+            mock_char_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
+
+            with patch_service('database.execute_read_query', new_callable=AsyncMock) as mock_read:
+                mock_read.side_effect = [
+                    [{"name": "TestCharacter"}],
+                    [
+                        {"id": "act_key_event_1", "name": "TestCharacter enters the forest", "description": "Entering forest", "sequence_in_act": 1},
+                    ],
+                    [],
+                ]
+
+                with patch_service('database.execute_write_query', new_callable=AsyncMock) as mock_write:
+                    await parser.create_relationships([chapter], scenes, events, locations)
+
+                    assert mock_write.called
+
+                    all_queries = [call_args[0][0] for call_args in mock_write.call_args_list]
+
+                    required_relationships = ["PART_OF", "FEATURES_CHARACTER", "INVOLVES"]
+
+                    for rel_type in required_relationships:
+                        found = any(rel_type in query for query in all_queries)
+                        assert found, f"Relationship type {rel_type} not found in queries"
+
+    finally:
+        if os.path.exists(temp_file):
+            os.unlink(temp_file)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

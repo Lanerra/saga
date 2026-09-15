@@ -7,9 +7,9 @@ from neo4j.exceptions import Neo4jError
 
 import config
 import utils
-from core.db_manager import neo4j_manager
 from core.exceptions import ValidationError, handle_database_error
 from core.schema_validator import validate_kg_object
+from core.service_context import get_services
 from models import WorldItem
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
@@ -17,13 +17,14 @@ from models.kg_constants import (
     WORLD_ITEM_CANONICAL_LABELS,
 )
 
+from .cache_coordinator import guard_graph_cache
 from .cypher_builders.native_builders import NativeCypherBuilder
 
-# Legacy world cypher builder removed; native builder is the single path.
+# World writes use the native Cypher builder.
 
 logger = structlog.get_logger(__name__)
 
-# Mapping from normalized world item names to canonical IDs
+# Mapping from exact world item names to canonical IDs
 #
 # Lifecycle contract (P1):
 # - `resolve_world_name()` is best-effort ONLY (purely in-memory; no DB IO).
@@ -34,35 +35,34 @@ logger = structlog.get_logger(__name__)
 WORLD_NAME_TO_ID: dict[str, str] = {}
 
 
-def clear_world_name_map() -> None:
-    """Clear the in-process world name-to-id map.
-
-    Notes:
-        This only clears in-memory state used by [`resolve_world_name()`](data_access/world_queries.py:53).
-        It does not modify Neo4j.
-    """
-    WORLD_NAME_TO_ID.clear()
-
-
 def rebuild_world_name_map(world_items: list["WorldItem"]) -> None:
-    """Rebuild the world name-to-id map from a list of world items.
+    """Rebuild the world name-to-id map from a complete list of world items.
+
+    Clears all existing entries and rebuilds from scratch. Use this only when the provided
+    list represents the full set of world items (e.g. after fetching all from the database).
 
     Args:
-        world_items: World items to use as the authoritative mapping source.
-
-    Returns:
-        None.
-
-    Notes:
-        This clears existing entries to avoid stale accumulation across runs/tests. This is
-        an in-process cache and is populated as a side effect of:
-        - [`sync_world_items()`](data_access/world_queries.py:291) (write path), and
-        - [`get_world_building()`](data_access/world_queries.py:338) (read path).
+        world_items: The complete set of world items.
     """
     WORLD_NAME_TO_ID.clear()
     for item in world_items:
         if isinstance(item, WorldItem) and item.name and item.id:
-            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+            WORLD_NAME_TO_ID[item.name] = item.id
+
+
+def update_world_name_map(world_items: list["WorldItem"]) -> None:
+    """Add or update entries in the world name-to-id map.
+
+    Unlike `rebuild_world_name_map`, this does not clear existing entries. Use this
+    when syncing a subset of world items to avoid losing mappings for items not in
+    the current batch.
+
+    Args:
+        world_items: World items whose name mappings should be added or updated.
+    """
+    for item in world_items:
+        if isinstance(item, WorldItem) and item.name and item.id:
+            WORLD_NAME_TO_ID[item.name] = item.id
 
 
 def resolve_world_name(name: str) -> str | None:
@@ -81,7 +81,7 @@ def resolve_world_name(name: str) -> str | None:
     """
     if not name:
         return None
-    return WORLD_NAME_TO_ID.get(utils._normalize_for_id(name))
+    return WORLD_NAME_TO_ID.get(name)
 
 
 def get_world_item_by_name(world_data: dict[str, dict[str, WorldItem]], name: str) -> WorldItem | None:
@@ -111,13 +111,13 @@ def get_world_item_by_name(world_data: dict[str, dict[str, WorldItem]], name: st
     return None
 
 
+@guard_graph_cache
 @alru_cache(maxsize=128)
 async def get_world_item_by_id(item_id: str, *, include_provisional: bool = False) -> WorldItem | None:
-    """Return a world item by id, with best-effort name fallback.
+    """Return a world item by its literal stable ID.
 
     Args:
-        item_id: World item id. This function also accepts a display name as a fallback
-            input; if a name-to-id mapping exists, it will re-query using the resolved id.
+        item_id: World item ID. Resolve an exact display name explicitly before calling.
         include_provisional: Whether provisional world items and provisional elaboration
             events may be returned.
 
@@ -142,13 +142,14 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
             should invalidate via [`clear_world_read_caches()`](data_access/cache_coordinator.py:42).
 
         Identity semantics:
-            If a name fallback resolves to an id, the returned model uses that canonical id
-            as its identity (`item_detail["id"] = effective_id`).
+            A missing ID is not a name lookup and malformed graph records are not repaired.
     """
     logger.info(f"Loading world item '{item_id}' from Neo4j...")
 
     requested_id = item_id
     effective_id: str = item_id
+    if not isinstance(item_id, str) or not item_id.strip():
+        raise ValueError("World item lookup requires a nonblank stable ID")
 
     # Canonical labeling contract:
     # - World item nodes are labeled with canonical "world" labels only
@@ -158,19 +159,9 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
 
-    query = (
-        f"MATCH (we {{id: $id}}) WHERE {label_predicate}"
-        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)"
-        " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)"
-        " RETURN we"
-    )
+    query = f"MATCH (we {{id: $id}}) WHERE {label_predicate} AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE) RETURN we"
 
-    results = await neo4j_manager.execute_read_query(query, {"id": requested_id, "include_provisional": include_provisional})
-    if not results or not results[0].get("we"):
-        alt_id = resolve_world_name(requested_id)
-        if alt_id and alt_id != requested_id:
-            effective_id = alt_id
-            results = await neo4j_manager.execute_read_query(query, {"id": effective_id, "include_provisional": include_provisional})
+    results = await get_services().database.execute_read_query(query, {"id": requested_id, "include_provisional": include_provisional})
 
     if not results or not results[0].get("we"):
         logger.info(f"No world item found for id '{requested_id}'.")
@@ -180,6 +171,8 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     category = we_node.get("category")
     item_name = we_node.get("name")
     we_id = we_node.get("id")
+    if len(results) != 1 or we_id != requested_id:
+        raise ValueError("World item ID read returned ambiguous or conflicting identity")
 
     # Validate and normalize core fields for world item
     # This ensures that all world items have valid id, category, and name
@@ -202,22 +195,6 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
 
     # Prefer the fetched/validated node id as the single effective id for enrichment + identity.
     effective_id = we_id
-
-    # Check if any fields were missing and log a warning if so
-    missing_fields = []
-    if not we_node.get("category"):
-        missing_fields.append("category")
-    if not we_node.get("name"):
-        missing_fields.append("name")
-    if not we_node.get("id"):
-        missing_fields.append("id")
-
-    if missing_fields:
-        logger.warning(f"Corrected world item with missing core fields ({', '.join(missing_fields)}) for id '{item_id}': {we_node}")
-        # Update the we_node dict with corrected values for subsequent processing
-        we_node["category"] = category
-        we_node["name"] = item_name
-        we_node["id"] = we_id
 
     item_detail: dict[str, Any] = dict(we_node)
     item_detail.pop("created_ts", None)
@@ -242,7 +219,7 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     RETURN elab.summary AS summary, elab.chapter AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
     ORDER BY elab.chapter ASC
     """
-    elab_results = await neo4j_manager.execute_read_query(
+    elab_results = await get_services().database.execute_read_query(
         elab_query,
         {"we_id_param": effective_id, "include_provisional": include_provisional},
     )
@@ -298,8 +275,7 @@ async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: i
     query = f"""
     MATCH (we {{category: $category_param}})
     WHERE {label_predicate}
-      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
-      AND (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
+           AND (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
 
     OPTIONAL MATCH (we)-[:ELABORATED_IN_CHAPTER]->(elab:Event)
     WHERE elab.chapter <= $chapter_limit_param
@@ -326,7 +302,7 @@ async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: i
     }
     items = []
     try:
-        results = await neo4j_manager.execute_read_query(query, params)
+        results = await get_services().database.execute_read_query(query, params)
         if results:
             for record in results:
                 desc_val = record.get("description")
@@ -364,8 +340,6 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
         - `name`
         - `category`
 
-        Returns an empty list on failures.
-
     Notes:
         This is a diagnostic discovery query intended to seed enrichment workflows. It is not
         a strict completeness guarantee.
@@ -377,31 +351,27 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
     MATCH (we)
     WHERE {label_predicate}
       AND toString(we.description) = ''
-      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
-    RETURN we.id AS id, we.name AS name, we.category as category
+         RETURN we.id AS id, we.name AS name, we.category as category
     LIMIT 20
     """
-    try:
-        results = await neo4j_manager.execute_read_query(query)
-        return results if results else []
-    except (Neo4jError, KeyError, ValueError) as e:
-        logger.error(f"Error finding thin world elements: {e}", exc_info=True)
-        return []
+    results = await get_services().database.execute_read_query(query)
+    return results if results else []
 
 
 # Native model functions for performance optimization
 async def sync_world_items(
     world_items: list[WorldItem],
     chapter_number: int,
-) -> bool:
+) -> None:
     """Persist world items to Neo4j using the native Cypher builder.
 
     Args:
         world_items: World items to upsert.
         chapter_number: Chapter number used for provenance and update tracking.
 
-    Returns:
-        True when the batch write completed successfully. False when a write error occurred.
+    Raises:
+        Neo4jError: If the database write fails.
+        ValueError: If Cypher builder encounters invalid data.
 
     Notes:
         Cache semantics:
@@ -409,48 +379,32 @@ async def sync_world_items(
             [`clear_world_read_caches()`](data_access/cache_coordinator.py:42).
 
         In-memory name resolution:
-            This call rebuilds the mapping used by [`resolve_world_name()`](data_access/world_queries.py:53).
+            This call updates the mapping used by [`resolve_world_name()`](data_access/world_queries.py:53).
     """
 
-    # Validate all world items before syncing
     for item in world_items:
         if isinstance(item, WorldItem):
             errors = validate_kg_object(item)
             if errors:
                 logger.warning(f"Invalid WorldItem '{item.name}': {errors}")
 
-    # Update name mapping deterministically (avoid stale accumulation).
-    rebuild_world_name_map(world_items)
+    cypher_builder = NativeCypherBuilder()
+    statements = cypher_builder.batch_world_item_upsert_cypher(world_items, chapter_number)
 
-    try:
-        cypher_builder = NativeCypherBuilder()
-        statements = cypher_builder.batch_world_item_upsert_cypher(world_items, chapter_number)
+    if statements:
+        await get_services().database.execute_cypher_batch(statements)
 
-        if statements:
-            await neo4j_manager.execute_cypher_batch(statements)
+    logger.info(
+        "Persisted %d world item updates for chapter %d using native models.",
+        len(world_items),
+        chapter_number,
+    )
 
-        logger.info(
-            "Persisted %d world item updates for chapter %d using native models.",
-            len(world_items),
-            chapter_number,
-        )
+    update_world_name_map(world_items)
 
-        # P1.6: Post-write cache invalidation
-        # Local import avoids circular import / eager import side effects.
-        from data_access.cache_coordinator import clear_world_read_caches
+    from data_access.cache_coordinator import clear_world_read_caches
 
-        clear_world_read_caches()
-
-        return True
-
-    except (Neo4jError, KeyError, ValueError) as exc:
-        logger.error(
-            "Error persisting world item updates for chapter %d: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return False
+    clear_world_read_caches()
 
 
 async def get_world_building(*, include_provisional: bool = False) -> list[WorldItem]:
@@ -460,7 +414,7 @@ async def get_world_building(*, include_provisional: bool = False) -> list[World
         include_provisional: Whether provisional world items may be returned.
 
     Returns:
-        A list of `WorldItem` instances. Returns an empty list on query failures.
+        A list of `WorldItem` instances.
 
     Notes:
         In-memory name resolution:
@@ -470,30 +424,24 @@ async def get_world_building(*, include_provisional: bool = False) -> list[World
             When `include_provisional=False`, provisional world items are filtered out after
             fetching.
     """
-    try:
-        cypher_builder = NativeCypherBuilder()
-        query, params = cypher_builder.world_item_fetch_cypher()
+    cypher_builder = NativeCypherBuilder()
+    query, params = cypher_builder.world_item_fetch_cypher()
 
-        results = await neo4j_manager.execute_read_query(query, params)
-        world_items = []
+    results = await get_services().database.execute_read_query(query, params)
+    world_items = []
 
-        for record in results:
-            if record and record.get("w"):
-                item = WorldItem.from_dict_record(record)
-                world_items.append(item)
+    for record in results:
+        if record and record.get("w"):
+            item = WorldItem.from_dict_record(record)
+            world_items.append(item)
 
-        # Update name-to-id mapping for compatibility with callers
-        rebuild_world_name_map(world_items)
+    rebuild_world_name_map(world_items)
 
-        if not include_provisional:
-            world_items = [w for w in world_items if not getattr(w, "is_provisional", False)]
+    if not include_provisional:
+        world_items = [w for w in world_items if not getattr(w, "is_provisional", False)]
 
-        logger.info("Fetched %d world items using native models", len(world_items))
-        return world_items
-
-    except (Neo4jError, KeyError, ValueError) as exc:
-        logger.error(f"Error fetching world building: {exc}", exc_info=True)
-        return []
+    logger.info("Fetched %d world items using native models", len(world_items))
+    return world_items
 
 
 async def get_world_items_for_chapter_context_native(chapter_number: int, limit: int = 10, *, include_provisional: bool = False) -> list[WorldItem]:
@@ -506,54 +454,39 @@ async def get_world_items_for_chapter_context_native(chapter_number: int, limit:
 
     Returns:
         A list of `WorldItem` instances, ordered by most recent reference.
-
-    Notes:
-        Error behavior:
-            This function logs exceptions and returns an empty list rather than raising.
     """
-    try:
-        query = """
-        MATCH (w)-[:REFERENCED_IN]->(ch:Chapter)
-        WHERE ch.number < $chapter_number
-          AND (w.is_deleted IS NULL OR w.is_deleted = FALSE)
-          AND ($include_provisional = TRUE OR coalesce(w.is_provisional, FALSE) = FALSE)
-        WITH w, max(ch.number) as last_reference
-        ORDER BY last_reference DESC
-        LIMIT $limit
-        RETURN w
-        """
+    query = """
+    MATCH (w)-[:REFERENCED_IN]->(ch:Chapter)
+    WHERE ch.number < $chapter_number
+      AND ($include_provisional = TRUE OR coalesce(w.is_provisional, FALSE) = FALSE)
+    WITH w, max(ch.number) as last_reference
+    ORDER BY last_reference DESC
+    LIMIT $limit
+    RETURN w
+    """
 
-        results = await neo4j_manager.execute_read_query(
-            query,
-            {
-                "chapter_number": chapter_number,
-                "limit": limit,
-                "include_provisional": include_provisional,
-            },
-        )
+    results = await get_services().database.execute_read_query(
+        query,
+        {
+            "chapter_number": chapter_number,
+            "limit": limit,
+            "include_provisional": include_provisional,
+        },
+    )
 
-        world_items = []
-        for record in results:
-            if record and record.get("w"):
-                item = WorldItem.from_dict_record(record)
-                world_items.append(item)
+    world_items = []
+    for record in results:
+        if record and record.get("w"):
+            item = WorldItem.from_dict_record(record)
+            world_items.append(item)
 
-        logger.debug(
-            "Fetched %d world items for chapter %d context using native models",
-            len(world_items),
-            chapter_number,
-        )
+    logger.debug(
+        "Fetched %d world items for chapter %d context using native models",
+        len(world_items),
+        chapter_number,
+    )
 
-        return world_items
-
-    except (Neo4jError, KeyError, ValueError) as exc:
-        logger.error(
-            "Error fetching world items for chapter %d context: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return []
+    return world_items
 
 
 # Phase 1.2: Bootstrap Element Injection - New functions for bootstrap element discovery
@@ -562,7 +495,7 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
 
     Returns:
         A list of `WorldItem` instances created during bootstrap/genesis, sorted by category
-        then name. Returns an empty list on failures.
+        then name.
 
     Notes:
         Selection contract:
@@ -577,12 +510,10 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
 
-    # More efficient query that filters out elements without meaningful descriptions earlier
     query = f"""
     MATCH (we)
     WHERE {label_predicate}
-      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
-      AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
+           AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
       AND we.description IS NOT NULL
       AND trim(toString(we.description)) <> ''
       AND NOT (toString(we.description) CONTAINS $fill_in_marker)
@@ -596,34 +527,21 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
         "fill_in_marker": config.FILL_IN,
     }
 
-    try:
-        records = await neo4j_manager.execute_read_query(query, params)
+    records = await get_services().database.execute_read_query(query, params)
 
-        bootstrap_elements = []
-        for record in records:
-            # Some tests/mocks historically used "w" instead of "we"; accept both.
-            we_node = None
-            if isinstance(record, dict):
-                we_node = record.get("we") or record.get("w")
+    bootstrap_elements = []
+    for record in records:
+        we_node = None
+        if isinstance(record, dict):
+            we_node = record.get("we") or record.get("w")
 
-            if not we_node:
-                continue
+        if not we_node:
+            continue
 
-            # Convert Neo4j node to WorldItem
-            try:
-                world_item = WorldItem.from_db_node(we_node)
-                # Additional validation: ensure the description is meaningful after conversion
-                if world_item.description and world_item.description.strip() and config.FILL_IN not in world_item.description:
-                    bootstrap_elements.append(world_item)
+        world_item = WorldItem.from_db_node(we_node)
+        if world_item.description and world_item.description.strip() and config.FILL_IN not in world_item.description:
+            bootstrap_elements.append(world_item)
 
-            except (KeyError, ValueError, TypeError) as e:
-                logger.warning(f"Failed to convert bootstrap element node to WorldItem: {e}. " f"Node: {dict(we_node)}")
-                continue
+    logger.info(f"Retrieved {len(bootstrap_elements)} bootstrap world elements for early chapter injection")
 
-        logger.info(f"Retrieved {len(bootstrap_elements)} bootstrap world elements for early chapter injection")
-
-        return bootstrap_elements
-
-    except (Neo4jError, KeyError, ValueError) as e:
-        logger.error(f"Failed to retrieve bootstrap world elements: {e}. " f"Error type: {type(e).__name__}. " f"Check Neo4j connection and query syntax.")
-        return []
+    return bootstrap_elements

@@ -26,35 +26,22 @@ from core.lightweight_cache import (
 
 def test_basic_cache_operations() -> None:
     """Test basic cache operations."""
-    print("Testing basic cache operations...")
-
-    # Register a service
     service_name = "test_service"
     register_cache_service(service_name)
 
-    # Test set and get
     key = "test_key"
     value = "test_value"
 
     set_cached_value(key, value, service_name)
     retrieved_value = get_cached_value(key, service_name)
+    assert retrieved_value == value
 
-    assert retrieved_value == value, f"Expected {value}, got {retrieved_value}"
-    print("✓ Set/Get test passed")
-
-    # Test cache invalidation
     invalidate_cache_key(key, service_name)
     retrieved_value = get_cached_value(key, service_name)
+    assert retrieved_value is None
 
-    assert retrieved_value is None, f"Expected None, got {retrieved_value}"
-    print("✓ Invalidation test passed")
-
-    # Test metrics
     metrics = get_cache_metrics(service_name)
-    assert isinstance(metrics, dict), f"Expected dict, got {type(metrics)}"
-    print("✓ Metrics test passed")
-
-    print("All basic tests passed!")
+    assert isinstance(metrics, dict)
 
 
 def test_cache_ttl_expiry_enforced(monkeypatch: pytest.MonkeyPatch) -> None:

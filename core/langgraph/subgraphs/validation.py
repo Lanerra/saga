@@ -17,27 +17,28 @@ Notes:
 
 from __future__ import annotations
 
-import re
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
 import config
-from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_outlines,
     get_draft_text,
-    get_extracted_relationships,
     get_previous_summaries,
+    get_scene_drafts,
     require_project_dir,
 )
 from core.langgraph.nodes.validation_node import (
     validate_consistency as original_validate_consistency,
 )
+from core.langgraph.quality_policy import SCORE_FIELDS, policy_for, record_check
 from core.langgraph.state import Contradiction, NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.langgraph.subgraphs._shared import _should_continue_or_error
+from core.service_context import get_services
+from data_access.validation_queries import fetch_prior_accepted_facts, get_candidate_relationship_assertions
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
 
@@ -98,13 +99,13 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
     if not draft_text:
         logger.warning("evaluate_quality: no draft text to evaluate")
         return {
-            **state,
             "coherence_score": None,
             "prose_quality_score": None,
             "plot_advancement_score": None,
             "pacing_score": None,
             "tone_consistency_score": None,
             "quality_feedback": "No draft text available for evaluation",
+            "quality_checks": record_check(state, "evaluation", "failed", "No draft text available for evaluation"),
         }
 
     # Build evaluation prompt
@@ -119,9 +120,9 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
 
     try:
         # Call LLM for quality evaluation
-        model_name = state.get("extraction_model", config.NARRATIVE_MODEL)
+        model_name = state.get("medium_model", config.MEDIUM_MODEL)
 
-        response, usage = await llm_service.async_call_llm(
+        response, usage = await get_services().language_model.async_call_llm(
             model_name=model_name,
             prompt=evaluation_prompt,
             temperature=0.1,
@@ -143,12 +144,11 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
             tone=scores.get("tone_consistency_score"),
         )
 
-        # Check if quality is too low and needs revision
-        min_quality_threshold = 0.7
+        min_quality_threshold = policy_for(state).minimum_score if state.get("quality_policy") else config.MIN_QUALITY_THRESHOLD
         quality_scores = [
-            scores.get("coherence_score", 1.0),
-            scores.get("prose_quality_score", 1.0),
-            scores.get("plot_advancement_score", 1.0),
+            scores.get("coherence_score", 0.0),
+            scores.get("prose_quality_score", 0.0),
+            scores.get("plot_advancement_score", 0.0),
         ]
 
         avg_quality = sum(quality_scores) / len(quality_scores)
@@ -156,18 +156,18 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         # Add quality-based revision trigger
         current_contradictions = state.get("contradictions", [])
         if avg_quality < min_quality_threshold:
-            current_contradictions.append(
+            current_contradictions = [
+                *current_contradictions,
                 Contradiction(
                     type="quality_issue",
                     description=f"Overall quality score ({avg_quality:.2f}) below threshold ({min_quality_threshold})",
                     conflicting_chapters=[state.get("current_chapter", 1)],
                     severity="major",
                     suggested_fix=scores.get("feedback", "Improve prose quality and coherence"),
-                )
-            )
+                ),
+            ]
 
         return {
-            **state,
             "coherence_score": scores.get("coherence_score"),
             "prose_quality_score": scores.get("prose_quality_score"),
             "plot_advancement_score": scores.get("plot_advancement_score"),
@@ -175,6 +175,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
             "tone_consistency_score": scores.get("tone_consistency_score"),
             "quality_feedback": scores.get("feedback"),
             "contradictions": current_contradictions,
+            "quality_checks": record_check(state, "evaluation", "completed", details={"scores": {name: scores[name] for name in SCORE_FIELDS}, "evaluated_characters": min(len(draft_text), 8000), "draft_characters": len(draft_text)}),
         }
 
     except Exception as e:
@@ -185,13 +186,13 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         )
         # Return state with no scores on error
         return {
-            **state,
             "coherence_score": None,
             "prose_quality_score": None,
             "plot_advancement_score": None,
             "pacing_score": None,
             "tone_consistency_score": None,
             "quality_feedback": f"Evaluation failed: {str(e)}",
+            "quality_checks": record_check(state, "evaluation", "failed", str(e)),
         }
 
 
@@ -257,121 +258,117 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
         response: Raw LLM response text.
 
     Returns:
-        A dict containing normalized score fields in the range [0.0, 1.0] plus
-        a `feedback` string. When parsing fails, returns conservative defaults.
+        All five score fields in the range [0.0, 1.0] plus a `feedback` string.
+
+    Raises:
+        ValueError: Missing, malformed, boolean or out-of-range scores. Failed
+            parsing never invents a passing score or certifies completion.
     """
     parsed, _candidates, _parse_errors = try_load_json_from_response(
         response,
         expected_root=dict,
     )
-    if isinstance(parsed, dict):
-        # Validate and normalize scores
-        normalized: dict[str, Any] = {}
-        for key in [
-            "coherence_score",
-            "prose_quality_score",
-            "plot_advancement_score",
-            "pacing_score",
-            "tone_consistency_score",
-        ]:
-            value = parsed.get(key)
-            if isinstance(value, int | float):
-                normalized[key] = max(0.0, min(1.0, float(value)))
-            else:
-                normalized[key] = 0.3
-
-        normalized["feedback"] = parsed.get("feedback", "No feedback provided")
-        return normalized
-
-    # Fallback: try to extract scores from text
-    fallback_scores = {
-        "coherence_score": 0.7,
-        "prose_quality_score": 0.7,
-        "plot_advancement_score": 0.7,
-        "pacing_score": 0.7,
-        "tone_consistency_score": 0.7,
-        "feedback": "Unable to parse detailed feedback from evaluation response.",
-    }
-
-    # Try to extract individual scores using regex
-    score_patterns = {
-        "coherence_score": r"coherence[^:]*:\s*(\d+\.?\d*)",
-        "prose_quality_score": r"prose[^:]*:\s*(\d+\.?\d*)",
-        "plot_advancement_score": r"plot[^:]*:\s*(\d+\.?\d*)",
-        "pacing_score": r"pacing[^:]*:\s*(\d+\.?\d*)",
-        "tone_consistency_score": r"tone[^:]*:\s*(\d+\.?\d*)",
-    }
-
-    for key, pattern in score_patterns.items():
-        match = re.search(pattern, response, re.IGNORECASE)
-        if match:
-            try:
-                value = float(match.group(1))
-                fallback_scores[key] = max(0.0, min(1.0, value))
-            except ValueError as e:
-                logger.warning(
-                    "Failed to parse quality score from regex match",
-                    key=key,
-                    matched_text=match.group(1),
-                    error=str(e),
-                )
-
-    return fallback_scores
+    if not isinstance(parsed, dict) or set(parsed) != {*SCORE_FIELDS, "feedback"}:
+        raise ValueError("Quality evaluation requires all five scores and feedback")
+    if any(type(parsed[name]) not in (int, float) or not 0 <= parsed[name] <= 1 for name in SCORE_FIELDS):
+        raise ValueError("Quality evaluation scores must be finite numbers between zero and one")
+    if not isinstance(parsed["feedback"], str):
+        raise ValueError("Quality evaluation feedback must be text")
+    return parsed
 
 
-async def _fetch_validation_data(current_chapter: int) -> dict[str, Any]:
-    """Fetch validation-related data from Neo4j.
+async def _fetch_validation_data(state: NarrativeState | int) -> dict[str, Any]:
+    """Fetch verified snapshots; chapter-only legacy invocations fail closed."""
+    if isinstance(state, int):
+        raise ValueError("Prior canon requires a verified NarrativeState, not a chapter number")
+    return await fetch_prior_accepted_facts(state)
+
+
+def _check_scene_duplication(state: NarrativeState, content_manager: ContentManager) -> list[Contradiction]:
+    """Check for duplicate or highly similar scenes in the chapter draft.
 
     Args:
-        current_chapter: Chapter number being validated.
+        state: Workflow state containing scene_drafts_ref.
+        content_manager: Content manager for loading scene drafts.
 
     Returns:
-        A dictionary containing:
-        - "relationships": Dict mapping (source, target) -> relationship info
+        List of contradictions flagging duplicate scenes.
     """
-    try:
-        query = """
-            MATCH (c1:Character)-[r]->(c2:Character)
-            RETURN c1.name AS source_name,
-                   c2.name AS target_name,
-                   type(r) AS rel_type,
-                   r.chapter_added AS chapter
-        """
+    scene_drafts = get_scene_drafts(state, content_manager)
 
-        results = await neo4j_manager.execute_read_query(query, {"current_chapter": current_chapter})
+    if len(scene_drafts) < 2:
+        return []
 
-        validation_data: dict[str, Any] = {
-            "relationships": {},
-        }
+    duplicates = []
 
-        for row in results:
-            source = row.get("source_name", "")
-            target = row.get("target_name", "")
-            key = (source, target)
+    for i in range(len(scene_drafts)):
+        for j in range(i + 1, len(scene_drafts)):
+            scene_i = scene_drafts[i]
+            scene_j = scene_drafts[j]
 
-            if key not in validation_data["relationships"]:
-                validation_data["relationships"][key] = {
-                    "rel_type": row.get("rel_type"),
-                    "first_chapter": row.get("chapter"),
-                }
+            sample_length = min(800, len(scene_i), len(scene_j))
+            sample_i = scene_i[:sample_length].lower().strip()
+            sample_j = scene_j[:sample_length].lower().strip()
 
-        logger.debug(
-            "_fetch_validation_data: fetched validation data",
-            current_chapter=current_chapter,
-            relationships_count=len(validation_data["relationships"]),
-        )
+            if len(sample_i) < 100 or len(sample_j) < 100:
+                continue
 
-        return validation_data
+            similarity = _calculate_text_similarity(sample_i, sample_j)
 
-    except Exception as e:
-        logger.error(
-            "_fetch_validation_data: error fetching validation data",
-            error=str(e),
-            exc_info=True,
-        )
-        return {
-            "relationships": {},
-        }
+            if similarity > 0.7:
+                duplicates.append(
+                    Contradiction(
+                        type="scene_duplication",
+                        description=f"Scene {i + 1} and Scene {j + 1} are highly similar ({int(similarity * 100)}% match). Each scene should be distinct with unique content and purpose.",
+                        conflicting_chapters=[state.get("current_chapter", 1)],
+                        severity="critical",
+                        suggested_fix=f"Rewrite Scene {j + 1} to ensure it covers different content, POV, or plot beats than Scene {i + 1}.",
+                    )
+                )
+
+                logger.warning(
+                    "Scene duplication detected",
+                    scene_i_index=i,
+                    scene_j_index=j,
+                    similarity=round(similarity, 2),
+                    sample_i_start=sample_i[:100],
+                    sample_j_start=sample_j[:100],
+                )
+
+    return duplicates
+
+
+def _calculate_text_similarity(text1: str, text2: str) -> float:
+    """Calculate simple character-level similarity between two texts.
+
+    Uses a basic approach: count common bigrams and trigrams.
+
+    Args:
+        text1: First text sample.
+        text2: Second text sample.
+
+    Returns:
+        Similarity score between 0.0 and 1.0.
+    """
+    if not text1 or not text2:
+        return 0.0
+
+    def get_ngrams(text: str, n: int) -> set[str]:
+        return set(text[i : i + n] for i in range(len(text) - n + 1))
+
+    bigrams1 = get_ngrams(text1, 2)
+    bigrams2 = get_ngrams(text2, 2)
+
+    trigrams1 = get_ngrams(text1, 3)
+    trigrams2 = get_ngrams(text2, 3)
+
+    if not bigrams1 or not bigrams2 or not trigrams1 or not trigrams2:
+        return 0.0
+
+    bigram_overlap = len(bigrams1 & bigrams2) / max(len(bigrams1), len(bigrams2))
+    trigram_overlap = len(trigrams1 & trigrams2) / max(len(trigrams1), len(trigrams2))
+
+    return (bigram_overlap + trigram_overlap) / 2
 
 
 async def detect_contradictions(state: NarrativeState) -> NarrativeState:
@@ -379,7 +376,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
 
     This step augments the contradictions produced by
     [`validate_consistency()`](core/langgraph/subgraphs/validation.py:49) with
-    additional checks (relationship evolution).
+    additional checks (relationship evolution, scene duplication).
 
     Args:
         state: Workflow state.
@@ -398,15 +395,24 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
 
     content_manager = ContentManager(require_project_dir(state))
 
-    validation_data = await _fetch_validation_data(current_chapter)
+    validation_data = await _fetch_validation_data(state)
 
-    extracted_relationships = get_extracted_relationships(state, content_manager)
+    extracted_relationships = get_candidate_relationship_assertions(state, content_manager)
     relationship_issues = await _check_relationship_evolution(
         extracted_relationships,
         current_chapter,
         validation_data.get("relationships", {}),
     )
-    contradictions.extend(relationship_issues)
+    contradictions = [
+        *contradictions,
+        *relationship_issues,
+    ]
+
+    scene_duplication_issues = _check_scene_duplication(state, content_manager)
+    contradictions = [
+        *contradictions,
+        *scene_duplication_issues,
+    ]
 
     logger.info(
         "detect_contradictions: contradiction detection complete",
@@ -424,49 +430,45 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     max_iterations = state.get("max_iterations", 3)
 
     if iteration_count >= max_iterations and has_issues and not force_continue:
-        error_msg = f"Validation failed after {max_iterations} iterations. " f"Found {len(critical_issues)} critical and {len(major_issues)} major issues."
-        logger.error(
-            "detect_contradictions: validation failed on final iteration",
+        logger.warning(
+            "detect_contradictions: max iterations reached, accepting best-effort draft",
             iteration_count=iteration_count,
             max_iterations=max_iterations,
             critical_issues=len(critical_issues),
             major_issues=len(major_issues),
         )
         return {
-            **state,
-            "has_fatal_error": True,
-            "last_error": error_msg,
-            "error_node": "validate",
             "needs_revision": False,
             "contradictions": contradictions,
             "current_node": "detect_contradictions",
+            "quality_checks": record_check(state, "contradictions", "completed", details={"findings": [item.model_dump(mode="json") for item in contradictions]}),
         }
 
     needs_revision = has_issues and not force_continue
 
     return {
-        **state,
         "contradictions": contradictions,
         "needs_revision": needs_revision,
         "current_node": "detect_contradictions",
+        "quality_checks": record_check(state, "contradictions", "completed", details={"findings": [item.model_dump(mode="json") for item in contradictions]}),
     }
 
 
 async def _check_relationship_evolution(
     extracted_relationships: list[Any],
     current_chapter: int,
-    existing_relationships: dict[tuple[str, str], dict] | None = None,
+    existing_relationships: dict[tuple[str, str], list[dict[str, Any]]],
 ) -> list[Contradiction]:
     """Flag abrupt relationship shifts that may require narrative development.
 
     Args:
         extracted_relationships: Relationships extracted from the current chapter.
         current_chapter: Chapter number being validated.
-        existing_relationships: Pre-fetched relationships from Neo4j (optional, for optimization).
+        existing_relationships: Verified prior accepted assertion snapshots.
 
     Returns:
         Informational contradictions (typically `minor`) for abrupt transitions.
-        Returns an empty list on query errors (best-effort behavior).
+
     """
     if not extracted_relationships:
         return []
@@ -481,98 +483,29 @@ async def _check_relationship_evolution(
         ("FEARS", "PROTECTS"): "relationship reversal",
     }
 
-    try:
-        for rel in extracted_relationships:
-            # Handle both dict and object types
-            if isinstance(rel, dict):
-                source = rel.get("source_name", "")
-                target = rel.get("target_name", "")
-                rel_type = rel.get("relationship_type", "")
-            else:
-                source = getattr(rel, "source_name", "")
-                target = getattr(rel, "target_name", "")
-                rel_type = getattr(rel, "relationship_type", "")
-
-            # Use pre-fetched relationships if provided
-            if existing_relationships is not None:
-                key = (source, target)
-                prev_rel_data = existing_relationships.get(key)
-                if prev_rel_data:
-                    prev_type = prev_rel_data.get("rel_type", "")
-                    prev_chapter = prev_rel_data.get("first_chapter", 0)
-
-                    # Check if this is a dramatic shift
-                    for (old_rel, new_rel), description in requires_development.items():
-                        if prev_type == old_rel and rel_type == new_rel:
-                            # Check if enough chapters have passed for development
-                            chapters_between = current_chapter - prev_chapter
-
-                            if chapters_between < 3:  # Arbitrary threshold
-                                contradictions.append(
-                                    Contradiction(
-                                        type="relationship",
-                                        description=f"{source} and {target}: {description} "
-                                        f"from '{prev_type}' to '{rel_type}' without sufficient development "
-                                        f"(only {chapters_between} chapters since chapter {prev_chapter})",
-                                        conflicting_chapters=[
-                                            prev_chapter,
-                                            current_chapter,
-                                        ],
-                                        severity="minor",
-                                        suggested_fix=f"Add intermediate scenes showing the {description}",
-                                    )
-                                )
-            else:
-                # Fallback: query Neo4j for previous relationship
-                query = """
-                    MATCH (c1:Character {name: $source})-[r]->(c2:Character {name: $target})
-                    RETURN type(r) AS rel_type, r.chapter_added AS first_chapter
-                    ORDER BY r.chapter_added DESC
-                    LIMIT 1
-                """
-
-                result = await neo4j_manager.execute_read_query(query, {"source": source, "target": target})
-
-                if result and len(result) > 0:
-                    prev_rel = result[0]
-                    prev_type = prev_rel.get("rel_type", "")
-                    prev_chapter = prev_rel.get("first_chapter", 0)
-
-                    # Check if this is a dramatic shift
-                    for (old_rel, new_rel), description in requires_development.items():
-                        if prev_type == old_rel and rel_type == new_rel:
-                            # Check if enough chapters have passed for development
-                            chapters_between = current_chapter - prev_chapter
-
-                            if chapters_between < 3:  # Arbitrary threshold
-                                contradictions.append(
-                                    Contradiction(
-                                        type="relationship",
-                                        description=f"{source} and {target}: {description} "
-                                        f"from '{prev_type}' to '{rel_type}' without sufficient development "
-                                        f"(only {chapters_between} chapters since chapter {prev_chapter})",
-                                        conflicting_chapters=[
-                                            prev_chapter,
-                                            current_chapter,
-                                        ],
-                                        severity="minor",
-                                        suggested_fix=f"Add intermediate scenes showing the {description}",
-                                    )
-                                )
-
-        logger.debug(
-            "_check_relationship_evolution: relationship evolution check complete",
-            relationships_checked=len(extracted_relationships),
-            issues_found=len(contradictions),
-        )
-
-    except Exception as e:
-        logger.error(
-            "_check_relationship_evolution: error during relationship check",
-            error=str(e),
-            exc_info=True,
-        )
-
+    candidates: set[tuple[str, str, str]] = set()
+    for relationship in extracted_relationships:
+        values = tuple(relationship.get(name) if isinstance(relationship, dict) else getattr(relationship, name) for name in ("source_name", "target_name", "relationship_type"))
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("Candidate relationship identity missing")
+        candidates.add(cast(tuple[str, str, str], values))
+    for source, target, relationship_type in sorted(candidates):
+        history = existing_relationships.get((source, target), [])
+        prior = {(item["first_chapter"], item["rel_type"]) for item in history if type(item["first_chapter"]) is int and 0 < item["first_chapter"] < current_chapter}
+        latest_chapter = max((chapter for chapter, _ in prior), default=0)
+        for previous_chapter, previous_type in sorted(prior):
+            if previous_chapter != latest_chapter:
+                continue
+            description = requires_development.get((previous_type, relationship_type))
+            chapters_between = current_chapter - previous_chapter
+            if description is not None and chapters_between < 3:
+                contradictions.append(Contradiction(
+                    type="relationship",
+                    description=f"{source} and {target}: {description} from '{previous_type}' to '{relationship_type}' without sufficient development (only {chapters_between} chapters since chapter {previous_chapter})",
+                    conflicting_chapters=[previous_chapter, current_chapter],
+                    severity="minor",
+                    suggested_fix=f"Add intermediate scenes showing the {description}",
+                ))
     return contradictions
 
 
@@ -595,8 +528,16 @@ def create_validation_subgraph() -> StateGraph:
 
     workflow.set_entry_point("validate_consistency")
 
-    workflow.add_edge("validate_consistency", "evaluate_quality")
-    workflow.add_edge("evaluate_quality", "detect_contradictions")
+    workflow.add_conditional_edges(
+        "validate_consistency",
+        _should_continue_or_error,
+        {"continue": "evaluate_quality", "error": END},
+    )
+    workflow.add_conditional_edges(
+        "evaluate_quality",
+        _should_continue_or_error,
+        {"continue": "detect_contradictions", "error": END},
+    )
     workflow.add_edge("detect_contradictions", END)
 
     return workflow.compile()

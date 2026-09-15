@@ -1,4 +1,3 @@
-# core/llm_interface_refactored.py
 """Provide the primary LLM client interface for SAGA.
 
 This module centralizes:
@@ -15,19 +14,23 @@ Notes:
 import asyncio
 import hashlib
 import json
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import numpy as np
 import structlog
+from pydantic import ValidationError
 
 import config
+from config.settings import EffectiveSettings
+from core.embedding_contract import embedding_identity, validate_embedding
 from core.exceptions import LLMServiceError, create_error_context
 from core.http_client_service import (
     CompletionHTTPClient,
     EmbeddingHTTPClient,
+    EmbeddingResponse,
     HTTPClientService,
+    bounded_request,
+    completion_content,
 )
 from core.lightweight_cache import (
     get_cached_value,
@@ -39,83 +42,26 @@ from core.text_processing_service import TextProcessingService, truncate_text_by
 logger = structlog.get_logger(__name__)
 
 
-@asynccontextmanager
-async def async_llm_context(
-    batch_size: int | None = None,
-    clear_cache_on_exit: bool = False,
-) -> AsyncGenerator[tuple["RefactoredLLMService", "EmbeddingService"], None]:
-    """Create LLM services with guaranteed HTTP client cleanup.
-
-    Args:
-        batch_size: Default batch size for embedding batch calls when the caller does not
-            provide one.
-        clear_cache_on_exit: Whether to clear the embedding cache namespace on exit.
-
-    Yields:
-        Tuple of (`RefactoredLLMService`, `EmbeddingService`) instances.
-
-    Notes:
-        This context manager owns the underlying HTTP client lifecycle. It should be used
-        for workflows that create many embeddings/completions and want deterministic
-        cleanup.
-
-        If `clear_cache_on_exit=True`, the `llm_embedding` cache namespace is cleared when
-        the context exits.
-    """
-    # Direct instantiation instead of service locator
-    http_client = HTTPClientService()
-    embedding_client = EmbeddingHTTPClient(http_client)
-    completion_client = CompletionHTTPClient(http_client)
-    text_processor = TextProcessingService()
-
-    embedding_service = EmbeddingService(embedding_client)
-    completion_service = CompletionService(completion_client, text_processor)
-    llm_service = RefactoredLLMService(completion_service, embedding_service, text_processor)
-
-    # Cache size tracking not directly available via service attribute
-    initial_cache_size = 0
-
-    try:
-        yield llm_service, embedding_service
-    finally:
-        # Cleanup
-        try:
-            await http_client.aclose()
-            logger.debug("HTTP client closed successfully")
-        except Exception as cleanup_error:
-            logger.error(f"Failed to cleanup HTTP client: {cleanup_error}")
-
-        # Handle cache management
-        if clear_cache_on_exit:
-            from core.lightweight_cache import clear_service_cache
-
-            clear_service_cache("llm_embedding")
-            logger.debug("Cleared llm_embedding cache on exit")
-
-        # Log performance metrics
-        try:
-            stats = embedding_service.get_statistics()
-            cache_growth = stats.get("cache_size", 0) - initial_cache_size
-            logger.debug(
-                f"LLM session completed: "
-                f"{stats.get('cache_hit_rate', 0):.1f}% cache hit rate, "
-                f"grew by {cache_growth} entries, "
-                f"{stats.get('cache_size', 0)}/{stats.get('cache_max_size', 0)} cache entries"
-            )
-        except Exception as stats_error:
-            logger.error(f"Failed to log session statistics: {stats_error}")
+def _unique_json_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        result[key] = value
+    return result
 
 
 class EmbeddingService:
     """Generate and cache embedding vectors for text."""
 
-    def __init__(self, embedding_client: EmbeddingHTTPClient):
+    def __init__(self, embedding_client: EmbeddingHTTPClient, *, configuration: EffectiveSettings | None = None):
         """Initialize the embedding service.
 
         Args:
             embedding_client: HTTP client used to perform embedding requests.
         """
         self._embedding_client = embedding_client
+        self.configuration = configuration if configuration is not None else config.snapshot_settings()
         self._service_name = "llm_embedding"
         # Register with cache coordinator
         register_cache_service(self._service_name)
@@ -130,8 +76,9 @@ class EmbeddingService:
 
     def _compute_text_hash(self, text: str) -> str:
         """Compute a stable cache key for an embedding input string."""
-        return hashlib.md5(text.encode("utf-8")).hexdigest()
+        return hashlib.sha256((embedding_identity(self.configuration) + "\n" + text).encode("utf-8")).hexdigest()
 
+    @bounded_request
     async def get_embedding(self, text: str) -> np.ndarray | None:
         """Get an embedding vector for a text input.
 
@@ -149,7 +96,7 @@ class EmbeddingService:
         self._stats["embeddings_requested"] += 1
 
         if not text or not isinstance(text, str) or not text.strip():
-            logger.warning(f"get_embedding: empty or invalid text provided. Text repr: {repr(text)}")
+            logger.warning("get_embedding: empty or invalid text provided")
             self._stats["embeddings_failed"] += 1
             return None
 
@@ -159,35 +106,38 @@ class EmbeddingService:
         if cached_embedding is not None:
             self._stats["cache_hits"] += 1
             logger.debug(f"Cache hit for embedding (hash: {text_hash[:8]})")
-            return cached_embedding
+            return validate_embedding(cached_embedding, model=self.configuration.EMBEDDING_MODEL, configuration=self.configuration)
 
         self._stats["cache_misses"] += 1
 
         truncated_text = truncate_text_by_tokens(
             text=text,
-            model_name=config.EMBEDDING_MODEL,
-            max_tokens=config.EMBEDDING_MAX_INPUT_TOKENS,
+            model_name=self.configuration.EMBEDDING_MODEL,
+            max_tokens=self.configuration.EMBEDDING_MAX_INPUT_TOKENS,
         )
 
         try:
-            response_data = await self._embedding_client.get_embedding(truncated_text, config.EMBEDDING_MODEL)
+            response_data = await self._embedding_client.get_embedding(truncated_text, self.configuration.EMBEDDING_MODEL)
 
             # Extract and validate embedding
             embedding = self._extract_and_validate_embedding(response_data)
             if embedding is not None:
                 # Cache the successful embedding
-                set_cached_value(text_hash, embedding, self._service_name)
+                set_cached_value(text_hash, embedding.copy(), self._service_name)
                 self._stats["embeddings_successful"] += 1
                 return embedding
             else:
                 self._stats["validation_failures"] += 1
                 return None
 
+        except TimeoutError:
+            raise
         except Exception as e:
-            logger.error(f"Failed to get embedding: {e}", exc_info=True)
+            logger.error("Failed to get embedding", error_type=type(e).__name__)
             self._stats["embeddings_failed"] += 1
             return None
 
+    @bounded_request
     async def get_embeddings_batch(self, texts: list[str], batch_size: int | None = None) -> list[np.ndarray | None]:
         """Get embeddings for many inputs with bounded concurrency.
 
@@ -202,7 +152,9 @@ class EmbeddingService:
         if not texts:
             return []
 
-        batch_size = batch_size or config.MAX_CONCURRENT_LLM_CALLS
+        batch_size = self.configuration.MAX_CONCURRENT_LLM_CALLS if batch_size is None else batch_size
+        if type(batch_size) is not int or batch_size < 1:
+            raise ValueError("Embedding batch size must be a positive integer")
         results: list[np.ndarray | None] = [None] * len(texts)
 
         # Process in batches to control concurrency and memory usage
@@ -212,6 +164,8 @@ class EmbeddingService:
             batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
 
             for j, result in enumerate(batch_results):
+                if isinstance(result, (asyncio.CancelledError, TimeoutError)):
+                    raise result
                 if not isinstance(result, Exception):
                     results[i + j] = cast(np.ndarray | None, result)
 
@@ -219,41 +173,20 @@ class EmbeddingService:
 
     def _extract_and_validate_embedding(self, response_data: dict[str, Any]) -> np.ndarray | None:
         """Extract an embedding vector from a provider response and validate its shape."""
-        # Try primary key first
-        primary_key = "embedding"
-        if primary_key in response_data and isinstance(response_data[primary_key], list):
-            embedding = self._validate_embedding_list(response_data[primary_key])
-            if embedding is not None:
-                return embedding
-
-        # Try fallback keys
-        logger.warning(f"Primary embedding key '{primary_key}' not found, trying fallbacks")
-        for key, value in response_data.items():
-            if isinstance(value, list) and all(isinstance(item, float | int) for item in value):
-                embedding = self._validate_embedding_list(value)
-                if embedding is not None:
-                    logger.info(f"Found embedding using fallback key '{key}'")
-                    return embedding
-
-        logger.error(f"No suitable embedding found in response: {response_data}")
-        return None
+        try:
+            response = EmbeddingResponse.model_validate(response_data)
+        except ValidationError:
+            logger.error("Invalid embedding provider response schema")
+            return None
+        return self._validate_embedding_list(response.embedding)
 
     def _validate_embedding_list(self, embedding_list: list[float | int]) -> np.ndarray | None:
         """Validate and convert embedding list to numpy array."""
         try:
-            embedding = np.array(embedding_list).astype(config.EMBEDDING_DTYPE)
-            if embedding.ndim > 1:
-                logger.warning(f"Embedding had unexpected ndim > 1: {embedding.ndim}. Flattening.")
-                embedding = embedding.flatten()
+            return validate_embedding(embedding_list, model=self.configuration.EMBEDDING_MODEL, configuration=self.configuration)
 
-            if embedding.shape == (config.EXPECTED_EMBEDDING_DIM,):
-                logger.debug(f"Embedding validated: shape={embedding.shape}, dtype={embedding.dtype}")
-                return embedding
-
-            logger.error(f"Embedding dimension mismatch: Expected ({config.EXPECTED_EMBEDDING_DIM},), " f"Got {embedding.shape}. List length: {len(embedding_list)}")
-
-        except (TypeError, ValueError) as e:
-            logger.error(f"Failed to convert embedding list to numpy array: {e}")
+        except (TypeError, ValueError):
+            logger.error("Failed to convert embedding list to numpy array")
 
         return None
 
@@ -283,6 +216,8 @@ class CompletionService:
         self,
         completion_client: CompletionHTTPClient,
         text_processor: TextProcessingService,
+        *,
+        configuration: EffectiveSettings | None = None,
     ):
         """Initialize the completion service.
 
@@ -291,6 +226,7 @@ class CompletionService:
             text_processor: Service used for response cleanup and token operations.
         """
         self._completion_client = completion_client
+        self.configuration = configuration if configuration is not None else config.snapshot_settings()
         self._text_processor = text_processor
         self._stats = {
             "completions_requested": 0,
@@ -299,6 +235,7 @@ class CompletionService:
             "fallback_used": 0,
         }
 
+    @bounded_request
     async def get_completion(
         self,
         model_name: str,
@@ -352,8 +289,12 @@ class CompletionService:
             logger.error("get_completion: model_name and prompt are required", **error_details)
             return "", None
 
-        effective_temperature = temperature if temperature is not None else config.Temperatures.DEFAULT
-        effective_max_tokens = max_tokens if max_tokens is not None else config.MAX_GENERATION_TOKENS
+        # Respect global temperature override if set
+        if self.configuration.TEMPERATURE_OVERRIDE is not None:
+            effective_temperature = self.configuration.TEMPERATURE_OVERRIDE
+        else:
+            effective_temperature = temperature if temperature is not None else config.Temperatures.DEFAULT
+        effective_max_tokens = max_tokens if max_tokens is not None else self.configuration.MAX_GENERATION_TOKENS
 
         # Build messages with optional system prompt
         messages = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + [{"role": "user", "content": prompt}]
@@ -386,13 +327,18 @@ class CompletionService:
 
             if auto_clean_response:
                 content = self._text_processor.response_cleaner.clean_response(content)
-                
+
             if spacy_cleanup:
                 content = self._text_processor.clean_text_with_spacy(content, aggressive=False)
+
+            if not content.strip():
+                raise ValueError("Completion contains no answer after cleanup")
 
             self._stats["completions_successful"] += 1
             return content, usage_data
 
+        except TimeoutError:
+            raise
         except Exception as primary_error:
             # Never log raw prompt; capture only hash+length to aid debugging.
             try:
@@ -407,17 +353,16 @@ class CompletionService:
                 model=model_name,
                 prompt_sha1=prompt_sha1,
                 prompt_len=prompt_len,
-                error=str(primary_error),
-                exc_info=True,
+                error_type=type(primary_error).__name__,
             )
 
             fallback_error: Exception | None = None
 
             # Try fallback if enabled
-            if allow_fallback and config.MEDIUM_MODEL:
+            if allow_fallback and self.configuration.MEDIUM_MODEL:
                 logger.info(
                     "get_completion: attempting fallback model",
-                    fallback_model=config.MEDIUM_MODEL,
+                    fallback_model=self.configuration.MEDIUM_MODEL,
                     primary_model=model_name,
                     prompt_sha1=prompt_sha1,
                 )
@@ -425,7 +370,7 @@ class CompletionService:
 
                 try:
                     response_data = await self._completion_client.get_completion(
-                        config.MEDIUM_MODEL,
+                        self.configuration.MEDIUM_MODEL,
                         messages,
                         effective_temperature,
                         effective_max_tokens,
@@ -450,123 +395,50 @@ class CompletionService:
 
                     if auto_clean_response:
                         content = self._text_processor.response_cleaner.clean_response(content)
-                        
+
                     if spacy_cleanup:
                         content = self._text_processor.clean_text_with_spacy(content, aggressive=False)
+
+                    if not content.strip():
+                        raise ValueError("Completion contains no answer after cleanup")
 
                     self._stats["completions_successful"] += 1
                     return content, usage_data
 
+                except TimeoutError:
+                    raise
                 except Exception as exc:
                     fallback_error = exc
                     logger.error(
                         "get_completion: fallback model failed",
                         primary_model=model_name,
-                        fallback_model=config.MEDIUM_MODEL,
+                        fallback_model=self.configuration.MEDIUM_MODEL,
                         prompt_sha1=prompt_sha1,
                         prompt_len=prompt_len,
-                        error=str(exc),
-                        exc_info=True,
+                        error_type=type(exc).__name__,
                     )
 
             self._stats["completions_failed"] += 1
 
             error_details = create_error_context(
                 primary_model=model_name,
-                fallback_model=config.MEDIUM_MODEL if allow_fallback else None,
+                fallback_model=self.configuration.MEDIUM_MODEL if allow_fallback else None,
                 allow_fallback=allow_fallback,
                 prompt_sha1=prompt_sha1,
                 prompt_len=prompt_len,
-                primary_error=str(primary_error),
                 primary_error_type=type(primary_error).__name__,
-                fallback_error=str(fallback_error) if fallback_error else None,
                 fallback_error_type=type(fallback_error).__name__ if fallback_error else None,
             )
 
             if strict:
-                raise LLMServiceError("LLM completion failed", details=error_details) from primary_error
+                raise LLMServiceError("LLM completion failed", details=error_details) from None
 
             # Compatibility: explicit non-strict mode preserves legacy sentinel return.
             return "", None
 
-    # Streaming completion path removed to simplify the API.
-
     def _extract_completion_content(self, response_data: dict[str, Any]) -> str:
-        """Extract completion text from a provider response.
-
-        Returns:
-            Extracted text, or an empty string when no usable content is present.
-
-        Notes:
-            Providers sometimes return structured content as a list of parts. This method
-            accepts common variants used by OpenAI-compatible APIs.
-        """
-
-        def _extract_text_from_content(content_value: Any) -> str | None:
-            if isinstance(content_value, str):
-                return content_value if content_value.strip() else None
-
-            if isinstance(content_value, list):
-                text_parts: list[str] = []
-                for item in content_value:
-                    if isinstance(item, str):
-                        if item:
-                            text_parts.append(item)
-                        continue
-
-                    if not isinstance(item, dict):
-                        continue
-
-                    item_type = item.get("type")
-                    if isinstance(item_type, str) and item_type != "text":
-                        continue
-
-                    text_field = item.get("text")
-                    if isinstance(text_field, str):
-                        if text_field:
-                            text_parts.append(text_field)
-                        continue
-
-                    if isinstance(text_field, dict):
-                        nested_value = text_field.get("value")
-                        if isinstance(nested_value, str) and nested_value:
-                            text_parts.append(nested_value)
-                        continue
-
-                combined_text = "".join(text_parts)
-                return combined_text if combined_text.strip() else None
-
-            return None
-
-        # Prefer the standard OpenAI schema first
-        try:
-            if response_data.get("choices") and len(response_data["choices"]) > 0:
-                choice0 = response_data["choices"][0]
-                message = choice0.get("message") or {}
-
-                # 1) Standard content (string or list-of-parts)
-                content_text = _extract_text_from_content(message.get("content"))
-                if content_text is not None:
-                    return content_text
-
-                # 2) Occasionally providers place content directly under the choice
-                direct_choice_content_text = _extract_text_from_content(choice0.get("content"))
-                if direct_choice_content_text is not None:
-                    logger.warning("LLM response missing message.content; using choice['content'] fallback")
-                    return direct_choice_content_text
-
-                # 3) Last resorts: top-level convenience fields sometimes appear
-                for key in ("output_text", "text", "response", "content"):
-                    top_text = _extract_text_from_content(response_data.get(key))
-                    if top_text is not None:
-                        logger.warning(f"LLM response using top-level '{key}' fallback for content")
-                        return top_text
-
-        except Exception as e:
-            logger.error(f"Completion content extraction failed: {e}", exc_info=True)
-
-        logger.error(f"Invalid response structure - missing choices/content: {response_data}")
-        return ""
+        """Extract text using the configured provider contract."""
+        return completion_content(response_data, self.configuration)
 
     def get_statistics(self) -> dict[str, Any]:
         """Get completion service statistics."""
@@ -587,6 +459,7 @@ class RefactoredLLMService:
         completion_service: CompletionService,
         embedding_service: EmbeddingService,
         text_processor: TextProcessingService,
+        http_client: "HTTPClientService | None" = None,
     ):
         """Initialize the service with explicit dependencies.
 
@@ -594,12 +467,20 @@ class RefactoredLLMService:
             completion_service: Completion provider wrapper.
             embedding_service: Embedding provider wrapper.
             text_processor: Text cleanup and tokenization utilities.
+            http_client: Underlying HTTP client for lifecycle management.
         """
         self._completion_service = completion_service
+        self.configuration = completion_service.configuration
         self._embedding_service = embedding_service
         self._text_processor = text_processor
+        self._http_client = http_client
 
         logger.info("RefactoredLLMService initialized with separated components")
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client and release connection resources."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
 
     async def async_call_llm(
         self,
@@ -655,6 +536,7 @@ class RefactoredLLMService:
             **kwargs,
         )
 
+    @bounded_request
     async def async_call_llm_json_object(
         self,
         model_name: str,
@@ -666,7 +548,8 @@ class RefactoredLLMService:
         *,
         system_prompt: str | None = None,
         strict: bool = True,
-        max_attempts: int = 2,
+        max_attempts: int | None = None,
+        reject_duplicate_keys: bool = False,
         **kwargs: Any,
     ) -> tuple[dict[str, Any], dict[str, int] | None]:
         """Call the LLM and parse the response as a JSON object.
@@ -681,6 +564,7 @@ class RefactoredLLMService:
             system_prompt: Optional system prompt injected as a system message.
             strict: Whether to raise a typed exception on completion failure.
             max_attempts: Maximum number of attempts to obtain valid JSON.
+            reject_duplicate_keys: Reject ambiguous object keys before application admission.
             **kwargs: Provider-specific completion parameters forwarded to the HTTP client.
 
         Returns:
@@ -691,7 +575,8 @@ class RefactoredLLMService:
                 object after all attempts.
             LLMServiceError: When `strict=True` and the underlying completion call fails.
         """
-        if max_attempts < 1:
+        max_attempts = self.configuration.JSON_PARSE_RETRY_ATTEMPTS if max_attempts is None else max_attempts
+        if type(max_attempts) is not int or max_attempts < 1:
             raise ValueError("max_attempts must be at least 1")
 
         last_decode_error: json.JSONDecodeError | None = None
@@ -710,7 +595,7 @@ class RefactoredLLMService:
             )
 
             try:
-                data = json.loads(text)
+                data = json.loads(text, object_pairs_hook=_unique_json_pairs if reject_duplicate_keys else None)
             except json.JSONDecodeError as decode_error:
                 last_decode_error = decode_error
 
@@ -760,6 +645,7 @@ class RefactoredLLMService:
 
         raise ValueError("LLM returned invalid JSON")
 
+    @bounded_request
     async def async_call_llm_json_array(
         self,
         model_name: str,
@@ -771,7 +657,7 @@ class RefactoredLLMService:
         *,
         system_prompt: str | None = None,
         strict: bool = True,
-        max_attempts: int = 2,
+        max_attempts: int | None = None,
         **kwargs: Any,
     ) -> tuple[list[Any], dict[str, int] | None]:
         """Call the LLM and parse the response as a JSON array.
@@ -796,7 +682,8 @@ class RefactoredLLMService:
                 array after all attempts.
             LLMServiceError: When `strict=True` and the underlying completion call fails.
         """
-        if max_attempts < 1:
+        max_attempts = self.configuration.JSON_PARSE_RETRY_ATTEMPTS if max_attempts is None else max_attempts
+        if type(max_attempts) is not int or max_attempts < 1:
             raise ValueError("max_attempts must be at least 1")
 
         last_decode_error: json.JSONDecodeError | None = None
@@ -873,17 +760,16 @@ class RefactoredLLMService:
 
 
 # Direct instantiation functions for simplified API
-def create_llm_service() -> RefactoredLLMService:
+def create_llm_service(http_client: HTTPClientService | None = None, *, configuration: EffectiveSettings | None = None) -> RefactoredLLMService:
     """Construct a new LLM service instance with direct dependency injection."""
-    http_client = HTTPClientService()
+    if http_client is None:
+        http_client = HTTPClientService(configuration=configuration)
+    elif configuration is not None and http_client.configuration is not configuration:
+        raise ValueError("HTTP and LLM services must share one effective configuration")
     embedding_client = EmbeddingHTTPClient(http_client)
     completion_client = CompletionHTTPClient(http_client)
     text_processor = TextProcessingService()
 
-    embedding_service = EmbeddingService(embedding_client)
-    completion_service = CompletionService(completion_client, text_processor)
-    return RefactoredLLMService(completion_service, embedding_service, text_processor)
-
-
-# Module-level service instance
-llm_service = create_llm_service()
+    embedding_service = EmbeddingService(embedding_client, configuration=http_client.configuration)
+    completion_service = CompletionService(completion_client, text_processor, configuration=http_client.configuration)
+    return RefactoredLLMService(completion_service, embedding_service, text_processor, http_client)

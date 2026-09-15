@@ -1,5 +1,7 @@
 # tests/test_langgraph/test_commit_init_node.py
 import json
+from collections.abc import Iterator
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,11 +14,14 @@ from core.langgraph.initialization.commit_init_node import (
     _parse_world_items_extraction,
     commit_initialization_to_graph,
 )
-from core.langgraph.state import create_initial_state
+from core.langgraph.state import NarrativeState, create_initial_state
+from tests.fakes.service_context import patch_service
+
+pytestmark = pytest.mark.usefixtures("offline_commit_providers")
 
 
 @pytest.fixture
-def base_state():
+def base_state() -> NarrativeState:
     """Create a base state for testing."""
     return create_initial_state(
         project_id="test-project",
@@ -34,7 +39,7 @@ def base_state():
 
 
 @pytest.fixture
-def mock_content_manager():
+def mock_content_manager() -> Iterator[MagicMock]:
     """Create a mock ContentManager."""
     with patch("core.langgraph.initialization.commit_init_node.ContentManager") as mock:
         mock.return_value = MagicMock()
@@ -42,7 +47,7 @@ def mock_content_manager():
 
 
 @pytest.fixture
-def mock_get_functions():
+def mock_get_functions() -> Iterator[dict[str, MagicMock]]:
     """Mock the content getter functions."""
     with patch("core.langgraph.initialization.commit_init_node.get_character_sheets") as mock_chars, patch("core.langgraph.initialization.commit_init_node.get_global_outline") as mock_global:
         mock_chars.return_value = {
@@ -84,17 +89,17 @@ def mock_get_functions():
 
 
 @pytest.fixture
-def mock_neo4j_manager():
+def mock_neo4j_manager() -> Iterator[MagicMock]:
     """Mock the Neo4j manager."""
-    with patch("core.langgraph.initialization.commit_init_node.neo4j_manager") as mock:
+    with patch_service('database') as mock:
         mock.execute_cypher_batch = AsyncMock()
         yield mock
 
 
 @pytest.fixture
-def mock_llm_service():
+def mock_llm_service() -> Iterator[MagicMock]:
     """Create a mock LLM service."""
-    with patch("core.langgraph.initialization.commit_init_node.llm_service") as mock:
+    with patch_service('language_model') as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
                 '{"traits":["brave","loyal","strong"],"status":"Active","motivations":"Protect the innocent.","background":"Trained as a knight from childhood."}',
@@ -105,165 +110,75 @@ def mock_llm_service():
 
 
 @pytest.mark.asyncio
-async def test_commit_initialization_to_graph_success(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_neo4j_manager,
-    mock_llm_service,
-):
-    """Verify successful commit of initialization data."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        return_value=(
-            '[{"name":"Royal Castle","category":"location","description":"The seat of power."}]',
-            {"prompt_tokens": 100, "completion_tokens": 50},
-        )
-    )
+async def test_commit_initialization_to_graph_success(tmp_path: Path) -> None:
+    from core.langgraph.initialization.staged_import import InitializationImport
+    from tests.test_staged_initialization import example_state, with_catalog
 
-    state = {**base_state}
-
-    with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world:
-        mock_clear_chars.return_value = {
-            "get_character_profile_by_name": True,
-            "get_character_profile_by_id": True,
-        }
-        mock_clear_world.return_value = {
-            "get_world_item_by_id": True,
-        }
-
+    state = with_catalog(example_state(tmp_path))
+    with patch_service('language_model') as provider, patch("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False), patch("data_access.cache_coordinator.clear_character_read_caches") as clear_characters, patch("data_access.cache_coordinator.clear_world_read_caches") as clear_world:
+        provider.async_call_llm = AsyncMock(return_value=("[]", {}))
         result = await commit_initialization_to_graph(state)
-
-    assert result["initialization_step"] == "committed_to_graph"
+    assert result["initialization_step"] == "initialization_prepared"
     assert result["current_node"] == "commit_initialization"
     assert result["last_error"] is None
-    assert "active_characters" in result
-    assert len(result["active_characters"]) <= 5
-    assert mock_neo4j_manager.execute_cypher_batch.called
-
-    # P0-1: write path must invalidate read caches so downstream reads aren't stale.
-    assert mock_clear_chars.called
-    assert mock_clear_world.called
+    assert InitializationImport(str(tmp_path)).load().identity == result["initialization_id"]
+    clear_characters.assert_not_called()
+    clear_world.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_commit_initialization_no_writes_does_not_invalidate_caches(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_neo4j_manager,
-):
-    """If nothing is written to Neo4j, we shouldn't invalidate read caches."""
-    mock_get_functions["chars"].return_value = {}
-    mock_get_functions["global"].return_value = None
-
-    state = {**base_state}
-
-    with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world:
-        result = await commit_initialization_to_graph(state)
-
-    assert result["initialization_step"] == "committed_to_graph"
-    assert result["current_node"] == "commit_initialization"
-    assert result["last_error"] is None
-
-    assert not mock_neo4j_manager.execute_cypher_batch.called
-    assert not mock_clear_chars.called
-    assert not mock_clear_world.called
-
-
-@pytest.mark.asyncio
-async def test_commit_initialization_no_characters(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_neo4j_manager,
-):
-    """Verify handling when no character sheets exist."""
-    mock_get_functions["chars"].return_value = {}
-
-    state = {**base_state}
-
-    result = await commit_initialization_to_graph(state)
-
-    assert result["initialization_step"] == "committed_to_graph"
-    assert result["current_node"] == "commit_initialization"
-
-
-@pytest.mark.asyncio
-async def test_commit_initialization_no_global_outline(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_neo4j_manager,
-):
-    """Verify handling when no global outline exists."""
-    mock_get_functions["global"].return_value = None
-
-    state = {**base_state}
-
-    result = await commit_initialization_to_graph(state)
-
-    assert result["initialization_step"] == "committed_to_graph"
-    assert result["current_node"] == "commit_initialization"
-
-
-@pytest.mark.asyncio
-async def test_commit_initialization_batch_execution_failure(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_neo4j_manager,
-    mock_llm_service,
-):
-    """Verify handling when batch execution fails."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        return_value=(
-            '[{"name":"Royal Castle","category":"location","description":"The seat of power."}]',
-            {"prompt_tokens": 100, "completion_tokens": 50},
-        )
-    )
-    mock_neo4j_manager.execute_cypher_batch = AsyncMock(side_effect=Exception("Batch execution failed"))
-
-    state = {**base_state}
-
-    result = await commit_initialization_to_graph(state)
-
+async def test_commit_initialization_no_writes_does_not_invalidate_caches(tmp_path: Path) -> None:
+    with patch("data_access.cache_coordinator.clear_character_read_caches") as clear_characters, patch("data_access.cache_coordinator.clear_world_read_caches") as clear_world:
+        result = await commit_initialization_to_graph({"project_dir": str(tmp_path)})
     assert result["initialization_step"] == "commit_failed"
-    assert "Failed to commit initialization data" in result["last_error"]
+    assert result["current_node"] == "commit_initialization"
+    assert result["has_fatal_error"] is True
+    clear_characters.assert_not_called()
+    clear_world.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("artifact", ["character_sheets", "global_outline"])
+async def test_missing_required_initialization_source(tmp_path: Path, artifact: str) -> None:
+    from tests.test_staged_initialization import example_state
+
+    state = example_state(tmp_path)
+    if artifact == "character_sheets":
+        state.pop("character_sheets_ref")
+    else:
+        assert artifact == "global_outline"
+        state.pop("global_outline_ref")
+    with patch_service('language_model') as provider:
+        provider.async_call_llm = AsyncMock(side_effect=AssertionError("Admission must precede provider calls"))
+        result = await commit_initialization_to_graph(state)
+    assert result["initialization_step"] == "commit_failed"
+    assert result["current_node"] == "commit_initialization"
+    assert result["has_fatal_error"] is True
+    assert result["last_error"] == f"Initialization admission failed: Initialization requires selected {artifact}_ref"
+    provider.async_call_llm.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [RuntimeError("Synthetic provider failure"), OSError("Synthetic interrupted producer")])
+async def test_producer_failure_never_runs_graph_batch(tmp_path: Path, failure: Exception) -> None:
+    from core.service_context import get_services
+    from tests.test_staged_initialization import example_state, with_catalog
+
+    state = with_catalog(example_state(tmp_path))
+    with patch_service('language_model') as provider, patch.object(get_services().database, "execute_in_transaction", new_callable=AsyncMock) as writes:
+        provider.async_call_llm = AsyncMock(side_effect=failure)
+        result = await commit_initialization_to_graph(state)
+    assert result["initialization_step"] == "commit_failed"
+    assert result["current_node"] == "commit_initialization"
+    assert result["last_error"] == f"Initialization admission failed: {failure}"
     assert result["has_fatal_error"] is True
     assert result["error_node"] == "commit_initialization"
+    writes.assert_not_awaited()
+    assert not (tmp_path / ".saga/initialization/selected").exists()
 
 
 @pytest.mark.asyncio
-async def test_commit_initialization_exception(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_llm_service,
-):
-    """Verify exception handling during batch execution."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        return_value=(
-            '[{"name":"Royal Castle","category":"location","description":"The seat of power."}]',
-            {"prompt_tokens": 100, "completion_tokens": 50},
-        )
-    )
-
-    with patch("core.langgraph.initialization.commit_init_node.neo4j_manager") as mock_manager:
-        mock_manager.execute_cypher_batch = AsyncMock(side_effect=Exception("Database error"))
-
-        state = {**base_state}
-
-        result = await commit_initialization_to_graph(state)
-
-        assert result["initialization_step"] == "commit_failed"
-        assert result["current_node"] == "commit_initialization"
-        assert "Failed to commit initialization data" in result["last_error"]
-        assert result["has_fatal_error"] is True
-        assert result["error_node"] == "commit_initialization"
-
-
-@pytest.mark.asyncio
-async def test_parse_character_sheets_to_profiles_with_traits():
+async def test_parse_character_sheets_to_profiles_with_traits() -> None:
     """Verify parsing character sheets with pre-parsed traits."""
     character_sheets = {
         "Hero": {
@@ -283,7 +198,7 @@ async def test_parse_character_sheets_to_profiles_with_traits():
 
     assert len(profiles) == 1
     assert profiles[0].name == "Hero"
-    assert profiles[0].description == "A brave warrior"
+    assert profiles[0].personality_description == "A brave warrior"
     assert "brave" in profiles[0].traits
     assert profiles[0].status == "Active"
     assert profiles[0].created_chapter == 0
@@ -291,7 +206,7 @@ async def test_parse_character_sheets_to_profiles_with_traits():
 
 
 @pytest.mark.asyncio
-async def test_parse_character_sheets_to_profiles_filters_invalid_traits():
+async def test_parse_character_sheets_to_profiles_filters_invalid_traits() -> None:
     """Verify filtering of invalid traits."""
     character_sheets = {
         "Hero": {
@@ -318,8 +233,8 @@ async def test_parse_character_sheets_to_profiles_filters_invalid_traits():
 
 @pytest.mark.asyncio
 async def test_parse_character_sheets_to_profiles_no_traits_uses_llm(
-    mock_llm_service,
-):
+    mock_llm_service: MagicMock,
+) -> None:
     """Verify LLM extraction when no pre-parsed traits exist."""
     character_sheets = {
         "Hero": {
@@ -345,7 +260,7 @@ async def test_parse_character_sheets_to_profiles_no_traits_uses_llm(
 
 
 @pytest.mark.asyncio
-async def test_extract_structured_character_data_success(mock_llm_service):
+async def test_extract_structured_character_data_success(mock_llm_service: MagicMock) -> None:
     """Verify successful extraction of structured character data."""
     result = await _extract_structured_character_data("Hero", "A brave knight who protects the realm")
 
@@ -357,7 +272,7 @@ async def test_extract_structured_character_data_success(mock_llm_service):
 
 
 @pytest.mark.asyncio
-async def test_extract_structured_character_data_exception(mock_llm_service):
+async def test_extract_structured_character_data_exception(mock_llm_service: MagicMock) -> None:
     """LLM failures should propagate (init is hard-fail on contract violations)."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
@@ -365,7 +280,7 @@ async def test_extract_structured_character_data_exception(mock_llm_service):
         await _extract_structured_character_data("Hero", "A brave knight")
 
 
-def test_parse_character_extraction_response():
+def test_parse_character_extraction_response() -> None:
     """Verify parsing of character extraction response (strict JSON)."""
     response = '{"traits":["brave","loyal","determined","strong"],"status":"Active","motivations":"Protect the innocent and uphold justice.","background":"Trained as a knight from childhood."}'
 
@@ -378,7 +293,7 @@ def test_parse_character_extraction_response():
     assert "Trained as a knight" in result["background"]
 
 
-def test_parse_character_extraction_response_rejects_more_than_seven_traits():
+def test_parse_character_extraction_response_rejects_more_than_seven_traits() -> None:
     """Trait list must be 3-7 items (no silent truncation)."""
     response = '{"traits":["t1","t2","t3","t4","t5","t6","t7","t8"],"status":"Active","motivations":"Test","background":"Test"}'
 
@@ -386,7 +301,7 @@ def test_parse_character_extraction_response_rejects_more_than_seven_traits():
         _parse_character_extraction_response(response)
 
 
-def test_parse_character_extraction_response_empty():
+def test_parse_character_extraction_response_empty() -> None:
     """Empty output is invalid JSON."""
     response = ""
 
@@ -395,7 +310,7 @@ def test_parse_character_extraction_response_empty():
 
 
 @pytest.mark.asyncio
-async def test_extract_world_items_from_outline_success(mock_llm_service):
+async def test_extract_world_items_from_outline_success(mock_llm_service: MagicMock) -> None:
     """Verify successful extraction of world items."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
@@ -415,7 +330,7 @@ async def test_extract_world_items_from_outline_success(mock_llm_service):
 
 
 @pytest.mark.asyncio
-async def test_extract_world_items_from_outline_empty():
+async def test_extract_world_items_from_outline_empty() -> None:
     """Verify handling when outline text is empty."""
     global_outline = {"raw_text": ""}
 
@@ -425,7 +340,7 @@ async def test_extract_world_items_from_outline_empty():
 
 
 @pytest.mark.asyncio
-async def test_extract_world_items_from_outline_exception(mock_llm_service):
+async def test_extract_world_items_from_outline_exception(mock_llm_service: MagicMock) -> None:
     """LLM failures should propagate (init is hard-fail on contract violations)."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
@@ -435,7 +350,7 @@ async def test_extract_world_items_from_outline_exception(mock_llm_service):
         await _extract_world_items_from_outline(global_outline, "Test setting")
 
 
-def test_parse_world_items_extraction():
+def test_parse_world_items_extraction() -> None:
     """Verify parsing of world items from LLM response (strict JSON)."""
     response = (
         '[{"name":"Royal Castle","category":"location","description":"The seat of power"},'
@@ -443,8 +358,8 @@ def test_parse_world_items_extraction():
         '{"name":"Dark Forest","category":"location","description":"A dangerous place"}]'
     )
 
-    with patch("processing.entity_deduplication.generate_entity_id") as mock_id:
-        mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
+    with patch("utils.text_processing.generate_entity_id") as mock_id:
+        mock_id.side_effect = lambda name, cat: f"{cat}_{name}"
 
         result = _parse_world_items_extraction(response)
 
@@ -455,7 +370,7 @@ def test_parse_world_items_extraction():
         assert result[0].is_provisional is False
 
 
-def test_parse_world_items_extraction_rejects_invalid_category():
+def test_parse_world_items_extraction_rejects_invalid_category() -> None:
     """Category must be constrained to allowed enum values."""
     response = '[{"name":"Valid Item","category":"invalid","description":"Description"}]'
 
@@ -463,7 +378,7 @@ def test_parse_world_items_extraction_rejects_invalid_category():
         _parse_world_items_extraction(response)
 
 
-def test_parse_world_items_extraction_empty():
+def test_parse_world_items_extraction_empty() -> None:
     """Empty output is invalid JSON."""
     response = ""
 
@@ -471,7 +386,7 @@ def test_parse_world_items_extraction_empty():
         _parse_world_items_extraction(response)
 
 
-def test_parse_world_items_extraction_allows_empty_list():
+def test_parse_world_items_extraction_allows_empty_list() -> None:
     """An empty JSON list is valid and should produce no items."""
     response = "[]"
 
@@ -481,7 +396,7 @@ def test_parse_world_items_extraction_allows_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_parse_character_sheets_multiple_characters():
+async def test_parse_character_sheets_multiple_characters() -> None:
     """Verify parsing multiple character sheets."""
     character_sheets = {
         f"Character{i}": {
@@ -502,35 +417,3 @@ async def test_parse_character_sheets_multiple_characters():
 
     assert len(profiles) == 5
     assert sum(1 for p in profiles if p.updates.get("is_protagonist")) == 1
-
-
-@pytest.mark.asyncio
-async def test_commit_initialization_limits_active_characters(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_knowledge_graph_service,
-):
-    """Verify active_characters is limited to top 5."""
-    character_sheets = {
-        f"Character{i}": {
-            "description": f"Description {i}",
-            "traits": ["trait"],
-            "status": "Active",
-            "motivations": "",
-            "background": "",
-            "skills": [],
-            "relationships": {},
-            "is_protagonist": False,
-            "internal_conflict": "",
-        }
-        for i in range(10)
-    }
-
-    mock_get_functions["chars"].return_value = character_sheets
-
-    state = {**base_state}
-
-    result = await commit_initialization_to_graph(state)
-
-    assert len(result["active_characters"]) <= 5

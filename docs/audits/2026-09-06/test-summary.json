@@ -1,0 +1,39 @@
+{
+  "suites": [
+    {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "43",
+      "skipped": "0",
+      "tests": "1682",
+      "time": "46.705",
+      "timestamp": "2026-09-06T22:23:35.040186-07:00",
+      "hostname": "omega"
+    }
+  ],
+  "enumerated_cases": 1682,
+  "failure_count": 43,
+  "failure_modules": {
+    "tests.core.langgraph.nodes.test_commit_node.TestCommitNodeEntityPersistence": 3,
+    "tests.core.langgraph.nodes.test_commit_node.TestCommitNodeRelationshipPersistence": 2,
+    "tests.core.langgraph.nodes.test_commit_node.TestCommitNodeChapterPersistence": 2,
+    "tests.core.langgraph.nodes.test_commit_node.TestCommitNodeErrorHandling": 2,
+    "tests.core.langgraph.nodes.test_commit_node.TestCommitNodeStateManagement": 2,
+    "tests.core.langgraph.nodes.test_commit_node_simple.TestCommitNodeIntegration": 6,
+    "tests.core.langgraph.nodes.test_context_retrieval_node.TestSmartTruncateScene": 1,
+    "tests.core.langgraph.subgraphs.test_generation_subgraph": 1,
+    "tests.core.langgraph.subgraphs.test_generation_subgraph_unittest.TestGenerationSubgraph": 1,
+    "tests.core.test_relationship_normalization": 1,
+    "tests.test_act_outline_parser": 2,
+    "tests.test_full_pipeline_integration.TestFullPipelineIntegration": 1,
+    "tests.test_langgraph.test_commit_init_node": 3,
+    "tests.test_langgraph.test_commit_node.TestCommitToGraph": 7,
+    "tests.test_langgraph.test_commit_node.TestBuildRelationshipStatements": 1,
+    "tests.test_langgraph.test_commit_node_idempotency.TestCommitNodeIdempotency": 1,
+    "tests.test_langgraph.test_content_ref_integrity_and_versioning": 1,
+    "tests.test_langgraph.test_narrative_enrichment_node.TestNarrativeEnrichmentNode": 1,
+    "tests.test_langgraph_orchestrator": 1,
+    "tests.test_spacy_service": 3,
+    "tests.test_text_processing_offsets": 1
+  }
+}

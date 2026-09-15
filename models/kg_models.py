@@ -16,7 +16,9 @@ Notes:
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Mapping
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -29,6 +31,22 @@ if TYPE_CHECKING:
     import neo4j
 
 
+def project_relationships_by_target(rels_by_target: Mapping[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """Use the single-profile contract: one dict or a stable list per exact target."""
+    relationships: dict[str, Any] = {}
+    for target_name in sorted(rels_by_target):
+        rel_list_sorted = sorted(
+            deepcopy(rels_by_target[target_name]),
+            key=lambda relationship: (
+                str(relationship.get("type", "")),
+                str(relationship.get("description", "")),
+                str(relationship.get("chapter_added", "")),
+            ),
+        )
+        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
+    return relationships
+
+
 class CharacterProfile(BaseModel):
     """Represent a character node and its narrative-relevant attributes.
 
@@ -38,17 +56,43 @@ class CharacterProfile(BaseModel):
         - Unknown/extra fields from upstream sources are stored in `updates` by
           [`from_dict()`](models/kg_models.py:32) and flattened by [`to_dict()`](models/kg_models.py:44).
         - `relationships` stores relationship payloads keyed by target character name.
+        - Motivations, background, skills, internal conflict, protagonist status and
+          physical description are graph-backed fields. The frozen initialization
+          snapshot/YAML retain their original author values; enrichment changes the
+          live graph, not those immutable projections. `updates` is file/prompt-only
+          overflow, not an arbitrary graph-property write channel.
     """
 
     name: str
     type: str = "Character"
-    description: str = ""
+    # Phase 1: Rename description to personality_description
+    personality_description: str = ""
     traits: list[str] = Field(default_factory=list)
     relationships: dict[str, Any] = Field(default_factory=dict)
     status: str = "Unknown"
-    updates: dict[str, Any] = Field(default_factory=dict)
+    # Phase 1: Add physical_description
+    physical_description: str | None = None
+    motivations: str = ""
+    background: str = ""
+    skills: list[str] = Field(default_factory=list)
+    internal_conflict: str = ""
+    is_protagonist: bool = False
+    # Phase 1: Add arc properties (Stage 2)
+    arc_start: str | None = None
+    arc_end: str | None = None
+    arc_key_moments: list[str] = Field(default_factory=list)
+    # Phase 1: Add timestamps
+    created_ts: int | None = None  # Neo4j timestamp
+    updated_ts: int | None = None  # Neo4j timestamp
+    # Phase 1: Keep last_updated for backward compatibility
+    last_updated: int | None = None  # Deprecated, use updated_ts
     created_chapter: int = 0
     is_provisional: bool = False
+    # Phase 1: Add id property for stable identifiers
+    id: str = ""
+    # Phase 1: Add chapter_last_updated for query patterns
+    chapter_last_updated: int | None = None
+    updates: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> CharacterProfile:
@@ -67,6 +111,11 @@ class CharacterProfile(BaseModel):
 
         known_fields = cls.model_fields.keys()
         profile_data = {k: v for k, v in data.items() if k in known_fields}
+
+        # Phase 1: Handle backward compatibility for description -> personality_description
+        if "description" in data and "personality_description" not in data:
+            profile_data["personality_description"] = data["description"]
+
         updates_data = {k: v for k, v in data.items() if k not in known_fields}
         if "updates" in profile_data:
             updates_data.update(profile_data["updates"])
@@ -103,16 +152,15 @@ class CharacterProfile(BaseModel):
         """
         node = record["c"]  # Assuming 'c' is the character node alias
 
-        # Extract relationships if available
-        relationships = {}
-        rels = record.get("relationships")
-        if rels:
-            for rel in rels:
-                if rel and rel.get("target_name"):
-                    relationships[rel["target_name"]] = {
-                        "type": rel.get("type", ""),
-                        "description": rel.get("description", ""),
-                    }
+        rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for rel in record.get("relationships") or []:
+            if rel and rel.get("target_name"):
+                rels_by_target[rel["target_name"]].append({
+                    **{key: value for key, value in rel.items() if key != "target_name"},
+                    "type": rel.get("type", ""),
+                    "description": rel.get("description", ""),
+                })
+        relationships = project_relationships_by_target(rels_by_target)
 
         # Extract traits from node property (new format) or from record field (old format for backward compatibility)
         node_dict = node if isinstance(node, dict) else dict(node)
@@ -122,16 +170,16 @@ class CharacterProfile(BaseModel):
         # Filter out None/empty values
         traits = [t for t in traits if t]
 
-        return cls(
-            name=node_dict.get("name", ""),
-            description=node_dict.get("description", ""),
-            traits=traits,
-            status=node_dict.get("status", "Unknown"),
-            relationships=relationships,
-            created_chapter=node_dict.get("created_chapter", 0),
-            is_provisional=node_dict.get("is_provisional", False),
-            updates={},  # Will be populated as needed
-        )
+        # Phase 1: Handle backward compatibility for description -> personality_description
+        personality_description = node_dict.get("personality_description", node_dict.get("description", ""))
+
+        return cls(**{
+            **{key: value for key, value in node_dict.items() if key in cls.model_fields},
+            "name": node_dict.get("name", ""),
+            "personality_description": personality_description,
+            "traits": traits,
+            "relationships": relationships,
+        })
 
     @classmethod
     def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
@@ -158,17 +206,7 @@ class CharacterProfile(BaseModel):
         Returns:
             A populated character profile.
         """
-        node_dict = node if isinstance(node, dict) else dict(node)
-        return cls(
-            name=node_dict.get("name", ""),
-            description=node_dict.get("description", ""),
-            traits=node_dict.get("traits", []),
-            status=node_dict.get("status", "Unknown"),
-            relationships={},  # Relationships handled separately
-            created_chapter=node_dict.get("created_chapter", 0),
-            is_provisional=node_dict.get("is_provisional", False),
-            updates={},
-        )
+        return cls.from_dict_record({"c": node})
 
     def to_cypher_params(self) -> dict[str, Any]:
         """Build a parameter dictionary for Cypher writes.
@@ -181,7 +219,7 @@ class CharacterProfile(BaseModel):
         """
         return {
             "name": self.name,
-            "description": self.description,
+            "personality_description": self.personality_description,
             "traits": self.traits,
             "status": self.status,
             "created_chapter": self.created_chapter,
@@ -207,6 +245,8 @@ class WorldItem(BaseModel):
     type: str = "Item"
     created_chapter: int = 0
     is_provisional: bool = False
+    created_ts: int | None = None  # Neo4j timestamp
+    updated_ts: int | None = None  # Neo4j timestamp
     description: str = ""
     goals: list[str] = Field(default_factory=list)
     rules: list[str] = Field(default_factory=list)
@@ -252,6 +292,10 @@ class WorldItem(BaseModel):
         # Extract and validate is_provisional
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
 
+        # Extract timestamps
+        created_ts = data.get("created_ts")
+        updated_ts = data.get("updated_ts")
+
         # Extract structured fields
         description = data.get("description", "")
         goals = data.get("goals", [])
@@ -288,6 +332,8 @@ class WorldItem(BaseModel):
             name=name,
             created_chapter=created_chapter,
             is_provisional=is_provisional,
+            created_ts=created_ts,
+            updated_ts=updated_ts,
             description=description,
             goals=goals,
             rules=rules,
@@ -345,6 +391,8 @@ class WorldItem(BaseModel):
             "traits",
             "created_chapter",
             "is_provisional",
+            "created_ts",
+            "updated_ts",
             "chapter_last_updated",
             "last_updated",
         }
@@ -352,16 +400,15 @@ class WorldItem(BaseModel):
         # Extract additional properties using shared utility
         additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
 
-        # Extract relationships if available
-        relationships = {}
-        rels = record.get("relationships")
-        if rels:
-            for rel in rels:
-                if rel and rel.get("target_name"):
-                    relationships[rel["target_name"]] = {
-                        "type": rel.get("type", "RELATED_TO"),
-                        "description": rel.get("description", ""),
-                    }
+        rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for rel in record.get("relationships") or []:
+            if rel and rel.get("target_name"):
+                rels_by_target[rel["target_name"]].append({
+                    **{key: value for key, value in rel.items() if key != "target_name"},
+                    "type": rel.get("type", "RELATED_TO"),
+                    "description": rel.get("description", ""),
+                })
+        relationships = project_relationships_by_target(rels_by_target)
 
         # Extract traits from node property (new format) or from record field (old format for backward compatibility)
         node_dict = node if isinstance(node, dict) else dict(node)
@@ -382,6 +429,8 @@ class WorldItem(BaseModel):
             traits=traits,
             created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
             is_provisional=bool(node_dict.get("is_provisional", False)),
+            created_ts=node_dict.get("created_ts"),
+            updated_ts=node_dict.get("updated_ts"),
             relationships=relationships,
             additional_properties=additional_props,
         )
@@ -424,6 +473,8 @@ class WorldItem(BaseModel):
             "traits",
             "created_chapter",
             "is_provisional",
+            "created_ts",
+            "updated_ts",
             "chapter_last_updated",
             "last_updated",
         }
@@ -443,6 +494,8 @@ class WorldItem(BaseModel):
             traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
             created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
             is_provisional=bool(node_dict.get("is_provisional", False)),
+            created_ts=node_dict.get("created_ts"),
+            updated_ts=node_dict.get("updated_ts"),
             relationships={},  # Relationships handled separately
             additional_properties=additional_props,
         )
@@ -451,11 +504,15 @@ class WorldItem(BaseModel):
         """Build a parameter dictionary for Cypher writes.
 
         This excludes `relationships`, which are handled via separate write paths.
+        `additional_properties` are flattened into dot-notation keys since Neo4j
+        requires primitive property values.
 
         Returns:
             A dictionary suitable for use as a Cypher parameter map.
         """
-        return {
+        from utils.common import flatten_dict
+
+        params: dict[str, Any] = {
             "id": self.id,
             "name": self.name,
             "category": self.category,
@@ -466,16 +523,145 @@ class WorldItem(BaseModel):
             "traits": self.traits,
             "created_chapter": self.created_chapter,
             "is_provisional": self.is_provisional,
-            "additional_props": self.additional_properties,
-            # Note: relationships handled separately
+        }
+        if self.additional_properties:
+            params.update(flatten_dict(self.additional_properties, parent_key="additional_props"))
+        return params
+
+
+class Scene(BaseModel):
+    """Represent a narrative scene within a chapter.
+
+    Notes:
+        - `id` is the stable identifier used for read-by-id operations and upserts.
+        - `chapter_number` and `scene_index` together form a unique identifier for the scene.
+        - `beats` is a list of key moments in the scene (1-3 items typically).
+    """
+
+    id: str
+    chapter_number: int
+    scene_index: int
+    title: str
+    pov_character: str
+    setting: str
+    plot_point: str
+    conflict: str
+    outcome: str
+    beats: list[str] = Field(default_factory=list)
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Scene:
+        """Create a scene from a raw dictionary.
+
+        Args:
+            data: Source mapping containing scene properties.
+
+        Returns:
+            A populated scene instance.
+        """
+        return cls(
+            id=data.get("id", ""),
+            chapter_number=data.get("chapter_number", 0),
+            scene_index=data.get("scene_index", 0),
+            title=data.get("title", ""),
+            pov_character=data.get("pov_character", ""),
+            setting=data.get("setting", ""),
+            plot_point=data.get("plot_point", ""),
+            conflict=data.get("conflict", ""),
+            outcome=data.get("outcome", ""),
+            beats=data.get("beats", []),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the scene to a dictionary.
+
+        Returns:
+            A dictionary suitable for JSON serialization.
+        """
+        return {
+            "id": self.id,
+            "chapter_number": self.chapter_number,
+            "scene_index": self.scene_index,
+            "title": self.title,
+            "pov_character": self.pov_character,
+            "setting": self.setting,
+            "plot_point": self.plot_point,
+            "conflict": self.conflict,
+            "outcome": self.outcome,
+            "beats": self.beats,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
         }
 
 
-from dataclasses import dataclass, field
+class Location(BaseModel):
+    """Represent a physical location where events occur.
+
+    Notes:
+        - `id` is the stable identifier used for read-by-id operations and upserts.
+        - `name` is the location name (added in Stage 3).
+        - `category` is always "Location" (constant).
+    """
+
+    id: str
+    name: str | None = None
+    description: str
+    category: str = "Location"
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Location:
+        """Create a location from a raw dictionary.
+
+        Args:
+            data: Source mapping containing location properties.
+
+        Returns:
+            A populated location instance.
+        """
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name"),
+            description=data.get("description", ""),
+            category=data.get("category", "Location"),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the location to a dictionary.
+
+        Returns:
+            A dictionary suitable for JSON serialization.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
 
 
-@dataclass
-class RelationshipUsage:
+class RelationshipUsage(BaseModel):
     """Track narrative usage statistics for a relationship type.
 
     This is used by relationship normalization to keep vocabulary consistent while
@@ -487,19 +673,13 @@ class RelationshipUsage:
         - `embedding` may be populated to support similarity comparisons; it is optional.
     """
 
-    canonical_type: str  # The normalized form (e.g., "WORKS_WITH")
-    first_used_chapter: int  # When first introduced
-    usage_count: int  # How many times used across narrative
-    example_descriptions: list[str] = field(default_factory=list)  # Sample usage contexts
-    embedding: list[float] | None = None  # Cached embedding for fast comparison
-    synonyms: list[str] = field(default_factory=list)  # Variant forms normalized to this
-    last_used_chapter: int = 0  # Most recent usage
-
-    class Config:
-        """Configure dataclass validation behavior."""
-
-        frozen = False
-        validate_assignment = True
+    canonical_type: str
+    first_used_chapter: int
+    usage_count: int
+    example_descriptions: list[str] = Field(default_factory=list)
+    embedding: list[float] | None = None
+    synonyms: list[str] = Field(default_factory=list)
+    last_used_chapter: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert usage tracking to a JSON-serializable dictionary.
@@ -507,39 +687,339 @@ class RelationshipUsage:
         Returns:
             A dictionary with the tracked counters and metadata.
         """
-        return {
-            "canonical_type": self.canonical_type,
-            "first_used_chapter": self.first_used_chapter,
-            "usage_count": self.usage_count,
-            "example_descriptions": self.example_descriptions,
-            "embedding": self.embedding,
-            "synonyms": self.synonyms,
-            "last_used_chapter": self.last_used_chapter,
-        }
+        return self.model_dump()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RelationshipUsage:
         """Create usage tracking from a dictionary.
 
         Args:
-            data: Serialized representation produced by [`to_dict()`](models/kg_models.py:367).
+            data: Serialized representation.
 
         Returns:
             A relationship usage instance.
         """
+        return cls.model_validate(data)
+
+
+class MajorPlotPoint(BaseModel):
+    """Represent a major plot point event in the story.
+
+    This is a Stage 2 entity that represents one of the four key events:
+    - Inciting Incident
+    - Midpoint
+    - Climax
+    - Resolution
+
+    Attributes:
+        id: Stable identifier (generated)
+        name: Event name (one of the four major plot points)
+        description: Event description
+        event_type: Always "MajorPlotPoint"
+        sequence_order: 1-4 (1=inciting, 2=midpoint, 3=climax, 4=resolution)
+        created_chapter: Always 0 (initialization)
+        is_provisional: Always False (canonical entities)
+    """
+
+    id: str
+    name: str
+    description: str
+    type: str = "Event"
+    event_type: str = "MajorPlotPoint"
+    sequence_order: int
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MajorPlotPoint:
+        """Create a MajorPlotPoint from a dictionary.
+
+        Args:
+            data: Dictionary containing plot point data
+
+        Returns:
+            MajorPlotPoint object
+        """
         return cls(
-            canonical_type=data["canonical_type"],
-            first_used_chapter=data["first_used_chapter"],
-            usage_count=data["usage_count"],
-            example_descriptions=data.get("example_descriptions", []),
-            embedding=data.get("embedding"),
-            synonyms=data.get("synonyms", []),
-            last_used_chapter=data.get("last_used_chapter", 0),
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            sequence_order=data.get("sequence_order", 0),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
         )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "event_type": self.event_type,
+            "sequence_order": self.sequence_order,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
+class ActKeyEvent(BaseModel):
+    """Represent an act-level key event in the story.
+
+    This is a Stage 3 entity that represents key events within an act.
+
+    Attributes:
+        id: Stable identifier (generated)
+        name: Event name
+        description: Event description
+        event_type: Always "ActKeyEvent"
+        act_number: Act number (1, 2, or 3 for 3-act structure)
+        sequence_in_act: Position within act (1-5 typically)
+        cause: What triggers this event
+        effect: What results from this event
+        created_chapter: Always 0 (initialization)
+        is_provisional: Always False (canonical entities)
+    """
+
+    id: str
+    name: str
+    description: str
+    type: str = "Event"
+    event_type: str = "ActKeyEvent"
+    act_number: int
+    sequence_in_act: int
+    cause: str
+    effect: str
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ActKeyEvent:
+        """Create an ActKeyEvent from a dictionary.
+
+        Args:
+            data: Dictionary containing act key event data
+
+        Returns:
+            ActKeyEvent object
+        """
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            event_type=data.get("event_type", "ActKeyEvent"),
+            act_number=data.get("act_number", 0),
+            sequence_in_act=data.get("sequence_in_act", 0),
+            cause=data.get("cause", ""),
+            effect=data.get("effect", ""),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "event_type": self.event_type,
+            "act_number": self.act_number,
+            "sequence_in_act": self.sequence_in_act,
+            "cause": self.cause,
+            "effect": self.effect,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
+class Chapter(BaseModel):
+    """Represent a story chapter.
+
+    This is a Stage 4 entity that represents a chapter in the story.
+
+    Attributes:
+        id: Stable identifier (generated)
+        number: Chapter number (1-indexed)
+        title: Chapter title
+        summary: Generated from scene summaries
+        act_number: Act this chapter belongs to (1, 2, or 3)
+        embedding: Vector embedding of chapter content (Stage 5)
+        created_chapter: Same as number (for provenance)
+        is_provisional: Whether created as stub
+        created_ts: Creation timestamp
+        updated_ts: Last update timestamp
+    """
+
+    id: str
+    number: int
+    title: str
+    summary: str = ""
+    act_number: int
+    embedding: list[float] | None = None
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Chapter:
+        """Create a Chapter from a dictionary.
+
+        Args:
+            data: Dictionary containing chapter data
+
+        Returns:
+            Chapter object
+        """
+        return cls(
+            id=data.get("id", ""),
+            number=data.get("number", 0),
+            title=data.get("title", ""),
+            summary=data.get("summary", ""),
+            act_number=data.get("act_number", 0),
+            embedding=data.get("embedding"),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "id": self.id,
+            "number": self.number,
+            "title": self.title,
+            "summary": self.summary,
+            "act_number": self.act_number,
+            "embedding": self.embedding,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
+class SceneEvent(BaseModel):
+    """Represent a scene-level event in the story.
+
+    This is a Stage 4 entity that represents key events within a scene.
+
+    Attributes:
+        id: Stable identifier (generated)
+        name: Event name
+        description: Event description
+        event_type: Always "SceneEvent"
+        chapter_number: Chapter number
+        act_number: Act number
+        scene_index: Scene position in chapter
+        conflict: Tension/obstacle
+        outcome: Resolution
+        pov_character: POV character name
+        created_chapter: Chapter when created
+        is_provisional: Whether created as stub
+        created_ts: Creation timestamp
+        updated_ts: Last update timestamp
+    """
+
+    id: str
+    name: str
+    description: str
+    type: str = "Event"
+    event_type: str = "SceneEvent"
+    chapter_number: int
+    act_number: int
+    scene_index: int
+    conflict: str
+    outcome: str
+    pov_character: str
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SceneEvent:
+        """Create a SceneEvent from a dictionary.
+
+        Args:
+            data: Dictionary containing scene event data
+
+        Returns:
+            SceneEvent object
+        """
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            event_type=data.get("event_type", "SceneEvent"),
+            chapter_number=data.get("chapter_number", 0),
+            act_number=data.get("act_number", 0),
+            scene_index=data.get("scene_index", 0),
+            conflict=data.get("conflict", ""),
+            outcome=data.get("outcome", ""),
+            pov_character=data.get("pov_character", ""),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "event_type": self.event_type,
+            "chapter_number": self.chapter_number,
+            "act_number": self.act_number,
+            "scene_index": self.scene_index,
+            "conflict": self.conflict,
+            "outcome": self.outcome,
+            "pov_character": self.pov_character,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
 
 
 __all__ = [
     "CharacterProfile",
     "WorldItem",
+    "Scene",
+    "Location",
     "RelationshipUsage",
+    "MajorPlotPoint",
+    "ActKeyEvent",
+    "Chapter",
+    "SceneEvent",
 ]

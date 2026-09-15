@@ -1,12 +1,16 @@
 # Project Bootstrapper & Configuration System
 
+The [README](../README.md) is the maintained operational guide. This page explains
+bootstrap metadata only; use the README for setup, project selection, recovery,
+export and verification limits.
+
 SAGA includes a bootstrapping system that allows users to initialize new narrative projects from high-level prompts. This system separates infrastructure configuration (API keys, models) from narrative configuration (genre, theme, setting).
 
 ## Core Concepts
 
 ### 1. Narrative Configuration
 Each project is defined by a `NarrativeProjectConfig` schema (`core/project_config.py`), which includes:
-- **Title**: Sanitized project name used for directory creation.
+- **Title**: Model-proposed title, normalized by ProjectManager for directory creation.
 - **Genre**: Specific subgenre (e.g., "Hard Sci-Fi", "Cozy Mystery").
 - **Theme**: Central thematic question or premise.
 - **Setting**: Detailed world description.
@@ -28,12 +32,12 @@ The `ProjectManager` (`core/project_manager.py`) handles the lifecycle of projec
 - **Discovery**: Finds projects in the `projects/` directory.
 - **Sanitization**: Converts titles to safe directory names (e.g., "My Story" -> `projects/my_story`).
 - **Persistence**: Saves and loads `config.json` and `config.candidate.json`.
-- **Promotion**: Renames `config.candidate.json` to `config.json` when the user approves a candidate.
-- **Resume**: Finds the most recent active project to resume generation.
+- **Promotion**: Validates and publishes a selected `config.candidate.json` as `config.json`, without replacing an existing active config.
+- **Resume**: Requires the explicit project path; directory modification times do not select a story.
 
 ## CLI Workflow
 
-The `main.py` entry point supports three primary modes:
+The writer workflow has these explicit steps:
 
 ### 1. Bootstrap Mode (`bootstrap`)
 Generates a candidate configuration for review.
@@ -43,19 +47,21 @@ python main.py bootstrap "A western about a robot sheriff"
 ```
 
 **Outcome**:
-- Creates `projects/a_western_about_a_robot_sheriff/config.candidate.json`.
+- Creates `projects/{normalized_generated_title}/config.candidate.json`.
+- Use the actual path printed by bootstrap; the model's title need not equal the prompt.
+- Existing normalized title directories are rejected without overwrite.
 - Users can inspect and edit this JSON file before proceeding.
 
 ### 2. Generate Mode (`generate`)
 Promotes a candidate to an active project and starts generation.
 
 ```bash
-python main.py generate
+python main.py generate --project-dir "projects/{normalized_generated_title}" --from-candidate
 ```
 
 **Outcome**:
-- Finds the most recent `config.candidate.json`.
-- Renames it to `config.json`.
+- Validates only the selected project's candidate and refuses an existing `config.json`.
+- Publishes `config.json` without overwriting another config.
 - Initializes the `LangGraphOrchestrator` with this configuration.
 - Starts the narrative generation loop.
 
@@ -63,22 +69,22 @@ python main.py generate
 Combines bootstrap and generate in one step (no manual review).
 
 ```bash
-python main.py "A pirate adventure in space"
+python main.py quick "A pirate adventure in space"
 ```
 
 **Outcome**:
 - Generates configuration and immediately starts generation.
-- Useful for automated testing or rapid prototyping.
+- Requires configured model and database services; it is not an offline smoke command.
 
-### 4. Resume Mode (Default)
-Resumes the most recently modified active project.
+### 4. Explicit continuation
+Resume the same selected project without candidate promotion.
 
 ```bash
-python main.py
+python main.py generate --project-dir "projects/{normalized_generated_title}"
 ```
 
 **Outcome**:
-- Finds the most recent project with incomplete chapters.
+- Selects only the requested project.
 - Loads its `config.json`.
 - Resumes the LangGraph workflow from the last checkpoint.
 
@@ -95,7 +101,7 @@ Handles environment-specific settings via `.env`:
 Handles story-specific settings:
 - Plot details (theme, setting).
 - Structural goals (total chapters).
-- Immutable once generation starts (mostly).
+- Create-only publication; do not rewrite saved checkpoints to accommodate configuration edits.
 
 ## Directory Structure
 
@@ -107,5 +113,10 @@ projects/
     ├── checkpoints/         # SQLite checkpoints for LangGraph
     │   └── saga.db
     └── chapters/            # Generated artifacts
-        ├── chapter_01.md
-        └── ...
+        ├── chapter_001.accepted.json
+        └── chapter_001.md
+```
+
+The Markdown chapter is a compatibility mirror, not export authority. Accepted
+receipts select retained checksum-valid manuscripts under `chapters/.manuscripts/`.
+See the [current output contract](../README.md#outputs) for the full layout.

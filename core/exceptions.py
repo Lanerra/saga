@@ -60,6 +60,10 @@ class LLMServiceError(SAGACoreError):
     """Errors related to LLM service operations."""
 
 
+class WorkflowExecutionError(SAGACoreError):
+    """Signal unsuccessful workflow completion with retained state diagnostics."""
+
+
 class CheckpointResumeConflictError(SAGACoreError):
     """Raised when checkpointed state conflicts with persisted artifacts during resume.
 

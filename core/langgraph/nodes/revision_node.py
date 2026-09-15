@@ -13,7 +13,7 @@ from __future__ import annotations
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
+from core.langgraph.chapter_lifecycle import ChapterLifecycle, canonical_bytes
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_outlines,
@@ -27,63 +27,25 @@ from core.langgraph.state_helpers import (
     clear_extraction_state,
     clear_generation_artifacts,
 )
-from core.llm_interface_refactored import llm_service
-from prompts.prompt_renderer import get_system_prompt
+from core.service_context import get_services
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
 
 
-async def _rollback_chapter_data(chapter_number: int) -> None:
-    """Delete entities and relationships committed for a chapter that needs revision.
-
-    This function performs a compensating transaction to rollback data committed
-    before validation determined that revision was needed.
-
-    Strategy:
-        1. Delete all relationships added in this chapter
-        2. Mark entities created in this chapter as provisional (graph healing will clean up orphans)
-        3. Delete the chapter node itself
-
-    Args:
-        chapter_number: The chapter number to rollback.
-
-    Notes:
-        This is a best-effort cleanup. Failures are logged but don't block revision.
-        Graph healing will eventually clean up any remaining orphaned nodes.
-    """
+async def _rollback_chapter_data(chapter_number: int, *, lifecycle: ChapterLifecycle | None = None) -> None:
+    """Reverse only a durable attempt's recorded graph changes, preserving plans."""
     logger.info(
         "rollback_chapter_data: removing committed data for revision",
         chapter=chapter_number,
     )
 
-    queries = [
-        (
-            """
-            MATCH ()-[r]->()
-            WHERE coalesce(r.chapter_added, -1) = $chapter
-            DELETE r
-            """,
-            {"chapter": chapter_number},
-        ),
-        (
-            """
-            MATCH (e)
-            WHERE coalesce(e.created_chapter, -1) = $chapter
-            SET e.is_provisional = true
-            """,
-            {"chapter": chapter_number},
-        ),
-        (
-            """
-            MATCH (ch:Chapter {number: $chapter})
-            DELETE ch
-            """,
-            {"chapter": chapter_number},
-        ),
-    ]
-
     try:
-        await neo4j_manager.execute_cypher_batch(queries)
+        if lifecycle is None:
+            raise ValueError("Rollback requires a durable attempt journal; legacy data needs explicit reconciliation")
+        if lifecycle.chapter_number != chapter_number:
+            raise ValueError("Compensation chapter mismatch")
+        await lifecycle.compensate()
         logger.info(
             "rollback_chapter_data: successfully rolled back chapter data",
             chapter=chapter_number,
@@ -113,23 +75,21 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
     """
     chapter_number = state.get("current_chapter", 1)
 
+    rollback_failure = state.get("revision_rollback_failure")
+    if rollback_failure is not None and "lifecycle_version" not in state:
+        return {
+            "last_error": rollback_failure["error"],
+            "has_fatal_error": True,
+            "error_node": "revise",
+            "current_node": "revise_blocked",
+        }
+
     logger.info(
         "revise_chapter: generating revision guidance",
         chapter=chapter_number,
         iteration=state.get("iteration_count", 0),
         contradictions=len(state.get("contradictions", [])),
     )
-
-    # Rollback committed data before regenerating
-    try:
-        await _rollback_chapter_data(chapter_number)
-    except Exception as exc:
-        logger.warning(
-            "revise_chapter: rollback failed, continuing with revision",
-            chapter=chapter_number,
-            error=str(exc),
-            exc_info=True,
-        )
 
     if state.get("iteration_count", 0) >= state.get("max_iterations", 3):
         error_msg = f"Max revision attempts ({state.get('max_iterations', 3)}) reached"
@@ -144,6 +104,40 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "error_node": "revise",
             "needs_revision": False,
             "current_node": "revise_failed",
+        }
+
+    lifecycle = None
+    try:
+        if "lifecycle_version" in state:
+            lifecycle = ChapterLifecycle(state).stage()
+            await _rollback_chapter_data(chapter_number, lifecycle=lifecycle)
+            previous_result = lifecycle.revision_result()
+            if previous_result is not None:
+                return previous_result
+            state = {**state, **lifecycle.state_update("compensated"), "revision_rollback_failure": None}
+        else:
+            await _rollback_chapter_data(chapter_number)
+    except Exception as exc:
+        error_msg = f"Revision rollback failed; reconciliation required: {exc}"
+        logger.error(
+            "revise_chapter: rollback failed, blocking revision",
+            chapter=chapter_number,
+            error=str(exc),
+            exc_info=True,
+        )
+
+        return {
+            "revision_rollback_failure": {
+                "chapter_number": chapter_number,
+                "iteration_count": state.get("iteration_count", 0),
+                "error": error_msg,
+                "previous_error": state.get("last_error"),
+                "previous_error_node": state.get("error_node"),
+            },
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "revise",
+            "current_node": "revise_blocked",
         }
 
     content_manager = ContentManager(require_project_dir(state))
@@ -186,34 +180,18 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
 
         revision_reason = _format_contradictions_for_prompt(state.get("contradictions", []))
 
-        prompt = "\n\n".join(
-            [
-                "You are the revision coordinator for a scene-first drafting pipeline.",
-                "Your job is to produce concrete revision guidance for regenerating scenes.",
-                "",
-                "Hard rules:",
-                "- Do NOT rewrite any prose.",
-                "- Output ONLY revision guidance (bullet points). No headings. No code fences.",
-                "- Each bullet must be actionable and specific.",
-                "- When possible, reference scene numbers and scene titles from the plan.",
-                "",
-                f"Novel title: {state.get('title', '')}",
-                f"Genre: {state.get('genre', '')}",
-                f"Protagonist: {protagonist_name}",
-                f"Chapter: {chapter_number}",
-                f"Chapter focus (if any): {plot_point_focus}",
-                "",
-                "Canon context (story so far):",
-                hybrid_context or "",
-                "",
-                "Planned scenes:",
-                "\n".join(scene_lines),
-                "",
-                "Problems to fix (from validation):",
-                revision_reason,
-                "",
-                "Produce revision guidance now.",
-            ]
+        prompt = render_prompt(
+            "revision_agent/revision_guidance.j2",
+            {
+                "title": state.get("title", ""),
+                "genre": state.get("genre", ""),
+                "protagonist_name": protagonist_name,
+                "chapter_number": chapter_number,
+                "plot_point_focus": plot_point_focus,
+                "hybrid_context": hybrid_context or "",
+                "scene_lines": scene_lines,
+                "revision_reason": revision_reason,
+            },
         )
 
     except Exception as exc:
@@ -231,11 +209,11 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     model_name = state.get("revision_model", config.MEDIUM_MODEL)
-    prompt_tokens = llm_service.count_tokens(prompt, model_name)
+    prompt_tokens = get_services().language_model.count_tokens(prompt, model_name)
 
-    max_context = getattr(config, "MAX_CONTEXT_TOKENS", 32768)
+    max_context = config.MAX_CONTEXT_TOKENS
     token_buffer = getattr(config.settings, "NARRATIVE_TOKEN_BUFFER", 16384)
-    max_generation = getattr(config, "MAX_GENERATION_TOKENS", 16384)
+    max_generation = config.MAX_GENERATION_TOKENS
 
     available_tokens = max_context - prompt_tokens - token_buffer
     max_gen_tokens = min(max_generation, available_tokens)
@@ -251,7 +229,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     try:
-        revision_guidance, _ = await llm_service.async_call_llm(
+        revision_guidance, _ = await get_services().language_model.async_call_llm(
             model_name=model_name,
             prompt=prompt,
             temperature=getattr(config.Temperatures, "REVISION", 0.5),
@@ -297,7 +275,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         version=current_version,
     )
 
-    return {
+    result: NarrativeState = {
         "revision_guidance_ref": revision_guidance_ref,
         "iteration_count": state.get("iteration_count", 0) + 1,
         "contradictions": [],
@@ -307,6 +285,10 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         **clear_extraction_state(),
         **clear_error_state(),
     }
+    if lifecycle is not None:
+        result.update({"attempt_id": None, "lifecycle_phase": "compensated", "extraction_source": None, "extraction_status": "failed", "extraction_outcomes": [], "revision_rollback_failure": None})
+        lifecycle.retain_revision_result(canonical_bytes(result))
+    return result
 
 
 def _format_contradictions_for_prompt(contradictions: list[Contradiction]) -> str:

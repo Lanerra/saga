@@ -18,28 +18,33 @@ from typing import Any, cast
 import structlog
 
 import config
+from core.langgraph.quality_policy import CheckEvidence, policy_for, quality_source, retain_maintenance
 from core.langgraph.state import NarrativeState
 from data_access.kg_queries import (
     consolidate_similar_relationships,
     deduplicate_relationships,
     find_contradictory_trait_characters,
-    find_post_mortem_activity,
 )
+from models.kg_constants import CONTRADICTORY_TRAIT_PAIRS
 
 logger = structlog.get_logger(__name__)
 
-CONTRADICTORY_TRAIT_PAIRS = [
-    ("Brave", "Cowardly"),
-    ("Honest", "Deceitful"),
-    ("Kind", "Cruel"),
-    ("Loyal", "Treacherous"),
-    ("Optimistic", "Pessimistic"),
-    ("Calm", "Anxious"),
-    ("Confident", "Insecure"),
-    ("Generous", "Selfish"),
-    ("Patient", "Impatient"),
-    ("Humble", "Arrogant"),
-]
+
+async def assess_graph_quality(state: NarrativeState) -> dict[str, Any]:
+    """Read-only prepublication check; graph repair remains advisory maintenance."""
+    policy = policy_for(state)
+    source = quality_source(state)
+    details: dict[str, Any] = {"issues_found": 0, "contradictory_traits": [], "last_qa_chapter": state.get("last_qa_chapter", 0)}
+    if not policy.graph_quality_enabled or not policy.contradictory_traits_enabled:
+        return CheckEvidence(source=source, status="skipped", reason="disabled", details=details).model_dump()
+    if policy.graph_quality == "advisory" and state["current_chapter"] - state.get("last_qa_chapter", 0) < policy.graph_quality_frequency:
+        return CheckEvidence(source=source, status="skipped", reason="cadence", details=details).model_dump()
+    try:
+        findings = await find_contradictory_trait_characters(CONTRADICTORY_TRAIT_PAIRS)
+    except Exception as error:
+        return CheckEvidence(source=source, status="failed", reason=str(error), details=details).model_dump()
+    details.update(contradictory_traits=findings, issues_found=len(findings))
+    return CheckEvidence(source=source, status="completed", reason="findings" if findings else "", details=details).model_dump()
 
 
 async def check_quality(state: NarrativeState) -> NarrativeState:
@@ -89,12 +94,14 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     relationships_deduplicated = 0
     relationships_consolidated = 0
 
+    qa_errors: list[str] = []
+
     qa_results: dict[str, Any] = {
         "contradictory_traits": [],
-        "post_mortem_activities": [],
         "relationships_deduplicated": relationships_deduplicated,
         "relationships_consolidated": relationships_consolidated,
         "issues_found": issues_found,
+        "errors": qa_errors,
     }
 
     if config.settings.QA_CHECK_CONTRADICTORY_TRAITS:
@@ -116,26 +123,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 error=str(e),
                 exc_info=True,
             )
-
-    if config.settings.QA_CHECK_POST_MORTEM_ACTIVITY:
-        try:
-            post_mortem = await find_post_mortem_activity()
-            qa_results["post_mortem_activities"] = post_mortem
-            issues_found += len(post_mortem)
-
-            if post_mortem:
-                logger.warning(
-                    "check_quality: Found post-mortem character activity",
-                    count=len(post_mortem),
-                    examples=[f"{a['character_name']} (died ch. {a['death_chapter']})" for a in post_mortem[:3]],
-                )
-
-        except Exception as e:
-            logger.error(
-                "check_quality: Error checking post-mortem activity",
-                error=str(e),
-                exc_info=True,
-            )
+            qa_errors.append(f"contradictory_traits: {e}")
 
     if config.settings.QA_DEDUPLICATE_RELATIONSHIPS:
         try:
@@ -154,6 +142,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 error=str(e),
                 exc_info=True,
             )
+            qa_errors.append(f"deduplicate_relationships: {e}")
 
     if config.settings.QA_CONSOLIDATE_RELATIONSHIPS:
         try:
@@ -172,6 +161,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 error=str(e),
                 exc_info=True,
             )
+            qa_errors.append(f"consolidate_relationships: {e}")
 
     qa_results["issues_found"] = issues_found
     qa_results["relationships_deduplicated"] = relationships_deduplicated
@@ -199,9 +189,9 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     total_qa_issues = cast(int, state.get("total_qa_issues", 0))
     total_qa_fixes = cast(int, state.get("total_qa_fixes", 0))
 
+    retain_maintenance(state, "graph_quality", qa_results)
     return {
         "current_node": "check_quality",
-        "last_error": None,
         "last_qa_chapter": current_chapter,
         "qa_results": qa_results,
         "qa_history": qa_history,

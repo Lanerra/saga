@@ -23,16 +23,14 @@ from .common import (
 )
 from .similarity import find_semantically_closest_segment, numpy_cosine_similarity
 from .text_processing import (
-    SpaCyModelManager,
     _normalize_for_id,
     _normalize_text_for_matching,
     classify_category_label,
     find_quote_and_sentence_offsets_with_spacy,
+    generate_entity_id,
     get_context_snippet_for_patch,
     get_text_segments,
-    load_spacy_model_if_needed,
     normalize_trait_name,
-    spacy_manager,
     validate_world_item_fields,
 )
 
@@ -77,9 +75,9 @@ def format_scene_plan_for_prompt(
 
         # Local import to avoid circular import chain:
         # utils -> core -> data_access -> processing -> utils
-        from core.llm_interface_refactored import llm_service
+        from core.service_context import get_services
 
-        if llm_service.count_tokens(prospective_plan, model_name_for_tokens) > max_tokens_budget:
+        if get_services().language_model.count_tokens(prospective_plan, model_name_for_tokens) > max_tokens_budget:
             current_plan_parts.append("... (plan truncated in prompt due to token limit)")
             logger.warning(
                 "Chapter plan was token-truncated for the prompt. Max tokens for plan: %d. Stopped before scene %s.",
@@ -115,8 +113,6 @@ def remove_spans_from_text(text: str, spans: list[tuple[int, int]]) -> str:
 __all__ = [
     "_normalize_for_id",
     "normalize_trait_name",
-    "SpaCyModelManager",
-    "spacy_manager",
     "_is_fill_in",
     "extract_json_from_text",
     "extract_json_candidates_from_response",
@@ -129,7 +125,6 @@ __all__ = [
     "load_yaml_file",
     "normalize_keys_recursive",
     "split_text_into_chapters",
-    "load_spacy_model_if_needed",
     "_normalize_text_for_matching",
     "get_context_snippet_for_patch",
     "find_quote_and_sentence_offsets_with_spacy",
@@ -140,4 +135,5 @@ __all__ = [
     "remove_spans_from_text",
     "classify_category_label",
     "validate_world_item_fields",
+    "generate_entity_id",
 ]

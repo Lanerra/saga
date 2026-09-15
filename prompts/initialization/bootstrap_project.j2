@@ -24,8 +24,12 @@ CRITICAL GUIDELINES:
    - Good: "Charleston, SC, 1855. Grand estates and debutante balls against the shadow of slavery."
    - Bad: "The old South" (system already knows this from user input)
 
-4. **Narrative Style**: Always use "{{ default_narrative_style }}"
-   - Other styles not yet supported by the system
+4. **Narrative Style**: Honor the author's requested narrative style, perspective, tense, and prose preferences.
+   - If unspecified, use {{ default_narrative_style | tojson }}.
+
+5. **Length**: Honor requested total chapters and total novel word count.
+   - If unspecified, use {{ total_chapters }} chapters and {{ target_word_count }} words.
+   - Both must be positive integers, with at least one word per chapter.
 
 Return ONLY a JSON object with these exact fields:
 ```json
@@ -35,8 +39,9 @@ Return ONLY a JSON object with these exact fields:
   "theme": "Central thematic question (1-2 sentences, concrete)",
   "setting": "Detailed setting description (2-3 sentences with specifics)",
   "protagonist_name": "A fitting name for the main character",
-  "narrative_style": "{{ default_narrative_style }}",
-  "total_chapters": {{ total_chapters }}
+  "narrative_style": "The author's requested style, or the supplied default if unspecified",
+  "total_chapters": {{ total_chapters }},
+  "target_word_count": {{ target_word_count }}
 }
 ```
 
@@ -52,8 +57,9 @@ Output:
   "theme": "Can love transcend the rigid social hierarchies of plantation society, or will tradition and family expectation ultimately prevail?",
   "setting": "Charleston, South Carolina, 1855. A world of grand estates, debutante balls, and the looming shadow of slavery. The protagonist navigates a society where family reputation is everything and marriage is a strategic alliance rather than a matter of the heart.",
   "protagonist_name": "Annabelle Ashford",
-  "narrative_style": "{{ default_narrative_style }}",
-  "total_chapters": {{ total_chapters }}
+  "narrative_style": {{ default_narrative_style | tojson }},
+  "total_chapters": {{ total_chapters }},
+  "target_word_count": {{ target_word_count }}
 }
 ```
 

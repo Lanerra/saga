@@ -49,7 +49,7 @@ WORLD_ITEM_LEGACY_LABELS: tuple[str, ...] = (
 # Contract (SAGA labeling strategy):
 # - Node labels are a strict schema surface. Application code MUST NOT create arbitrary
 #   new labels in the graph (prevents schema drift / index & constraint mismatch).
-# - The canonical domain label set is the 9 labels below.
+# - The canonical domain label set is the 6 labels below.
 # - Subtypes (e.g., Faction, Settlement, Artifact, PlotPoint) MUST be represented via
 #   properties (typically `category`), not as Neo4j node labels.
 VALID_NODE_LABELS = {
@@ -58,6 +58,7 @@ VALID_NODE_LABELS = {
     "Event",
     "Item",
     "Chapter",
+    "Scene",
 }
 
 # Map common variations / legacy labels / subtype "types" to canonical labels.
@@ -131,8 +132,7 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     # ----------------------------
     # Event-like subtypes
     # ----------------------------
-    "Scene": "Event",
-    "scene": "Event",
+    # NOTE: "Scene" is intentionally excluded — it is a canonical label in VALID_NODE_LABELS.
     "Moment": "Event",
     "moment": "Event",
     "Incident": "Event",
@@ -160,6 +160,11 @@ SUGGESTED_CATEGORIES = {
         "Minor",
         "Background",
         "Historical",
+        "Personality",
+        "Physical",
+        "Skill",
+        "Supernatural",
+        "Status",
     ],
     # Subtypes are stored in `category` and are intentionally open-ended.
     # This list is advisory (soft validation) and should match what prompts
@@ -216,30 +221,51 @@ SUGGESTED_CATEGORIES = {
         "Resource",
         "Magical",
     ],
-    "Trait": [
-        "Personality",
-        "Physical",
-        "Skill",
-        "Supernatural",
-        "Status",
-        "Background",
-    ],
 }
+
+# ⚖️ Contradictory trait pairs for character consistency validation.
+# Canonical lowercase pairs used by both validation and QA nodes.
+CONTRADICTORY_TRAIT_PAIRS: list[tuple[str, str]] = [
+    ("introverted", "extroverted"),
+    ("brave", "cowardly"),
+    ("honest", "deceitful"),
+    ("kind", "cruel"),
+    ("optimistic", "pessimistic"),
+    ("calm", "anxious"),
+    ("trusting", "suspicious"),
+    ("generous", "selfish"),
+    ("patient", "impatient"),
+    ("humble", "arrogant"),
+    ("selfish", "altruistic"),
+    ("lazy", "industrious"),
+    ("timid", "bold"),
+    ("cynical", "idealistic"),
+    ("merciful", "merciless"),
+    ("loyal", "treacherous"),
+    ("gentle", "aggressive"),
+    ("forgiving", "vengeful"),
+    ("cheerful", "gloomy"),
+    ("confident", "insecure"),
+    ("stoic", "emotional"),
+    ("rational", "impulsive"),
+    ("cautious", "reckless"),
+    ("modest", "vain"),
+    ("compassionate", "callous"),
+    ("honest", "deceptive"),
+    ("reliable", "unreliable"),
+    ("disciplined", "undisciplined"),
+    ("empathetic", "apathetic"),
+    ("trusting", "paranoid"),
+]
 
 # Character Social Relationships
 CHARACTER_SOCIAL_RELATIONSHIPS = {
     "ALLIES_WITH",
+    "FRIEND_OF",
     "RIVALS_WITH",
-    "CONFLICTS_WITH",
-    "LOVES",
     "FAMILY_OF",
     "MENTORS",
     "PROTECTS",
-    "TRUSTS",
-    "DISTRUSTS",
-    "BETRAYS",
-    "FEARS",
-    "SEEKS",
     "LOCATED_AT",
     "SERVES",
     "DEPENDS_ON",
@@ -260,11 +286,119 @@ CHARACTER_EMOTIONAL_RELATIONSHIPS = {
     "DISTRUSTS",  # Distrust/suspicion
 }
 
+# Character ↔ Event Relationships
+CHARACTER_EVENT_RELATIONSHIPS = {
+    "PARTICIPATES_IN",
+    "WITNESSES",
+    "CAUSES",
+    "AFFECTED_BY",
+}
+
+# Character ↔ Item Relationships
+CHARACTER_ITEM_RELATIONSHIPS = {
+    "OWNS",
+    "CARRIES",
+    "WIELDS",
+    "SEEKS",
+    "GUARDS",
+    "CREATED",
+    "POSSESSES",
+}
+
+# Character ↔ Location Relationships (Extended)
+CHARACTER_LOCATION_RELATIONSHIPS = {
+    "LOCATED_AT",
+    "ORIGINATES_FROM",
+    "RULES",
+    "OWNS_LOCATION",
+    "SEEKS_LOCATION",
+    "EXILED_FROM",
+}
+
+# Event ↔ Location Relationships
+EVENT_LOCATION_RELATIONSHIPS = {
+    "OCCURS_AT",
+    "ORIGINATES_FROM_LOCATION",
+    "AFFECTS_LOCATION",
+}
+
+# Event ↔ Item Relationships
+EVENT_ITEM_RELATIONSHIPS = {
+    "INVOLVES_ITEM",
+    "CREATES_ITEM",
+    "DESTROYS_ITEM",
+    "TRANSFERS_ITEM",
+}
+
+# Event ↔ Event Relationships (Temporal)
+EVENT_TEMPORAL_RELATIONSHIPS = {
+    "HAPPENS_BEFORE",
+    "HAPPENS_AFTER",
+    "OCCURS_DURING",
+    "CAUSES_EVENT",
+    "INTERRUPTS",
+    "PART_OF",
+}
+
+# Location ↔ Location Relationships (Spatial)
+LOCATION_SPATIAL_RELATIONSHIPS = {
+    "CONTAINS_LOCATION",
+    "PART_OF_LOCATION",
+    "BORDERS",
+    "CONNECTED_TO",
+    "VISIBLE_FROM",
+}
+
+# Location ↔ Item Relationships
+LOCATION_ITEM_RELATIONSHIPS = {
+    "CONTAINS_ITEM",
+    "PRODUCES",
+    "REQUIRES_ITEM",
+}
+
+# Scene ↔ Scene Relationships (Sequential)
+SCENE_SEQUENTIAL_RELATIONSHIPS = {
+    "FOLLOWS",
+}
+
+# Scene ↔ Chapter Relationships (Structural)
+SCENE_CHAPTER_RELATIONSHIPS = {
+    "PART_OF",
+}
+
+# Scene ↔ Event Relationships
+SCENE_EVENT_RELATIONSHIPS = {
+    "OCCURS_IN_SCENE",
+}
+
+# Scene ↔ Item Relationships
+SCENE_ITEM_RELATIONSHIPS = {
+    "FEATURES_ITEM",
+}
+
+# Scene ↔ Location Relationships
+SCENE_LOCATION_RELATIONSHIPS = {
+    "OCCURS_AT",
+}
+
 # Relationship category mapping for validation and normalization
 # Generated programmatically from the category sets above
 RELATIONSHIP_CATEGORIES = {
     "character_social": CHARACTER_SOCIAL_RELATIONSHIPS,
     "character_emotional": CHARACTER_EMOTIONAL_RELATIONSHIPS,
+    "character_event": CHARACTER_EVENT_RELATIONSHIPS,
+    "character_item": CHARACTER_ITEM_RELATIONSHIPS,
+    "character_location": CHARACTER_LOCATION_RELATIONSHIPS,
+    "event_location": EVENT_LOCATION_RELATIONSHIPS,
+    "event_item": EVENT_ITEM_RELATIONSHIPS,
+    "event_temporal": EVENT_TEMPORAL_RELATIONSHIPS,
+    "location_spatial": LOCATION_SPATIAL_RELATIONSHIPS,
+    "location_item": LOCATION_ITEM_RELATIONSHIPS,
+    "scene_sequential": SCENE_SEQUENTIAL_RELATIONSHIPS,
+    "scene_chapter": SCENE_CHAPTER_RELATIONSHIPS,
+    "scene_event": SCENE_EVENT_RELATIONSHIPS,
+    "scene_item": SCENE_ITEM_RELATIONSHIPS,
+    "scene_location": SCENE_LOCATION_RELATIONSHIPS,
 }
 
 # Combine all relationship categories into a single set
@@ -273,7 +407,12 @@ for category_set in RELATIONSHIP_CATEGORIES.values():
     RELATIONSHIP_TYPES.update(category_set)
 
 # Static relationship mapping for exact synonyms
-STATIC_RELATIONSHIP_MAP = {}
+STATIC_RELATIONSHIP_MAP: dict[str, str] = {
+    "HATES": "CONFLICTS_WITH",
+    "DESPISES": "CONFLICTS_WITH",
+    "LOATHES": "CONFLICTS_WITH",
+    "DISLIKES": "CONFLICTS_WITH",
+}
 
 # Relationships that should be node properties instead of relationships
 # NOTE: This set is now empty as status-related relationships have been deprecated.

@@ -1,0 +1,37 @@
+Extract character names mentioned in this event description.
+
+Event: {{ event_name }}
+Description: {{ event_description }}
+Cause: {{ event_cause }}
+Effect: {{ event_effect }}
+
+Known Characters:
+{% for char in known_characters %}
+- {{ char }}
+{% endfor %}
+
+Instructions:
+1. Identify all character names explicitly mentioned in the event text
+2. Only include names that match the Known Characters list
+3. For each character, infer their role in the event from context
+
+Output contract (STRICT JSON, no exceptions):
+- Output MUST be valid JSON only
+- Output MUST be a JSON array of objects
+- Each object MUST have keys: "name" (string), "role" (string or null)
+- Do NOT output markdown, code fences, or commentary
+- If no characters are involved, return an empty array: []
+
+Role values (optional, use if clear from context):
+- "protagonist": Main actor in the event
+- "antagonist": Opposing force
+- "witness": Observes the event
+- "victim": Affected by the event
+- "supporter": Helps the protagonist
+- null: Role unclear from context
+
+Example:
+[
+  {"name":"Eleanor Whitaker","role":"protagonist"},
+  {"name":"Sarah","role":"victim"}
+]

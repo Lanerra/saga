@@ -30,9 +30,6 @@ def _minimal_state(tmp_path: Path) -> NarrativeState:
         "setting": "Ringworld frontier",
         "total_chapters": 10,
         "target_word_count": 120000,
-        # Intentionally omit: character_sheets_ref, global_outline_ref, act_outlines_ref
-        "world_items": [],
-        # Fields referenced by NarrativeState but not needed here are intentionally omitted
     }
     return state
 
@@ -159,46 +156,6 @@ async def test_world_rules_and_history_stubs_when_missing(tmp_path: Path) -> Non
     assert history_data["events"] == []
     assert isinstance(history_data.get("note"), str)
     assert history_data["note"], "Expected non-empty note in world/history.yaml stub"
-
-
-@pytest.mark.asyncio
-async def test_world_rules_and_history_populated_when_present(tmp_path: Path) -> None:
-    """Optional coverage: ensure provided rules surface into YAML."""
-    state = _state_with_required_init_refs(tmp_path)
-
-    # Inject sample rules
-    state["current_world_rules"] = [
-        "Magic cannot resurrect the dead.",
-        {"name": "No FTL", "description": "Faster-than-light travel does not exist."},
-    ]
-
-    result = await persist_initialization_files(state)
-    assert result["last_error"] is None
-
-    project_dir = Path(state["project_dir"])
-
-    # Validate rules mapping
-    rules_path = project_dir / "world" / "rules.yaml"
-    rules_data = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
-    rules = rules_data.get("rules")
-    assert isinstance(rules, list)
-    assert len(rules) == 2
-
-    # First rule from string
-    assert rules[0]["name"].startswith("Rule ")
-    assert "Magic cannot resurrect the dead." in rules[0]["description"]
-
-    # Second rule from mapping
-    assert rules[1]["name"] == "No FTL"
-    assert "Faster-than-light travel does not exist." in rules[1]["description"]
-
-    # Validate history stub is created (no world_history field in state)
-    history_path = project_dir / "world" / "history.yaml"
-    history_data = yaml.safe_load(history_path.read_text(encoding="utf-8"))
-    events = history_data.get("events")
-    assert isinstance(events, list)
-    assert len(events) == 0
-    assert "note" in history_data
 
 
 @pytest.mark.asyncio

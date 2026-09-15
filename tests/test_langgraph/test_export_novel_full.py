@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.langgraph.export import generate_full_export
+from core.langgraph.export import generate_full_export, generate_legacy_export
 
 
 def _write_chapter_md(path: Path, chapter_num: int, title: str, body: str) -> None:
@@ -12,21 +12,21 @@ def _write_chapter_md(path: Path, chapter_num: int, title: str, body: str) -> No
     path.write_text(content, encoding="utf-8")
 
 
-def test_generate_full_export_concatenates_chapters_in_order(tmp_path: Path) -> None:
+def test_generate_legacy_export_concatenates_chapters_in_order(tmp_path: Path) -> None:
     project_dir = tmp_path
     chapters_dir = project_dir / "chapters"
     chapters_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create two canonical chapter markdown files.
+    # Historical Markdown has no acceptance receipts.
     ch1 = chapters_dir / "chapter_001.md"
     ch2 = chapters_dir / "chapter_002.md"
 
     _write_chapter_md(ch1, 1, "Chapter 1", "This is chapter one.")
     _write_chapter_md(ch2, 2, "Chapter 2", "This is chapter two.")
 
-    output_path = generate_full_export(str(project_dir))
+    output_path = generate_legacy_export(str(project_dir))
 
-    expected_output_path = project_dir / "exports" / "novel_full.md"
+    expected_output_path = project_dir / "exports" / "novel_legacy_unverified.md"
     assert output_path == expected_output_path
     assert expected_output_path.exists()
 
@@ -41,12 +41,8 @@ def test_generate_full_export_concatenates_chapters_in_order(tmp_path: Path) -> 
     # Literal "\n" sequences should not appear.
     assert "\\n" not in content
 
-    # Order and spacing:
-    # - Chapter one body
-    # - Exactly one blank line
-    # - Chapter two body
-    # A trailing newline at end of file is acceptable.
-    expected = "This is chapter one.\n\nThis is chapter two.\n"
+    # Exact bodies, including their surrounding newlines, plus two separators.
+    expected = "\nThis is chapter one.\n\n\n\nThis is chapter two.\n"
     assert content == expected
 
 

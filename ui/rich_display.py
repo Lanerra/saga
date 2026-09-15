@@ -19,7 +19,7 @@ from typing import Any
 import structlog
 
 import config
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 
 logger = structlog.get_logger(__name__)
 
@@ -32,26 +32,35 @@ try:
     RICH_AVAILABLE = True
 except Exception:  # pragma: no cover - fallback when Rich isn't installed
     RICH_AVAILABLE = False
+    logger.info("Rich library not available; terminal progress display disabled")
 
     class Live:  # type: ignore[no-redef]
+        """No-op fallback for rich.live.Live when Rich is not installed."""
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def start(self) -> None:  # pragma: no cover - noop fallback
+        def start(self) -> None:
             pass
 
-        def stop(self) -> None:  # pragma: no cover - noop fallback
+        def stop(self) -> None:
             pass
 
     class Text:  # type: ignore[no-redef]
+        """No-op fallback for rich.text.Text when Rich is not installed."""
+
         def __init__(self, initial_text: str = "") -> None:
             self.plain = initial_text
 
     class Group:  # type: ignore[no-redef]
+        """No-op fallback for rich.console.Group when Rich is not installed."""
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
     class Panel:  # type: ignore[no-redef]
+        """No-op fallback for rich.panel.Panel when Rich is not installed."""
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
@@ -222,7 +231,7 @@ class RichDisplayManager:
         elapsed_seconds = time.time() - start_time
         # Get request count from the refactored service statistics
         try:
-            stats = llm_service.get_combined_statistics()
+            stats = get_services().language_model.get_combined_statistics()
             request_count = stats.get("completion_service", {}).get("completions_requested", 0)
             requests_per_minute = request_count / (elapsed_seconds / 60) if elapsed_seconds > 0 else 0.0
         except (AttributeError, KeyError):

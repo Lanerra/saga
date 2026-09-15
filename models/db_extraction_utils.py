@@ -68,9 +68,6 @@ class Neo4jExtractor:
             return 0
 
     @staticmethod
-    # safe_timestamp_extract removed as unused per audit
-
-    @staticmethod
     def safe_list_extract(value: Any) -> list[str]:
         """Normalize a value into a list of strings.
 

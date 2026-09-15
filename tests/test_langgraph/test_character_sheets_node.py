@@ -1,5 +1,6 @@
 # tests/test_langgraph/test_character_sheets_node.py
 import json
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,11 +12,12 @@ from core.langgraph.initialization.character_sheets_node import (
     _parse_character_sheet_response,
     generate_character_sheets,
 )
-from core.langgraph.state import create_initial_state
+from core.langgraph.state import NarrativeState, create_initial_state
+from tests.fakes.service_context import patch_service
 
 
 @pytest.fixture
-def base_state():
+def base_state() -> NarrativeState:
     """Create a base state for testing."""
     return create_initial_state(
         project_id="test-project",
@@ -31,7 +33,7 @@ def base_state():
 
 
 @pytest.fixture
-def mock_content_manager():
+def mock_content_manager() -> Iterator[MagicMock]:
     """Create a mock ContentManager."""
     with patch("core.langgraph.initialization.character_sheets_node.ContentManager") as mock:
         instance = MagicMock()
@@ -45,9 +47,9 @@ def mock_content_manager():
 
 
 @pytest.fixture
-def mock_neo4j():
+def mock_neo4j() -> Iterator[MagicMock]:
     """Mock Neo4j manager for trait queries."""
-    with patch("core.langgraph.initialization.character_sheets_node.neo4j_manager") as mock:
+    with patch_service('database') as mock:
         mock.execute_read_query = AsyncMock(
             return_value=[
                 {"trait_name": "brave"},
@@ -59,9 +61,9 @@ def mock_neo4j():
 
 
 @pytest.fixture
-def mock_llm_service():
+def mock_llm_service() -> Iterator[MagicMock]:
     """Create a mock LLM service."""
-    with patch("core.langgraph.initialization.character_sheets_node.llm_service") as mock:
+    with patch_service('language_model') as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
                 json.dumps(
@@ -73,7 +75,7 @@ def mock_llm_service():
                         "motivations": "Save the kingdom",
                         "background": "Born in a village",
                         "skills": ["swordfighting"],
-                        "relationships": {"Mentor": "Wise guide"},
+                        "relationships": {"Mentor": {"type": "TRUSTS", "description": "Wise guide"}},
                         "internal_conflict": "Self-doubt",
                     }
                 ),
@@ -84,7 +86,7 @@ def mock_llm_service():
 
 
 @pytest.fixture
-def mock_schema_validator():
+def mock_schema_validator() -> Iterator[MagicMock]:
     """Mock schema validator."""
     with patch("core.langgraph.initialization.character_sheets_node.schema_validator") as mock:
         mock.validate_entity_type.return_value = (True, "Character", None)
@@ -92,7 +94,7 @@ def mock_schema_validator():
 
 
 @pytest.mark.asyncio
-async def test_get_existing_traits_success(mock_neo4j):
+async def test_get_existing_traits_success(mock_neo4j: MagicMock) -> None:
     """Verify successful retrieval of existing traits."""
     traits = await _get_existing_traits()
 
@@ -103,9 +105,9 @@ async def test_get_existing_traits_success(mock_neo4j):
 
 
 @pytest.mark.asyncio
-async def test_get_existing_traits_empty():
+async def test_get_existing_traits_empty() -> None:
     """Verify handling when no traits exist."""
-    with patch("core.langgraph.initialization.character_sheets_node.neo4j_manager") as mock:
+    with patch_service('database') as mock:
         mock.execute_read_query = AsyncMock(return_value=[])
 
         traits = await _get_existing_traits()
@@ -114,9 +116,9 @@ async def test_get_existing_traits_empty():
 
 
 @pytest.mark.asyncio
-async def test_get_existing_traits_exception():
+async def test_get_existing_traits_exception() -> None:
     """Verify exception handling during trait retrieval."""
-    with patch("core.langgraph.initialization.character_sheets_node.neo4j_manager") as mock:
+    with patch_service('database') as mock:
         mock.execute_read_query = AsyncMock(side_effect=Exception("Database error"))
 
         traits = await _get_existing_traits()
@@ -124,7 +126,7 @@ async def test_get_existing_traits_exception():
         assert traits == []
 
 
-def test_parse_character_sheet_response_valid_json(mock_schema_validator):
+def test_parse_character_sheet_response_valid_json(mock_schema_validator: MagicMock) -> None:
     """Verify parsing of valid JSON character sheet."""
     response = json.dumps(
         {
@@ -154,7 +156,7 @@ def test_parse_character_sheet_response_valid_json(mock_schema_validator):
         assert result["status"] == "Active"
 
 
-def test_parse_character_sheet_response_with_markdown(mock_schema_validator):
+def test_parse_character_sheet_response_with_markdown(mock_schema_validator: MagicMock) -> None:
     """Verify parsing of JSON wrapped in markdown code blocks."""
     response = """```json
 {
@@ -173,7 +175,7 @@ def test_parse_character_sheet_response_with_markdown(mock_schema_validator):
         assert result["traits"] == ["brave"]
 
 
-def test_parse_character_sheet_response_missing_name(mock_schema_validator):
+def test_parse_character_sheet_response_missing_name(mock_schema_validator: MagicMock) -> None:
     """Verify name defaults to provided character_name if missing."""
     response = json.dumps(
         {
@@ -190,7 +192,7 @@ def test_parse_character_sheet_response_missing_name(mock_schema_validator):
         assert result["name"] == "DefaultName"
 
 
-def test_parse_character_sheet_response_invalid_json(mock_schema_validator):
+def test_parse_character_sheet_response_invalid_json(mock_schema_validator: MagicMock) -> None:
     """Verify strict failure when JSON parsing fails (no prose fallback)."""
     response = "This is not valid JSON but a plain text description"
 
@@ -201,7 +203,7 @@ def test_parse_character_sheet_response_invalid_json(mock_schema_validator):
             _parse_character_sheet_response(response, "Hero")
 
 
-def test_parse_character_sheet_response_filters_traits(mock_schema_validator):
+def test_parse_character_sheet_response_filters_traits(mock_schema_validator: MagicMock) -> None:
     """Verify trait filtering removes invalid traits."""
     response = json.dumps(
         {
@@ -219,8 +221,8 @@ def test_parse_character_sheet_response_filters_traits(mock_schema_validator):
 
 
 def test_parse_character_sheet_response_transforms_relationships(
-    mock_schema_validator,
-):
+    mock_schema_validator: MagicMock,
+) -> None:
     """Verify relationship transformation to internal structure."""
     response = json.dumps(
         {
@@ -239,11 +241,38 @@ def test_parse_character_sheet_response_transforms_relationships(
 
         assert "Mentor" in result["relationships"]
         assert result["relationships"]["Mentor"]["description"] == "Wise guide"
-        assert result["relationships"]["Mentor"]["type"] == "ASSOCIATE"
+        # String-format relationships don't have a type field
+        assert "type" not in result["relationships"]["Mentor"]
+
+
+def test_parse_character_sheet_response_transforms_relationships_dict_format(
+    mock_schema_validator: MagicMock,
+) -> None:
+    """Verify relationship transformation for dictionary format with type."""
+    response = json.dumps(
+        {
+            "name": "Hero",
+            "relationships": {
+                "Mentor": {"type": "MENTORS", "description": "Wise guide"},
+                "Friend": {"type": "FRIEND_OF", "description": "Close ally"},
+            },
+        }
+    )
+
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
+        mock_validate.return_value = []
+
+        result = _parse_character_sheet_response(response, "Hero")
+
+        assert "Mentor" in result["relationships"]
+        assert result["relationships"]["Mentor"]["description"] == "Wise guide"
+        assert result["relationships"]["Mentor"]["type"] == "MENTORS"
+        assert "Friend" in result["relationships"]
+        assert result["relationships"]["Friend"]["type"] == "FRIEND_OF"
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_success(base_state, mock_llm_service):
+async def test_generate_character_list_success(base_state: NarrativeState, mock_llm_service: MagicMock) -> None:
     """Verify successful generation of character list."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
@@ -258,7 +287,7 @@ async def test_generate_character_list_success(base_state, mock_llm_service):
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_rejects_non_json(base_state, mock_llm_service):
+async def test_generate_character_list_rejects_non_json(base_state: NarrativeState, mock_llm_service: MagicMock) -> None:
     """Verify strict JSON-only contract for character list (no fallback)."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
@@ -273,7 +302,7 @@ async def test_generate_character_list_rejects_non_json(base_state, mock_llm_ser
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_requires_protagonist(base_state, mock_llm_service):
+async def test_generate_character_list_requires_protagonist(base_state: NarrativeState, mock_llm_service: MagicMock) -> None:
     """Verify protagonist name must be included exactly when provided (no fallback)."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
@@ -288,7 +317,7 @@ async def test_generate_character_list_requires_protagonist(base_state, mock_llm
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_rejects_more_than_ten(base_state, mock_llm_service):
+async def test_generate_character_list_rejects_more_than_ten(base_state: NarrativeState, mock_llm_service: MagicMock) -> None:
     """Verify character list rejects more than 10 characters (no fallback)."""
     payload = ["Hero"] + [f"Character{i}" for i in range(20)]
     mock_llm_service.async_call_llm = AsyncMock(return_value=(json.dumps(payload), {"prompt_tokens": 100, "completion_tokens": 50}))
@@ -299,7 +328,7 @@ async def test_generate_character_list_rejects_more_than_ten(base_state, mock_ll
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_empty_response(base_state, mock_llm_service):
+async def test_generate_character_list_empty_response(base_state: NarrativeState, mock_llm_service: MagicMock) -> None:
     """Verify empty response yields failure (no fallback)."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
@@ -309,7 +338,7 @@ async def test_generate_character_list_empty_response(base_state, mock_llm_servi
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_exception(base_state, mock_llm_service):
+async def test_generate_character_list_exception(base_state: NarrativeState, mock_llm_service: MagicMock) -> None:
     """Verify exception yields failure (no fallback)."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
@@ -319,7 +348,7 @@ async def test_generate_character_list_exception(base_state, mock_llm_service):
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_success(base_state, mock_llm_service, mock_schema_validator):
+async def test_generate_character_sheet_success(base_state: NarrativeState, mock_llm_service: MagicMock, mock_schema_validator: MagicMock) -> None:
     """Verify successful generation of character sheet."""
     with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = ["brave", "loyal"]
@@ -339,8 +368,12 @@ async def test_generate_character_sheet_success(base_state, mock_llm_service, mo
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_non_protagonist(base_state, mock_llm_service, mock_schema_validator):
+async def test_generate_character_sheet_non_protagonist(base_state: NarrativeState, mock_llm_service: MagicMock, mock_schema_validator: MagicMock) -> None:
     """Verify sheet generation for non-protagonist character."""
+    response, usage = mock_llm_service.async_call_llm.return_value
+    sheet = json.loads(response)
+    sheet.update(name="Mentor", traits=[], relationships={})
+    mock_llm_service.async_call_llm.return_value = json.dumps(sheet), usage
     with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
@@ -355,7 +388,7 @@ async def test_generate_character_sheet_non_protagonist(base_state, mock_llm_ser
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_empty_response(base_state, mock_llm_service, mock_schema_validator):
+async def test_generate_character_sheet_empty_response(base_state: NarrativeState, mock_llm_service: MagicMock, mock_schema_validator: MagicMock) -> None:
     """Verify handling of empty LLM response."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
@@ -369,7 +402,7 @@ async def test_generate_character_sheet_empty_response(base_state, mock_llm_serv
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_exception(base_state, mock_llm_service, mock_schema_validator):
+async def test_generate_character_sheet_exception(base_state: NarrativeState, mock_llm_service: MagicMock, mock_schema_validator: MagicMock) -> None:
     """Verify exception handling during sheet generation."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
@@ -384,28 +417,24 @@ async def test_generate_character_sheet_exception(base_state, mock_llm_service, 
 
 @pytest.mark.asyncio
 async def test_generate_character_sheets_success(
-    base_state,
-    mock_content_manager,
-    mock_llm_service,
-    mock_neo4j,
-    mock_schema_validator,
-):
+    base_state: NarrativeState,
+    mock_content_manager: MagicMock,
+    mock_llm_service: MagicMock,
+    mock_neo4j: MagicMock,
+    mock_schema_validator: MagicMock,
+) -> None:
     """Verify successful generation of all character sheets."""
     char_list_response = json.dumps(["Hero", "Mentor", "Villain"])
-    char_sheet_response = json.dumps(
-        {
-            "name": "Test",
-            "description": "Test character",
-            "traits": ["brave"],
-        }
-    )
+    response, _ = mock_llm_service.async_call_llm.return_value
+    sheet = json.loads(response)
+    sheet.update(traits=["brave"], relationships={})
 
     mock_llm_service.async_call_llm = AsyncMock(
         side_effect=[
             (char_list_response, {}),
-            (char_sheet_response, {}),
-            (char_sheet_response, {}),
-            (char_sheet_response, {}),
+            (json.dumps(dict(sheet, name="Hero")), {}),
+            (json.dumps(dict(sheet, name="Mentor")), {}),
+            (json.dumps(dict(sheet, name="Villain")), {}),
         ]
     )
 
@@ -421,45 +450,48 @@ async def test_generate_character_sheets_success(
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheets_missing_title(base_state):
+async def test_generate_character_sheets_missing_title(base_state: NarrativeState) -> None:
     """Verify error when title is missing."""
-    state = {**base_state, "title": ""}
+    state: NarrativeState = {**base_state, "title": ""}
 
     result = await generate_character_sheets(state)
 
     assert result["initialization_step"] == "character_sheets_failed"
+    assert result["last_error"] is not None
     assert "Missing required fields" in result["last_error"]
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheets_missing_genre(base_state):
+async def test_generate_character_sheets_missing_genre(base_state: NarrativeState) -> None:
     """Verify error when genre is missing."""
-    state = {**base_state, "genre": ""}
+    state: NarrativeState = {**base_state, "genre": ""}
 
     result = await generate_character_sheets(state)
 
     assert result["initialization_step"] == "character_sheets_failed"
+    assert result["last_error"] is not None
     assert "Missing required fields" in result["last_error"]
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheets_character_list_fails(base_state, mock_llm_service, mock_neo4j):
+async def test_generate_character_sheets_character_list_fails(base_state: NarrativeState, mock_llm_service: MagicMock, mock_neo4j: MagicMock) -> None:
     """Verify failure when character list generation cannot produce usable output."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
     result = await generate_character_sheets(base_state)
 
     assert result["initialization_step"] == "character_sheets_failed"
+    assert result["last_error"] is not None
     assert "Failed to generate character list" in result["last_error"]
 
 
 @pytest.mark.asyncio
 async def test_generate_character_sheets_all_sheets_fail(
-    base_state,
-    mock_llm_service,
-    mock_neo4j,
-    mock_schema_validator,
-):
+    base_state: NarrativeState,
+    mock_llm_service: MagicMock,
+    mock_neo4j: MagicMock,
+    mock_schema_validator: MagicMock,
+) -> None:
     """Verify error when all character sheet generations fail."""
     char_list_response = json.dumps(["Hero", "Mentor", "Villain"])
     mock_llm_service.async_call_llm = AsyncMock(
@@ -483,11 +515,12 @@ async def test_generate_character_sheets_all_sheets_fail(
         result = await generate_character_sheets(base_state)
 
         assert result["initialization_step"] == "character_sheets_failed"
+        assert result["last_error"] is not None
         assert "Failed to generate any character sheets" in result["last_error"]
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_uses_existing_traits(base_state, mock_llm_service, mock_schema_validator):
+async def test_generate_character_sheet_uses_existing_traits(base_state: NarrativeState, mock_llm_service: MagicMock, mock_schema_validator: MagicMock) -> None:
     """Verify existing traits are passed to prompt."""
     with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []

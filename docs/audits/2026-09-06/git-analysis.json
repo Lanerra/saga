@@ -1,0 +1,133 @@
+{
+  "baseline_status_counts_excluding_audit": {
+    " M": 284,
+    " D": 2,
+    "??": 20
+  },
+  "mode_changes": 284,
+  "content_changed_paths": [
+    "config/settings.py",
+    "core/__init__.py",
+    "core/knowledge_graph_service.py",
+    "core/langgraph/nodes/commit_node.py",
+    "core/langgraph/nodes/context_retrieval_node.py",
+    "core/langgraph/nodes/scene_extraction.py",
+    "core/langgraph/state.py",
+    "pyproject.toml",
+    "tests/core/langgraph/nodes/test_commit_node.py",
+    "tests/core/langgraph/nodes/test_context_retrieval_node.py",
+    "tests/core/langgraph/nodes/test_scene_extraction.py",
+    "tests/core/langgraph/subgraphs/test_generation_subgraph.py",
+    "tests/test_knowledge_graph_service.py",
+    "tests/test_langgraph/conftest.py",
+    "tests/test_scene_extraction_validation.py"
+  ],
+  "branches": [
+    {
+      "branch": "claude/audit-cypher-queries-017LaWwjqzHKgGcPW3ZEs3i4",
+      "head_only_branch_only": "259\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/deduplication-before-relationships-01RsdsTnWSUpt4ijXjfzNWnT",
+      "head_only_branch_only": "292\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/fix-context-retrieval-errors-017mdXpeEvAesgzzfFYGLrC1",
+      "head_only_branch_only": "298\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/fix-dual-extraction-01AC6YddYEhFL1AG4CNrf9LN",
+      "head_only_branch_only": "296\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/langgraph-permissive-relationships-01JPgBya9pheVqjAHiwQXRN5",
+      "head_only_branch_only": "317\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/langgraph-workflow-integration-0163LdS6JqacyWVCxKj7FGVJ",
+      "head_only_branch_only": "312\t1",
+      "ancestor_of_HEAD": false
+    },
+    {
+      "branch": "claude/langgraph-workflow-integration-016vmCbWgVsPyZrbD8Ec7py7",
+      "head_only_branch_only": "313\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/langgraph-workflow-integration-018RVCvrdj52VRppwxW2Se6b",
+      "head_only_branch_only": "303\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/langgraph-workflow-integration-01DKJVxBymr71it3fQAiiB9w",
+      "head_only_branch_only": "324\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/langgraph-workflow-integration-01LmwNHQfxuFKY7rEi7St9bf",
+      "head_only_branch_only": "305\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/langgraph-workflow-integration-01Pe1dwqXQhpkCmexwzdbAPg",
+      "head_only_branch_only": "320\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/langgraph-workflow-integration-01VS6bh7aukov1zSPAPJKnvw",
+      "head_only_branch_only": "308\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/merge-langgraph-feature-01AKrksgRYtjqUJ8BEYRWh1z",
+      "head_only_branch_only": "266\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "claude/merge-langgraph-reduce-bloat-01FUT9cYcdRA7Z8GFPec3sXn",
+      "head_only_branch_only": "281\t1",
+      "ancestor_of_HEAD": false
+    },
+    {
+      "branch": "claude/state-mutation-safety-011evTuPM9hTdE9aEZgWy53R",
+      "head_only_branch_only": "296\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "codex/implement-saga-bootstrap-feature",
+      "head_only_branch_only": "110\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "dev",
+      "head_only_branch_only": "63\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "feature/langgraph",
+      "head_only_branch_only": "206\t0",
+      "ancestor_of_HEAD": true
+    },
+    {
+      "branch": "feature/spacy",
+      "head_only_branch_only": "73\t1",
+      "ancestor_of_HEAD": false
+    },
+    {
+      "branch": "master",
+      "head_only_branch_only": "72\t11",
+      "ancestor_of_HEAD": false
+    },
+    {
+      "branch": "refactor/kg-schema",
+      "head_only_branch_only": "0\t0",
+      "ancestor_of_HEAD": true
+    }
+  ],
+  "test_source_line_ratio": 0.8729119234606432
+}

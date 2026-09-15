@@ -1,0 +1,19 @@
+Extract at most 20 significant semantic relationships explicitly mentioned or strongly implied by this outline and its selected entity catalog. Focus on the story world, character origins, and initial state.
+
+Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
+Setting: {{ setting }}
+
+Use only the relationship_type choices in the supplied JSON schema.
+
+SELECTED ENTITY CATALOG (exact IDs and labels; names and descriptions are context):
+{{ catalog | compact_json }}
+
+Copy source_id, source_label, target_id and target_label literally from matching catalog entries. Only Character, Location, Item and Event entries are selectable. Never invent IDs, substitute display names, or infer aliases from spelling similarity. For duplicate/long event names, use descriptions, event_type and sequence metadata to disambiguate. Direction matters: the source acts on the target. Use only allowed UPPERCASE_WITH_UNDERSCORES predicates.
+
+Exclude objects that are possessive attributes, abstract concepts, actions/states used as nouns, or generic descriptors without identity.
+Prioritize origins (ORIGINATES_FROM), authority (RULES, OWNS_LOCATION), character-item links (OWNS, SEEKS, GUARDS), event locations (OCCURS_AT), spatial links (CONTAINS_LOCATION, BORDERS), and item locations (CONTAINS_ITEM).
+
+Return only JSON matching the supplied schema: one object with exactly "kg_triples", an array of up to 20 objects. Each row has exactly six string fields: source_id, source_label, target_id, target_label, relationship_type, description. Preserve the source assertion in full in description. No commentary, Markdown, fences, alternate wrappers or extra fields. If no significant relationships exist, return {"kg_triples": []}.
+
+Outline text:
+{{ outline_text }}

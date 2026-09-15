@@ -1,4 +1,3 @@
-# core/langgraph/nodes/validation_node.py
 """Validate generated narrative for internal consistency.
 
 This module defines the Phase 2 validation node used by the LangGraph workflow.
@@ -20,43 +19,14 @@ from typing import Any
 
 import structlog
 
-from core.db_manager import neo4j_manager
+import config
+from core.langgraph.quality_policy import configured_policy, policy_for, record_check
 from core.langgraph.state import Contradiction, NarrativeState
+from core.project_config import allocate_word_target
+from data_access.validation_queries import fetch_prior_accepted_facts, get_candidate_relationship_assertions
+from models.kg_constants import CONTRADICTORY_TRAIT_PAIRS
 
 logger = structlog.get_logger(__name__)
-
-CONTRADICTORY_TRAIT_PAIRS: list[tuple[str, str]] = [
-    ("introverted", "extroverted"),
-    ("brave", "cowardly"),
-    ("honest", "deceitful"),
-    ("kind", "cruel"),
-    ("optimistic", "pessimistic"),
-    ("calm", "anxious"),
-    ("trusting", "suspicious"),
-    ("generous", "selfish"),
-    ("patient", "impatient"),
-    ("humble", "arrogant"),
-    ("selfish", "altruistic"),
-    ("lazy", "industrious"),
-    ("timid", "bold"),
-    ("cynical", "idealistic"),
-    ("merciful", "merciless"),
-    ("loyal", "treacherous"),
-    ("gentle", "aggressive"),
-    ("forgiving", "vengeful"),
-    ("cheerful", "gloomy"),
-    ("confident", "insecure"),
-    ("stoic", "emotional"),
-    ("rational", "impulsive"),
-    ("cautious", "reckless"),
-    ("modest", "vain"),
-    ("compassionate", "callous"),
-    ("honest", "deceptive"),
-    ("reliable", "unreliable"),
-    ("disciplined", "undisciplined"),
-    ("empathetic", "apathetic"),
-    ("trusting", "paranoid"),
-]
 
 
 def _normalize_trait(value: Any) -> str | None:
@@ -108,67 +78,6 @@ def _coerce_traits_list(raw: Any) -> list[str]:
     return out
 
 
-def get_extracted_events_for_validation(extracted_entities: dict[str, Any] | None) -> list[Any]:
-    """Derive event entities from extraction state.
-
-    State-shape contract:
-    - Canonical: events live in `extracted_entities["world_items"]` with `type == "Event"`
-      (case-insensitive).
-    - Legacy compatibility: if `extracted_entities["events"]` exists, it is also included.
-
-    Args:
-        extracted_entities: Extracted entities bucket from state.
-
-    Returns:
-        A de-duplicated list of event-like objects (dicts or `ExtractedEntity` instances)
-        suitable for downstream plot/timeline checks.
-    """
-    if not extracted_entities:
-        return []
-
-    world_items = extracted_entities.get("world_items", [])
-    legacy_events = extracted_entities.get("events", [])
-
-    candidates: list[Any] = []
-    if isinstance(world_items, list):
-        candidates.extend(world_items)
-    if isinstance(legacy_events, list):
-        candidates.extend(legacy_events)
-
-    # Filter by type == Event (supports ExtractedEntity objects or dicts)
-    filtered: list[Any] = []
-    for item in candidates:
-        item_type = None
-        if isinstance(item, dict):
-            item_type = item.get("type")
-        else:
-            item_type = getattr(item, "type", None)
-
-        if isinstance(item_type, str) and item_type.strip().lower() == "event":
-            filtered.append(item)
-
-    # Deduplicate by (name, description) when available; fall back to id(item)
-    seen: set[tuple[str, str] | int] = set()
-    deduped: list[Any] = []
-    for item in filtered:
-        name = ""
-        desc = ""
-        if isinstance(item, dict):
-            name = str(item.get("name") or "")
-            desc = str(item.get("description") or "")
-        else:
-            name = str(getattr(item, "name", "") or "")
-            desc = str(getattr(item, "description", "") or "")
-
-        key = (name, desc) if (name or desc) else id(item)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(item)
-
-    return deduped
-
-
 def _get_character_trait_values_for_validation(char: Any) -> set[str]:
     """Extract normalized trait values for a character.
 
@@ -212,6 +121,17 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         Relationship validation is permissive by default and does not block writes;
         revision decisions are driven by contradiction severity and plot stagnation.
     """
+    policy_state: NarrativeState = {**state, "quality_policy": state.get("quality_policy") or configured_policy()}
+    if not policy_for(policy_state).consistency_enabled:
+        logger.info("validate_consistency: validation disabled, skipping all checks")
+        return {
+            "contradictions": [],
+            "needs_revision": False,
+            "current_node": "validate_consistency",
+            "quality_policy": state.get("quality_policy") or configured_policy(),
+            "quality_checks": record_check(state, "consistency", "skipped", "disabled"),
+        }
+
     # Initialize content manager to read externalized content
     from core.langgraph.content_manager import (
         ContentManager,
@@ -221,6 +141,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     )
 
     content_manager = ContentManager(require_project_dir(state))
+    candidate_assertions = get_candidate_relationship_assertions(state, content_manager)
 
     # Get extraction results (prefers externalized content)
     extracted_entities = get_extracted_entities(state, content_manager)
@@ -269,23 +190,21 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 
     contradictions: list[Contradiction] = []
 
-    # Check 1: Validate all extracted relationships (PERMISSIVE MODE)
-    # In permissive mode, this only logs info messages and never blocks.
-    # Relationship validation is now informational only to support creative freedom.
     relationship_contradictions = await _validate_relationships(
-        extracted_relationships,
+        candidate_assertions,
         state.get("current_chapter", 1),
         extracted_entities,
     )
-    # Note: In permissive mode, relationship_contradictions will be empty
-    # since the validator always returns valid=True
+
     contradictions.extend(relationship_contradictions)
 
     # Check 2: Character trait consistency
-    # NEW FUNCTIONALITY: Checks for contradictory character traits
+
+    prior_facts = await fetch_prior_accepted_facts(state)
     trait_contradictions = await _check_character_traits(
         extracted_entities.get("characters", []),
         state.get("current_chapter", 1),
+        prior_facts["characters"],
     )
     contradictions.extend(trait_contradictions)
 
@@ -326,7 +245,8 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         "contradictions": contradictions,
         "needs_revision": needs_revision,
         "current_node": "validate_consistency",
-        "last_error": None,
+        "quality_policy": state.get("quality_policy") or configured_policy(),
+        "quality_checks": record_check(state, "consistency", "completed"),
     }
 
 
@@ -448,7 +368,7 @@ async def _validate_relationships(
             # but we keep this for strict mode compatibility
             logger.warning(
                 "relationship_validation_strict_mode_violation",
-                relationship=f"{rel.source_name}({source_type}) -{rel.relationship_type}-> {rel.target_name}({target_type})",
+                relationship=f"{source_name}({source_type}) -{relationship_type}-> {target_name}({target_type})",
                 errors=errors,
             )
             # Don't add to contradictions in permissive mode
@@ -466,102 +386,32 @@ async def _validate_relationships(
 async def _check_character_traits(
     extracted_chars: list[Any],
     current_chapter: int,
+    existing_characters: dict[str, list[dict[str, Any]]],
 ) -> list[Contradiction]:
-    """
-    Compare extracted character attributes with established traits.
-
-    NEW FUNCTIONALITY: Not in current SAGA, but specified in LangGraph architecture.
-
-    This function checks for contradictory trait pairs like "brave" vs "cowardly"
-    by querying Neo4j for established character traits and comparing them with
-    newly extracted attributes.
-
-    Args:
-        extracted_chars: List of ExtractedEntity instances for characters
-        current_chapter: Current chapter number
-
-    Returns:
-        List of Contradiction instances for trait inconsistencies
-    """
-    if not extracted_chars:
-        return []
-
-    contradictions = []
-
-    try:
-        for char in extracted_chars:
-            character_name = char.get("name") if isinstance(char, dict) else getattr(char, "name", None)
-            if not isinstance(character_name, str) or not character_name:
-                continue
-
-            # Get established traits from Neo4j (from traits property)
-            query = """
-                MATCH (c:Character {name: $name})
-                RETURN coalesce(c.traits, []) AS traits,
-                       c.created_chapter AS first_chapter,
-                       c.description AS description
-                LIMIT 1
-            """
-
-            result = await neo4j_manager.execute_read_query(query, {"name": character_name})
-
-            if result and len(result) > 0:
-                existing = result[0]
-                # Normalize established traits defensively (Neo4j may return mixed casing)
-                traits_list = existing.get("traits", [])
-                established_traits = set(_coerce_traits_list(traits_list))
-
-                # Extract *new* traits from the extraction contract:
-                #   ExtractedEntity.attributes["traits"] -> list[str]
-                new_trait_candidates = _get_character_trait_values_for_validation(char)
-
-                # Check for contradictions (pair values are already lowercase in our list)
-                for trait_a, trait_b in CONTRADICTORY_TRAIT_PAIRS:
-                    # Check if established trait conflicts with new trait
-                    if trait_a in established_traits and trait_b in new_trait_candidates:
-                        contradictions.append(
-                            Contradiction(
-                                type="character_trait",
-                                description=f"{character_name} was established as '{trait_a}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_b}'",
-                                conflicting_chapters=[
-                                    existing.get("first_chapter", 0),
-                                    current_chapter,
-                                ],
-                                severity="major",
-                                suggested_fix=f"Remove '{trait_b}' or explain character development",
-                            )
-                        )
-                    # Also check reverse
-                    elif trait_b in established_traits and trait_a in new_trait_candidates:
-                        contradictions.append(
-                            Contradiction(
-                                type="character_trait",
-                                description=f"{character_name} was established as '{trait_b}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_a}'",
-                                conflicting_chapters=[
-                                    existing.get("first_chapter", 0),
-                                    current_chapter,
-                                ],
-                                severity="major",
-                                suggested_fix=f"Remove '{trait_a}' or explain character development",
-                            )
-                        )
-
-        logger.debug(
-            "_check_character_traits: trait checking complete",
-            characters=len(extracted_chars),
-            contradictions=len(contradictions),
+    """Compare candidate traits with the latest accepted snapshot per character."""
+    findings: set[tuple[str, int, str, str]] = set()
+    for character in extracted_chars:
+        name = character.get("name") if isinstance(character, dict) else getattr(character, "name", None)
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Candidate character identity missing")
+        history = [item for item in existing_characters.get(name, []) if type(item["first_chapter"]) is int and 0 < item["first_chapter"] < current_chapter]
+        latest_chapter = max((item["first_chapter"] for item in history), default=0)
+        established = {trait for item in history if item["first_chapter"] == latest_chapter for trait in _coerce_traits_list(item["traits"])}
+        candidates = _get_character_trait_values_for_validation(character)
+        for first, second in CONTRADICTORY_TRAIT_PAIRS:
+            for previous, candidate in ((first, second), (second, first)):
+                if previous in established and candidate in candidates:
+                    findings.add((name, latest_chapter, previous, candidate))
+    return [
+        Contradiction(
+            type="character_trait",
+            description=f"{name} was established as '{previous}' in chapter {chapter}, but is now described as '{candidate}'",
+            conflicting_chapters=[chapter, current_chapter],
+            severity="major",
+            suggested_fix=f"Remove '{candidate}' or explain character development",
         )
-
-        return contradictions
-
-    except Exception as e:
-        logger.error(
-            "_check_character_traits: error during trait checking",
-            error=str(e),
-            exc_info=True,
-        )
-        # Return empty list on error to avoid breaking workflow
-        return []
+        for name, chapter, previous, candidate in sorted(findings)
+    ]
 
 
 def _is_plot_stagnant(
@@ -576,7 +426,7 @@ def _is_plot_stagnant(
 
     This function checks multiple heuristics to determine if the chapter
     is making sufficient progress:
-    - Minimum word count (1500 words)
+    - Minimum word count (configurable via PLOT_STAGNATION_MIN_WORD_COUNT)
     - Presence of new events
     - Presence of new relationships
 
@@ -590,11 +440,15 @@ def _is_plot_stagnant(
     """
     # Check 1: Minimum word count
     word_count = state.get("draft_word_count", 0)
-    if word_count < 1500:
+    minimum = config.settings.PLOT_STAGNATION_MIN_WORD_COUNT
+    if "target_word_count" in state:
+        chapter_target = allocate_word_target(state["target_word_count"], state["total_chapters"], state.get("current_chapter", 1))
+        minimum = min(minimum, chapter_target)
+    if word_count < minimum:
         logger.debug(
             "_is_plot_stagnant: insufficient word count",
             word_count=word_count,
-            minimum=1500,
+            minimum=minimum,
         )
         return True
 
@@ -612,41 +466,20 @@ def _is_plot_stagnant(
         else:
             relationships = relationships_raw
 
-    # Check 2: Get all extracted elements
-    characters = entities.get("characters", []) if entities else []
-    world_items = entities.get("world_items", []) if entities else []
+    entity_count = len(entities.get("characters", [])) + len(entities.get("world_items", [])) + len(entities.get("events", []))
+    relationship_count = len(relationships)
 
-    # Canonical state-shape: events are stored in world_items with type == "Event".
-    # We also accept legacy `extracted_entities["events"]` if present.
-    extracted_events = get_extracted_events_for_validation(entities)
-
-    # Avoid double-counting: world_items includes events, but we still want to count
-    # events explicitly for readability and future heuristics.
-    non_event_world_items: list[Any] = []
-    if isinstance(world_items, list):
-        for item in world_items:
-            item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
-            if isinstance(item_type, str) and item_type.strip().lower() == "event":
-                continue
-            non_event_world_items.append(item)
-
-    # Check 3: Count total new content
-    total_new_elements = len(characters) + len(non_event_world_items) + len(extracted_events)
-    total_relationships = len(relationships) if relationships is not None else 0
-
-    # If we have no new elements AND no relationships, the plot is stagnant
-    if total_new_elements == 0 and total_relationships == 0:
+    if entity_count < config.settings.PLOT_STAGNATION_MIN_ENTITIES and relationship_count < config.settings.PLOT_STAGNATION_MIN_RELATIONSHIPS:
         logger.debug(
-            "_is_plot_stagnant: no new elements or relationships",
-            characters=len(characters) if isinstance(characters, list) else None,
-            world_items=len(non_event_world_items),
-            events=len(extracted_events),
-            relationships=total_relationships,
+            "_is_plot_stagnant: insufficient entities and relationships",
+            entity_count=entity_count,
+            relationship_count=relationship_count,
+            minimum_entities=config.settings.PLOT_STAGNATION_MIN_ENTITIES,
+            minimum_relationships=config.settings.PLOT_STAGNATION_MIN_RELATIONSHIPS,
         )
         return True
 
-    # If we made it here, the chapter seems to be making progress
     return False
 
 
-__all__ = ["validate_consistency", "CONTRADICTORY_TRAIT_PAIRS"]
+__all__ = ["validate_consistency"]

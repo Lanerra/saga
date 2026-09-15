@@ -14,13 +14,12 @@ Notes:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
     ContentManager,
     get_draft_text,
@@ -28,10 +27,10 @@ from core.langgraph.content_manager import (
     require_project_dir,
 )
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 from data_access import chapter_queries
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-from utils.common import try_load_json_from_response
+from utils.common import load_strict_json
 from utils.file_io import write_text_file
 
 logger = structlog.get_logger(__name__)
@@ -42,7 +41,7 @@ class ChapterSummaryContractError(ValueError):
 
 
 _SUMMARY_MAX_ATTEMPTS = 3
-_SUMMARY_CORRECTION_INSTRUCTION = "\n\nCORRECTION:\n" 'Return ONLY valid JSON. Output MUST be a single JSON object with exactly one key: "summary".\n' "No markdown. No code fences. No extra text.\n"
+_SUMMARY_CORRECTION_INSTRUCTION = '\n\nCORRECTION:\nReturn ONLY valid JSON. Output MUST be a single JSON object with exactly one key: "summary".\nNo markdown. No code fences. No extra text.\n'
 
 
 async def summarize_chapter(state: NarrativeState) -> NarrativeState:
@@ -96,7 +95,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "summarize",
         }
 
-    # Step 1: Build summary prompt
     prompt = render_prompt(
         "knowledge_agent/chapter_summary.j2",
         {
@@ -105,7 +103,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         },
     )
 
-    # Step 2: Generate summary using fast extraction model
     logger.info(
         "summarize_chapter: calling LLM for summary",
         chapter=state.get("current_chapter", 1),
@@ -120,7 +117,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             if attempt_index > 0:
                 attempt_prompt = attempt_prompt + _SUMMARY_CORRECTION_INSTRUCTION
 
-            summary_text, usage = await llm_service.async_call_llm(
+            summary_text, usage = await get_services().language_model.async_call_llm(
                 model_name=state.get("small_model", config.SMALL_MODEL),  # Use fast model
                 prompt=attempt_prompt,
                 temperature=0.3,  # Low temperature for consistency
@@ -156,13 +153,12 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             summary_length=len(summary),
         )
 
-        # Step 4: Persist to Neo4j
         await _save_summary_to_neo4j(
             chapter_number=state.get("current_chapter", 1),
             summary=summary,
         )
 
-        # Step 5: Persist per-chapter summary file (best-effort, non-fatal)
+        # Summary mirrors are best-effort; the content store retains the summary.
         try:
             _write_chapter_summary_file(
                 chapter_number=state.get("current_chapter"),
@@ -177,7 +173,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
                 exc_info=True,
             )
 
-        # Step 6: Update state with summary
         # Keep rolling window of last 5 summaries
         previous_summaries = list(get_previous_summaries(state, content_manager))[-4:]
         previous_summaries.append(summary)
@@ -208,7 +203,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "summarize",
         }
 
-    except ChapterSummaryContractError:
+    except (ChapterSummaryContractError, TimeoutError):
         raise
     except Exception as e:
         logger.error(
@@ -240,17 +235,17 @@ def _parse_summary_response(response_text: str) -> str:
     Raises:
         ChapterSummaryContractError: When the response is not a JSON object matching the contract.
     """
-    parsed, _candidates, _parse_errors = try_load_json_from_response(
-        response_text,
-        expected_root=(dict,),
-    )
+    try:
+        parsed = load_strict_json(response_text)
+    except ValueError:
+        raise ChapterSummaryContractError("Chapter summary JSON contract violated: expected one unambiguous JSON object.") from None
 
     if not isinstance(parsed, dict):
         raise ChapterSummaryContractError("Chapter summary JSON contract violated: could not parse a JSON object from the model response.")
 
     if set(parsed.keys()) != {"summary"}:
         keys = ", ".join(sorted(str(k) for k in parsed.keys()))
-        raise ChapterSummaryContractError('Chapter summary JSON contract violated: expected a single JSON object with exactly one key: "summary". ' f"Found keys: {keys}")
+        raise ChapterSummaryContractError(f'Chapter summary JSON contract violated: expected a single JSON object with exactly one key: "summary". Found keys: {keys}')
 
     summary = parsed.get("summary")
     if not isinstance(summary, str):
@@ -286,7 +281,7 @@ async def _save_summary_to_neo4j(
     )
 
     try:
-        await neo4j_manager.execute_write_query(query, parameters)
+        await get_services().database.execute_write_query(query, parameters)
         logger.info(
             "summarize_chapter: summary saved to Neo4j (canonical chapter upsert)",
             chapter=chapter_number,
@@ -338,7 +333,7 @@ def _write_chapter_summary_file(
         body = body.replace("\\n", "\n")
 
     # Build YAML front matter
-    generated_at = datetime.utcnow().isoformat()
+    generated_at = datetime.now(UTC).isoformat()
     front_matter_lines = [
         "---",
         f"chapter: {int(chapter_number)}",

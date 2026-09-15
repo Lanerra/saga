@@ -15,12 +15,13 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
-from core.llm_interface_refactored import llm_service
+from core.embedding_contract import embedding_identity, validate_embedding
+from core.service_context import get_services
+from models.kg_constants import WORLD_ITEM_CANONICAL_LABELS
+from utils import classify_category_label
 
 if TYPE_CHECKING:
     from models.kg_models import CharacterProfile, WorldItem
@@ -104,102 +105,70 @@ async def build_entity_embedding_update_statements(
 
     statements: list[tuple[str, dict[str, Any]]] = []
 
-    character_names = sorted({c.name for c in characters if c and c.name})
-    world_item_ids = sorted({w.id for w in world_items if w and w.id})
+    candidates: list[dict[str, Any]] = []
+    for char in characters:
+        candidates.append({"label": "Character", "id": char.id, "name": char.name,
+                           "category": "", "description": char.personality_description or ""})
+    for item in world_items:
+        label = classify_category_label(item.category)
+        if label not in WORLD_ITEM_CANONICAL_LABELS:
+            label = "Item"
+        candidates.append({"label": label, "id": item.id, "name": item.name,
+                           "category": item.category or "", "description": item.description or ""})
+    if not candidates:
+        return []
 
-    character_existing_hash: dict[str, str] = {}
-    world_existing_hash: dict[str, str] = {}
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate["name"], str) or not candidate["name"].strip():
+            raise ValueError("Invalid canonical entity name")
+        identifier = candidate["id"]
+        if not isinstance(identifier, str) or (identifier and not identifier.strip()):
+            raise ValueError("Invalid canonical entity ID")
+        candidate["id"] = identifier or None
+        candidate["index"] = index
 
-    if character_names:
-        query = f"""
-        MATCH (c:Character)
-        WHERE c.name IN $names
-        RETURN c.name AS key, c.`{text_hash_property}` AS existing_hash
-        """
-        results = await neo4j_manager.execute_read_query(query, {"names": character_names})
-
-        character_existing_hash = {}
-        for record in results or []:
-            if not isinstance(record, dict):
-                continue
-            key = record.get("key")
-            if not isinstance(key, str) or not key:
-                continue
-            existing_hash = record.get("existing_hash")
-            if not isinstance(existing_hash, str) or not existing_hash:
-                continue
-            character_existing_hash[key] = existing_hash
-
-    if world_item_ids:
-        query = f"""
-        MATCH (w)
-        WHERE (w:Location OR w:Item OR w:Event)
-          AND w.id IN $ids
-        RETURN w.id AS key, w.`{text_hash_property}` AS existing_hash
-        """
-        results = await neo4j_manager.execute_read_query(query, {"ids": world_item_ids})
-
-        world_existing_hash = {}
-        for record in results or []:
-            if not isinstance(record, dict):
-                continue
-            key = record.get("key")
-            if not isinstance(key, str) or not key:
-                continue
-            existing_hash = record.get("existing_hash")
-            if not isinstance(existing_hash, str) or not existing_hash:
-                continue
-            world_existing_hash[key] = existing_hash
-
+    # The empty model ID denotes name-only resolution, as in the native upsert.
+    # Resolve again inside the write transaction so first creation is supported.
+    match_candidates = """
+        OPTIONAL MATCH (candidate)
+        WHERE entity.label IN labels(candidate)
+          AND CASE WHEN entity.id IS NOT NULL THEN candidate.id = entity.id
+                   ELSE candidate.name = entity.name END
+        WITH entity, collect(candidate) AS candidates
+    """
+    query = f"""
+        UNWIND $entities AS entity
+        {match_candidates}
+        CALL apoc.util.validate(size(candidates) > 1, 'Ambiguous canonical entity', [])
+        WITH entity, head(candidates) AS found
+        CALL apoc.util.validate(found IS NOT NULL AND (found.id IS NULL OR trim(found.id) = ''),
+                                'Canonical entity has no stable ID', [])
+        RETURN entity.index AS key, found.id AS id, found.`{text_hash_property}` AS existing_hash,
+               found.`{model_property}` AS existing_model,
+               found.`{model_property}_identity` AS existing_identity,
+               found.`{vector_property}` AS existing_vector
+    """
+    results = await get_services().database.execute_read_query(query, {"entities": candidates})
+    existing = {record["key"]: record for record in results}
     embedding_inputs: list[dict[str, Any]] = []
     embedding_texts: list[str] = []
-
-    for char in characters:
-        name = char.name
-        description = char.description or ""
-        embedding_text = compute_entity_embedding_text(name=name, category="", description=description)
+    for candidate in candidates:
+        embedding_text = compute_entity_embedding_text(name=candidate["name"], category=candidate["category"], description=candidate["description"])
         embedding_hash = compute_entity_embedding_text_hash(embedding_text)
-        existing_hash = character_existing_hash.get(name)
-
-        if existing_hash == embedding_hash:
+        record = existing.get(candidate["index"], {})
+        if record.get("existing_hash") == embedding_hash and record.get("existing_model") == config.EMBEDDING_MODEL and record.get("existing_identity") == embedding_identity():
+            validate_embedding(record.get("existing_vector"), model=record["existing_model"])
             continue
-
-        embedding_inputs.append(
-            {
-                "entity_kind": "character",
-                "node_key": name,
-                "embedding_hash": embedding_hash,
-                "embedding_text": embedding_text,
-            }
-        )
-        embedding_texts.append(embedding_text)
-
-    for item in world_items:
-        stable_id = item.id
-        name = item.name or ""
-        category = item.category or ""
-        description = item.description or ""
-        embedding_text = compute_entity_embedding_text(name=name, category=category, description=description)
-        embedding_hash = compute_entity_embedding_text_hash(embedding_text)
-        existing_hash = world_existing_hash.get(stable_id)
-
-        if existing_hash == embedding_hash:
-            continue
-
-        embedding_inputs.append(
-            {
-                "entity_kind": "world_item",
-                "node_key": stable_id,
-                "embedding_hash": embedding_hash,
-                "embedding_text": embedding_text,
-            }
-        )
+        embedding_inputs.append({
+            "identity": {"label": candidate["label"], "id": record.get("id") or candidate["id"], "name": candidate["name"]},
+            "embedding_hash": embedding_hash,
+        })
         embedding_texts.append(embedding_text)
 
     if not embedding_inputs:
         return []
 
-    embeddings = await llm_service.async_get_embeddings_batch(embedding_texts)
+    embeddings = await get_services().language_model.async_get_embeddings_batch(embedding_texts)
 
     if len(embeddings) != len(embedding_inputs):
         raise ValueError("embedding batch result length mismatch")
@@ -209,60 +178,39 @@ async def build_entity_embedding_update_statements(
         if embedding is None:
             logger.warning(
                 "entity embedding generation returned None",
-                entity_kind=embedding_input["entity_kind"],
-                node_key=embedding_input["node_key"],
+                identity=embedding_input["identity"],
             )
             continue
 
-        embedding_array = embedding if isinstance(embedding, np.ndarray) else np.array(embedding)
-        embedding_list = neo4j_manager.embedding_to_list(embedding_array)
-        if not embedding_list:
-            continue
+        embedding_list = validate_embedding(embedding, model=config.EMBEDDING_MODEL).tolist()
 
-        if embedding_input["entity_kind"] == "character":
-            cypher = f"""
-            MATCH (c:Character {{name: $name}})
-            SET c.`{vector_property}` = $vector,
-                c.`{text_hash_property}` = $text_hash,
-                c.`{model_property}` = $model,
-                c.last_updated = timestamp()
-            """
-            params = {
-                "name": embedding_input["node_key"],
-                "vector": embedding_list,
-                "text_hash": embedding_input["embedding_hash"],
-                "model": config.EMBEDDING_MODEL,
-            }
-            statements.append((cypher, params))
-            continue
-
-        if embedding_input["entity_kind"] == "world_item":
-            cypher = f"""
-            MATCH (w)
-            WHERE (w:Location OR w:Item OR w:Event)
-              AND w.id = $id
-            SET w.`{vector_property}` = $vector,
-                w.`{text_hash_property}` = $text_hash,
-                w.`{model_property}` = $model,
-                w.last_updated = timestamp()
-            """
-            params = {
-                "id": embedding_input["node_key"],
-                "vector": embedding_list,
-                "text_hash": embedding_input["embedding_hash"],
-                "model": config.EMBEDDING_MODEL,
-            }
-            statements.append((cypher, params))
-            continue
-
-        raise ValueError("unsupported entity_kind for embedding update")
+        cypher = f"""
+            WITH $identity AS entity
+            {match_candidates}
+            CALL apoc.util.validate(size(candidates) <> 1, 'Embedding target must resolve exactly once', [])
+            WITH head(candidates) AS node
+            CALL apoc.util.validate(node.id IS NULL OR trim(node.id) = '', 'Canonical entity has no stable ID', [])
+            SET node.`{vector_property}` = $vector,
+                node.`{text_hash_property}` = $text_hash,
+                node.`{model_property}` = $model,
+                node.`{model_property}_identity` = $embedding_identity,
+                node.updated_ts = timestamp()
+        """
+        params = {
+            "identity": embedding_input["identity"],
+            "vector": embedding_list,
+            "text_hash": embedding_input["embedding_hash"],
+            "model": config.EMBEDDING_MODEL,
+            "embedding_identity": embedding_identity(),
+        }
+        statements.append((cypher, params))
 
     logger.info(
         "Built entity embedding update statements",
         statements=len(statements),
         candidates=len(embedding_inputs),
-        characters=len(character_names),
-        world_items=len(world_item_ids),
+        characters=len(characters),
+        world_items=len(world_items),
     )
 
     return statements

@@ -7,6 +7,7 @@ the LangGraph migration Phase 1 components.
 """
 
 from collections.abc import Generator
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,7 +19,12 @@ from core.langgraph.state import (
     NarrativeState,
     create_initial_state,
 )
+from core.service_context import get_services
 from models.kg_models import CharacterProfile, WorldItem
+from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+from tests.fakes.service_context import patch_service
+from tests.fakes.strict_commit_recorder import StrictCommitRecorder
+from tests.test_langgraph import InlineExtractionState
 
 
 @pytest.fixture
@@ -114,10 +120,10 @@ def sample_initial_state() -> NarrativeState:
 
 
 @pytest.fixture
-def sample_state_with_extraction(tmp_path) -> NarrativeState:
+def sample_state_with_extraction(tmp_path: Path) -> InlineExtractionState:
     """Sample state with extracted entities and relationships."""
     project_dir = str(tmp_path / "test-project")
-    state = create_initial_state(
+    state: InlineExtractionState = {**create_initial_state(
         project_id="test-project",
         title="Test Novel",
         genre="Fantasy",
@@ -127,7 +133,7 @@ def sample_state_with_extraction(tmp_path) -> NarrativeState:
         total_chapters=20,
         project_dir=project_dir,
         protagonist_name="Hero",
-    )
+    )}
 
     # Add extracted entities
     state["extracted_entities"] = {
@@ -183,9 +189,17 @@ def sample_state_with_extraction(tmp_path) -> NarrativeState:
 
 
 @pytest.fixture
+def fake_neo4j(monkeypatch: pytest.MonkeyPatch) -> Generator[FakeNeo4jManager, None, None]:
+    """Inject a response-only recorder with exact native commit contracts."""
+    fake = StrictCommitRecorder()
+    monkeypatch.setattr(get_services(), 'database', fake)
+    yield fake
+
+
+@pytest.fixture
 def mock_neo4j_manager() -> Generator[MagicMock, None, None]:
-    """Mock Neo4j manager for testing."""
-    with patch("core.db_manager.neo4j_manager") as mock:
+    """Mock Neo4j manager for testing (legacy — prefer fake_neo4j)."""
+    with patch_service('database') as mock:
         mock.execute_read_query = AsyncMock(return_value=[])
         mock.execute_write_query = AsyncMock(return_value=[])
         mock.execute_cypher_batch = AsyncMock(return_value=None)
@@ -195,21 +209,13 @@ def mock_neo4j_manager() -> Generator[MagicMock, None, None]:
 @pytest.fixture
 def mock_llm_service() -> Generator[MagicMock, None, None]:
     """Mock LLM service for testing."""
-    with patch("core.llm_interface_refactored.llm_service") as mock:
+    with patch_service('language_model') as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
                 '{"character_updates": {}, "world_updates": {}, "kg_triples": []}',
                 {"prompt_tokens": 100, "completion_tokens": 50},
             )
         )
-        yield mock
-
-
-@pytest.fixture
-def mock_knowledge_graph_service() -> Generator[MagicMock, None, None]:
-    """Mock knowledge graph service for testing."""
-    with patch("core.knowledge_graph_service.knowledge_graph_service") as mock:
-        mock.persist_entities = AsyncMock(return_value=True)
         yield mock
 
 
@@ -245,14 +251,6 @@ def mock_kg_queries() -> Generator[MagicMock, None, None]:
     with patch("data_access.kg_queries") as mock:
         mock.add_kg_triples_batch_to_db = AsyncMock(return_value=None)
         yield mock
-
-
-@pytest.fixture
-def mock_entity_deduplication() -> Generator[MagicMock, None, None]:
-    """Mock entity deduplication functions."""
-    with patch("processing.entity_deduplication.check_entity_similarity") as mock_check:
-        mock_check.return_value = AsyncMock(return_value=None)
-        yield mock_check
 
 
 @pytest.fixture

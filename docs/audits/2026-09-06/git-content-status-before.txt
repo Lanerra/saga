@@ -1,0 +1,42 @@
+## refactor/kg-schema...saga/refactor/kg-schema [ahead 1]
+ M config/settings.py
+ M core/__init__.py
+ D core/knowledge_graph_service.py
+ M core/langgraph/nodes/commit_node.py
+ M core/langgraph/nodes/context_retrieval_node.py
+ M core/langgraph/nodes/scene_extraction.py
+ M core/langgraph/state.py
+ M pyproject.toml
+ M tests/core/langgraph/nodes/test_commit_node.py
+ M tests/core/langgraph/nodes/test_context_retrieval_node.py
+ M tests/core/langgraph/nodes/test_scene_extraction.py
+ M tests/core/langgraph/subgraphs/test_generation_subgraph.py
+ D tests/test_knowledge_graph_service.py
+ M tests/test_langgraph/conftest.py
+ M tests/test_scene_extraction_validation.py
+?? .claude/settings.local.json
+?? core/langgraph/nodes/commit_entity_conversion.py
+?? core/langgraph/nodes/commit_graph_ops.py
+?? core/langgraph/nodes/commit_validation.py
+?? core/langgraph/nodes/context_character_retrieval.py
+?? core/langgraph/nodes/context_plot_retrieval.py
+?? core/langgraph/nodes/context_scene_retrieval.py
+?? core/langgraph/nodes/context_world_retrieval.py
+?? core/langgraph/nodes/scene_extraction_normalization.py
+?? core/langgraph/nodes/scene_extraction_parsing.py
+?? core/langgraph/nodes/scene_extraction_validation.py
+?? docs/CODEBASE_AUDIT_REPORT.md
+?? docs/CURRENT_STATE_AUDIT.md
+?? docs/audits/2026-09-06/git-status-before.txt
+?? docs/audits/2026-09-06/imports.json
+?? docs/audits/2026-09-06/inventory-summary.json
+?? docs/audits/2026-09-06/inventory.py
+?? docs/audits/2026-09-06/source-inventory.json
+?? docs/audits/2026-09-06/symbols.json
+?? docs/field-audit-20260505.md
+?? genres.txt
+?? settings.txt
+?? task.txt
+?? themes.txt
+?? verify_split.py
+?? verify_subgraph.py

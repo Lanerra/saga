@@ -8,56 +8,7 @@ import pytest
 from core.langgraph.workflow import (
     create_checkpointer,
     create_full_workflow_graph,
-    should_revise_or_continue,
 )
-
-
-class TestWorkflowRouting:
-    """Test routing decisions in the workflow graph."""
-
-    def test_should_revise_or_continue_revision_needed(self) -> None:
-        """Test routing to revision when validation requests it."""
-        state = {
-            "needs_revision": True,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-        result = should_revise_or_continue(state)  # type: ignore[arg-type]
-        assert result == "revise"
-
-    def test_should_revise_or_continue_no_revision_needed(self) -> None:
-        """Test routing to summarization when no revision is needed."""
-        state = {
-            "needs_revision": False,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-        result = should_revise_or_continue(state)  # type: ignore[arg-type]
-        assert result == "summarize"
-
-    def test_should_revise_or_continue_force_continue(self) -> None:
-        """Test that force_continue bypasses revision."""
-        state = {
-            "needs_revision": True,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": True,
-        }
-        result = should_revise_or_continue(state)  # type: ignore[arg-type]
-        assert result == "summarize"
-
-    def test_should_revise_or_continue_max_iterations(self) -> None:
-        """Test routing to summarization when max iterations reached."""
-        state = {
-            "needs_revision": True,
-            "iteration_count": 3,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-        result = should_revise_or_continue(state)  # type: ignore[arg-type]
-        assert result == "summarize"
 
 
 class TestWorkflowGraphConstruction:
@@ -75,7 +26,6 @@ class TestWorkflowGraphConstruction:
             finalize_chapter=MagicMock(),
             heal_graph=MagicMock(),
             check_quality=MagicMock(),
-            normalize_relationships=MagicMock(),
             revise_chapter=MagicMock(),
             summarize_chapter=MagicMock(),
         ):
@@ -114,7 +64,6 @@ class TestWorkflowGraphStructure:
             finalize_chapter=MagicMock(return_value=lambda s: s),
             heal_graph=MagicMock(return_value=lambda s: s),
             check_quality=MagicMock(return_value=lambda s: s),
-            normalize_relationships=MagicMock(return_value=lambda s: s),
             revise_chapter=MagicMock(return_value=lambda s: s),
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
@@ -126,9 +75,9 @@ class TestWorkflowGraphStructure:
             # Check that key nodes are present
             nodes = list(graph_structure.nodes.keys())
             assert "assemble_chapter" in nodes
-            assert "commit" in nodes  # commit_to_graph is named "commit" in the workflow
+            assert "commit" in nodes
             assert "gen_scene_embeddings" in nodes
-            assert "finalize" in nodes  # finalize_chapter is named "finalize" in the workflow
+            assert "finalize" in nodes
 
     @pytest.mark.asyncio
     async def test_workflow_graph_has_expected_edges(self) -> None:
@@ -141,7 +90,6 @@ class TestWorkflowGraphStructure:
             finalize_chapter=MagicMock(return_value=lambda s: s),
             heal_graph=MagicMock(return_value=lambda s: s),
             check_quality=MagicMock(return_value=lambda s: s),
-            normalize_relationships=MagicMock(return_value=lambda s: s),
             revise_chapter=MagicMock(return_value=lambda s: s),
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
@@ -155,7 +103,11 @@ class TestWorkflowGraphStructure:
             edges = [(u, v) for u, v, *_ in graph_structure.edges]
 
             # Verify the graph has edges connecting nodes
-            assert len(edges) > 0
+            assert len(edges) == 56
+            assert ("init_all_chapter_outlines", "init_catalog") in edges
+            assert ("init_catalog", "init_outline_relationships") in edges
+            assert ("init_all_chapter_outlines", "init_outline_relationships") not in edges
+            assert sorted(target for source, target in edges if source == "route") == ["chapter_outline", "error_handler", "init_character_sheets"]
 
             # Verify some expected connections exist
             edge_strings = [f"{u}->{v}" for u, v in edges]
@@ -180,7 +132,6 @@ class TestWorkflowErrorHandling:
             finalize_chapter=MagicMock(return_value=lambda s: s),
             heal_graph=MagicMock(return_value=lambda s: s),
             check_quality=MagicMock(return_value=lambda s: s),
-            normalize_relationships=MagicMock(return_value=lambda s: s),
             revise_chapter=MagicMock(return_value=lambda s: s),
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
@@ -207,7 +158,6 @@ class TestWorkflowStateManagement:
             finalize_chapter=mock_node,
             heal_graph=mock_node,
             check_quality=mock_node,
-            normalize_relationships=mock_node,
             revise_chapter=mock_node,
             summarize_chapter=mock_node,
         ):

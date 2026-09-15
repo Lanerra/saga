@@ -10,11 +10,9 @@ states otherwise.
 
 Strictness and failure modes:
 
-- Many functions are best-effort: missing entities or failed read operations are
-  typically skipped and replaced with a short "no data available" message.
-- Some helpers may allow exceptions from underlying `data_access` queries to
-  propagate (notably when they do not wrap calls in `try/except`). Docstrings
-  below indicate when behavior is best-effort vs. exception-propagating.
+- Required character profiles and drafting facts propagate read failures;
+  missing entities from successful queries remain valid empty results.
+- Optional world-item formatting is best-effort as documented below.
 
 Caching:
 
@@ -45,6 +43,7 @@ import config
 import utils  # For _is_fill_in
 from data_access import character_queries, kg_queries, world_queries
 from models import CharacterProfile, SceneDetail, WorldItem
+from models.kg_constants import CHARACTER_EMOTIONAL_RELATIONSHIPS, CHARACTER_SOCIAL_RELATIONSHIPS
 
 logger = structlog.get_logger(__name__)
 
@@ -176,7 +175,8 @@ def _format_dict_for_plain_text_prompt(data: dict[str, Any], indent_level: int =
     Notes:
         Some internal bookkeeping keys are omitted (for example,
         `source_quality_chapter_*` and `updated_in_chapter_*`) to keep snippets
-        concise for prompting.
+        concise for prompting. Entity embedding vectors and their index metadata
+        are omitted at every mapping depth, without changing the source data.
     """
     lines = []
     indent = "  " * indent_level
@@ -206,7 +206,22 @@ def _format_dict_for_plain_text_prompt(data: dict[str, Any], indent_level: int =
     remaining_keys = sorted([k for k in data_keys if k not in priority_keys])
     sorted_keys.extend(remaining_keys)
 
+    # Persistence permits configured property names; retain the native exclusions
+    # for profiles carrying fields from an earlier configuration as well.
+    storage_only_keys = {
+        "entity_embedding_vector",
+        "entity_embedding_text_hash",
+        "entity_embedding_model",
+        "entity_embedding_model_identity",
+        config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+        config.ENTITY_EMBEDDING_TEXT_HASH_PROPERTY,
+        config.ENTITY_EMBEDDING_MODEL_PROPERTY,
+        f"{config.ENTITY_EMBEDDING_MODEL_PROPERTY}_identity",
+    }
+
     for key in sorted_keys:
+        if key in storage_only_keys:
+            continue
         value = data[key]
 
         if key.startswith(("source_quality_chapter_", "updated_in_chapter_", "added_in_chapter_")) and key not in ["prompt_notes"]:
@@ -327,11 +342,10 @@ async def _get_character_profiles_dict_with_notes(
 
     Returns:
         Mapping of character name to a filtered dictionary representation of that
-        character. Characters that cannot be fetched are omitted.
+        character. Characters absent from a successful query are omitted.
 
-    Notes:
-        This function is best-effort: individual characters that fail to fetch
-        are skipped after logging.
+    Raises:
+        Exception: Propagates required profile read failures.
     """
     logger.debug(
         "Internal: Getting character profiles dict with notes up to chapter %s.",
@@ -345,15 +359,7 @@ async def _get_character_profiles_dict_with_notes(
         return {}
 
     for char_name in character_names:
-        try:
-            profile_obj = await character_queries.get_character_profile_by_name(char_name)
-        except Exception as exc:
-            logger.error(
-                "Error fetching character '%s' from Neo4j: %s",
-                char_name,
-                exc,
-            )
-            continue
+        profile_obj = await character_queries.get_character_profile_by_name(char_name)
 
         if not profile_obj:
             logger.warning("Character '%s' not found in Neo4j.", char_name)
@@ -384,11 +390,10 @@ async def get_filtered_character_profiles_for_prompt_plain_text(
     Returns:
         A plain-text block headed by "Key Character Profiles:" followed by
         per-character outlines. Returns a short "No character profiles available."
-        message when no profiles can be fetched.
+        message when successful queries find no profiles.
 
-    Notes:
-        This function is best-effort: missing characters and per-character fetch
-        errors are skipped after logging.
+    Raises:
+        Exception: Propagates required profile read failures to context policy.
     """
     logger.info(f"Fetching and formatting filtered character profiles as PLAIN TEXT up to chapter {up_to_chapter_inclusive}.")
     filter_chapter_for_profiles = config.KG_PREPOPULATION_CHAPTER_NUM if up_to_chapter_inclusive == 0 else up_to_chapter_inclusive
@@ -539,9 +544,7 @@ async def get_filtered_world_data_for_prompt_plain_text(
             if item_lines:
                 output_lines_list.append("")
 
-        if output_lines_list and output_lines_list[-1] == "" and category_header_added:
-            pass
-        elif category_header_added:
+        if category_header_added and not (output_lines_list and output_lines_list[-1] == ""):
             output_lines_list.append("")
 
     if not output_lines_list:
@@ -588,9 +591,8 @@ async def get_reliable_kg_facts_for_drafting_prompt(
         be gathered, returns a short explanatory message.
 
     Notes:
-        - This function is largely best-effort. Many Neo4j query failures are
-          logged and skipped so prompt generation can proceed with partial
-          context.
+        - Required Neo4j query failures propagate to the caller's context policy.
+          Empty successful queries remain valid; provisional status is labeled.
         - It calls `_ensure_cache_is_scoped_to_chapter()` to prevent cache reuse
           across chapters, even though most KG fact queries are not cached in
           this module.
@@ -599,12 +601,8 @@ async def get_reliable_kg_facts_for_drafting_prompt(
 
     # Snapshot fast-path: when a ContextSnapshot is provided and contains the
     # precomputed KG facts block, prefer returning it to avoid redundant reads.
-    try:
-        if snapshot is not None and getattr(snapshot, "kg_facts_block", None):
-            return snapshot.kg_facts_block
-    except Exception:
-        # Non-fatal; fall back to normal path
-        pass
+    if snapshot is not None and getattr(snapshot, "kg_facts_block", None):
+        return snapshot.kg_facts_block
 
     if chapter_number <= 0:
         return "No KG facts applicable for pre-first chapter."
@@ -710,8 +708,8 @@ async def get_character_state_snippet_for_prompt(
             neo4j_char_data = await _cached_character_info(char_name, current_chapter_num_for_filtering)
 
             profile_lines = []
-            if char_profile.description:
-                profile_lines.append(f"Description: {char_profile.description}")
+            if char_profile.personality_description:
+                profile_lines.append(f"Description: {char_profile.personality_description}")
             if char_profile.traits:
                 traits_str = ", ".join(char_profile.traits[:3])  # Limit to 3 traits
                 profile_lines.append(f"Traits: {traits_str}")
@@ -807,9 +805,8 @@ async def _apply_protagonist_proximity_filtering(
         A set containing the protagonist and any characters whose shortest-path
         distance to the protagonist is within a small threshold.
 
-    Notes:
-        This function queries Neo4j for shortest-path distance. When run in the
-        parallel path, individual query failures are treated as non-matches.
+    Raises:
+        Exception: Propagates shortest-path read failures in both query paths.
     """
     if not protagonist_name or not characters_of_interest:
         return characters_of_interest
@@ -827,9 +824,10 @@ async def _apply_protagonist_proximity_filtering(
     else:
         tasks = [kg_queries.get_shortest_path_length_between_entities(protagonist_name, c) for c in others]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        for c, result in zip(others, results, strict=False):
+        for result in results:
             if isinstance(result, BaseException):
-                continue
+                raise result
+        for c, result in zip(others, results, strict=False):
             if isinstance(result, int) and result <= 3:
                 pruned.add(c)
     pruned.add(protagonist_name)
@@ -848,8 +846,8 @@ async def _gather_novel_info_facts(
         facts_list: Output list to append formatted fact lines to.
         max_total_facts: Maximum total fact lines allowed in `facts_list`.
 
-    Notes:
-        This function is best-effort: query failures are logged and skipped.
+    Raises:
+        Exception: Propagates required novel-info read failures.
     """
     if len(facts_list) >= max_total_facts:
         return
@@ -860,26 +858,25 @@ async def _gather_novel_info_facts(
         kg_queries.get_novel_info_property_from_db("central_conflict"),
     ]
     novel_info_results = await asyncio.gather(*novel_info_tasks, return_exceptions=True)
+    for result in novel_info_results:
+        if isinstance(result, BaseException):
+            raise result
 
     # Process theme
-    if len(facts_list) < max_total_facts and not isinstance(novel_info_results[0], Exception):
+    if len(facts_list) < max_total_facts:
         value = novel_info_results[0]
         if value:
             fact_text = f"- The novel's central theme is: {value}."
             if fact_text not in facts_list:
                 facts_list.append(fact_text)
-    elif isinstance(novel_info_results[0], Exception):
-        logger.warning(f"KG Query for novel context 'theme' failed: {novel_info_results[0]}")
 
     # Process central conflict
-    if len(facts_list) < max_total_facts and not isinstance(novel_info_results[1], Exception):
+    if len(facts_list) < max_total_facts:
         value = novel_info_results[1]
         if value:
             fact_text = f"- The main conflict summary: {value}."
             if fact_text not in facts_list:
                 facts_list.append(fact_text)
-    elif isinstance(novel_info_results[1], Exception):
-        logger.warning(f"KG Query for novel context 'central_conflict' failed: {novel_info_results[1]}")
 
 
 async def _gather_character_facts(
@@ -900,9 +897,8 @@ async def _gather_character_facts(
         max_total_facts: Overall cap on added facts.
         protagonist_name: Protagonist name used to prioritize character ordering.
 
-    Notes:
-        This function is best-effort for the parallel query path: individual
-        failures are logged and skipped.
+    Raises:
+        Exception: Propagates required character fact read failures.
     """
     character_names_list = _deterministic_character_order(characters_of_interest, protagonist_name)[:3]
     if not character_names_list:
@@ -921,16 +917,12 @@ async def _gather_character_facts(
 
     # Execute all character-related queries in parallel
     character_results = await asyncio.gather(*character_tasks, return_exceptions=True)
+    for result in character_results:
+        if isinstance(result, BaseException):
+            raise result
 
     # Process results
-    interesting_rel_types = [
-        "ally_of",
-        "enemy_of",
-        "mentor_of",
-        "protege_of",
-        "works_for",
-        "related_to",
-    ]
+    interesting_rel_types = (CHARACTER_SOCIAL_RELATIONSHIPS | CHARACTER_EMOTIONAL_RELATIONSHIPS) - {"LOCATED_AT"}
 
     for i, char_name in enumerate(character_names_list):
         if len(facts_list) >= max_total_facts:
@@ -943,38 +935,33 @@ async def _gather_character_facts(
         relationships_result = character_results[i * 3 + 2]
 
         # Process status from character info
-        if not isinstance(char_info_result, Exception) and char_info_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
+        if isinstance(char_info_result, dict) and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
             status_value = char_info_result.get("current_status")
             if status_value:
-                fact_text = f"- {char_name}'s status is: {status_value}."
+                provisional_note = " (provisional)" if char_info_result.get("is_provisional_overall") else ""
+                fact_text = f"- {char_name}'s status is: {status_value}{provisional_note}."
                 if fact_text not in facts_list:
                     facts_list.append(fact_text)
                     facts_for_this_char += 1
-        elif isinstance(char_info_result, Exception):
-            logger.warning("KG Query for %s's character info failed: %s", char_name, char_info_result)
 
         # Process location
-        if not isinstance(location_result, Exception) and location_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
+        if location_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
             fact_text = f"- {char_name} is located in: {location_result}."
             if fact_text not in facts_list:
                 facts_list.append(fact_text)
                 facts_for_this_char += 1
-        elif isinstance(location_result, Exception):
-            logger.warning(f"KG Query for {char_name}'s location failed: {location_result}")
 
         # Process relationships
-        if not isinstance(relationships_result, Exception) and isinstance(relationships_result, list) and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
+        if isinstance(relationships_result, list) and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
             for rel_res in relationships_result:
                 if facts_for_this_char >= max_facts_per_char or len(facts_list) >= max_total_facts:
                     break
                 if rel_res.get("predicate") in interesting_rel_types:
                     rel_type_display = rel_res["predicate"].replace("_", " ")
-                    fact_text = f"- {char_name} has a key relationship ({rel_type_display}) with: {rel_res.get('object')}."
+                    fact_text = f"- {rel_res['subject']} {rel_type_display} {rel_res['object']}."
                     if fact_text not in facts_list:
                         facts_list.append(fact_text)
                         facts_for_this_char += 1
-        elif isinstance(relationships_result, Exception):
-            logger.warning(f"KG Query for {char_name}'s relationships failed: {relationships_result}")
 
 
 async def get_world_state_snippet_for_prompt(

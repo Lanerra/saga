@@ -10,34 +10,43 @@ Protagonist: {{ protagonist_name }}
 Main characters:
 {{ character_context }}
 
+{% include "initialization/original_story_input.j2" %}
 ## Task
 
-Return a single JSON object matching this EXACT structure:
+{% set example_act_count = [total_chapters, 3] | min %}
+{% set allocation = namespace(next_chapter=1) %}
+Return a single JSON object matching this structure. The example shows a complete chapter allocation; replace the illustrative titles, summaries and events with your story:
 
 ```json
 {
-  "act_count": 3,
+  "act_count": {{ example_act_count }},
   "acts": [
+{% for act_number in range(1, example_act_count + 1) %}
+{% set chapters_in_act = total_chapters // example_act_count + (1 if act_number <= total_chapters % example_act_count else 0) %}
     {
-      "act_number": 1,
+      "act_number": {{ act_number }},
       "title": "Act Title",
       "summary": "Brief summary of the act.",
       "key_events": ["Event 1", "Event 2"],
-      "chapters_start": 1,
-      "chapters_end": 7
-    }
+      "chapters_start": {{ allocation.next_chapter }},
+      "chapters_end": {{ allocation.next_chapter + chapters_in_act - 1 }}
+    }{{ "," if not loop.last else "" }}
+{% set allocation.next_chapter = allocation.next_chapter + chapters_in_act %}
+{% endfor %}
   ],
   "inciting_incident": "The event that starts the story.",
   "midpoint": "Major midpoint event or revelation.",
   "climax": "The story's climax.",
   "resolution": "How the story resolves.",
   "character_arcs": [
+{% for character_name in character_names %}
     {
-      "character_name": "Character Name",
+      "character_name": {{ character_name | tojson }},
       "starting_state": "Character's state at story start.",
       "ending_state": "Character's state at story end.",
       "key_moments": ["Moment 1", "Moment 2"]
-    }
+    }{{ "," if not loop.last else "" }}
+{% endfor %}
   ],
   "thematic_progression": "How the theme develops throughout the story.",
   "pacing_notes": "Notes on pacing and structure."
@@ -45,8 +54,15 @@ Return a single JSON object matching this EXACT structure:
 ```
 
 Constraints:
+{% if total_chapters < 5 %}
+- act_count must be {{ example_act_count }}.
+{% else %}
 - act_count must be 3 or 5.
+{% endif %}
+- Include exactly act_count act objects, numbered consecutively from 1.
 - Allocate chapters 1..{{ total_chapters }} with no gaps/overlaps across all acts.
+- Every act must contain at least one chapter. Never select more acts than chapters.
+- Keep all major turning points within the allocated chapters, even when a single act contains the whole story.
 - Each act object MUST include all six fields shown: act_number, title, summary, key_events, chapters_start, chapters_end.
 - Include character_arcs for all main characters: {{ character_names | join(", ") }}
 - Each character_arc MUST include: character_name, starting_state, ending_state, key_moments.

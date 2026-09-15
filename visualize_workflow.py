@@ -5,7 +5,7 @@ CLI tool to visualize LangGraph workflows.
 
 Usage:
     # Generate Mermaid diagram for full workflow
-    python visualize_workflow.py --workflow full --output docs/workflow_full.md
+    python visualize_workflow.py --workflow full --output output/workflow_full.md
 
     # Print workflow summary to console
     python visualize_workflow.py --workflow full --summary
@@ -32,13 +32,13 @@ def main() -> None:
         epilog="""
 Examples:
   # Generate Mermaid diagram for full workflow
-  python visualize_workflow.py --workflow full --output docs/workflow_full.md
+  python visualize_workflow.py --workflow full --output output/workflow_full.md
 
   # Print workflow summary to console
   python visualize_workflow.py --workflow full --summary
 
   # Generate all workflows as Mermaid diagrams
-  python visualize_workflow.py --all --output-dir docs/workflows
+  python visualize_workflow.py --all --output-dir output/workflows
         """,
     )
 
@@ -60,7 +60,7 @@ Examples:
         "--format",
         "-f",
         choices=["mermaid", "png", "ascii"],
-        help="Output format (auto-detected from file extension if not specified)",
+        help="Output format (auto-detected from extension); PNG is disabled without a local renderer",
     )
 
     parser.add_argument(
@@ -81,8 +81,8 @@ Examples:
         "--output-dir",
         "-d",
         type=str,
-        default="docs/workflows",
-        help="Output directory when using --all (default: docs/workflows)",
+        default="output/workflows",
+        help="Output directory when using --all (default: output/workflows)",
     )
 
     args = parser.parse_args()
@@ -122,7 +122,6 @@ def _generate_all_workflows(output_dir: str, format_override: str | None) -> Non
         format_override: Optional format to use (default: mermaid).
     """
     output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
 
     format_to_use = format_override or "mermaid"
     extension = _get_extension(format_to_use)

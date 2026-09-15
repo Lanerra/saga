@@ -8,6 +8,7 @@ into a single import surface to reduce file count and simplify imports.
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
@@ -49,6 +50,28 @@ def _is_fill_in(value: Any) -> bool:
 
 
 # --- json_utils.py ---
+def load_strict_json(text: str) -> Any:
+    """Parse exactly one JSON value without duplicate keys or nonfinite numbers."""
+    def unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate JSON object key")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> Any:
+        raise ValueError("Nonfinite JSON number")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("Nonfinite JSON number")
+        return number
+
+    return json.loads(text, object_pairs_hook=unique_pairs, parse_constant=reject_constant, parse_float=finite_float)
+
+
 def extract_json_from_text(text: str) -> str | None:
     """Extract a JSON object/array substring from arbitrary text."""
     if not isinstance(text, str) or not text:
@@ -287,31 +310,18 @@ def load_yaml_file(
     filepath: str,
     normalize_keys: bool = True,
     return_none_on_empty: bool = False,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     if not filepath.endswith((".yaml", ".yml")):
-        logger.error(f"File specified is not a YAML file: {filepath}")
-        return None
-    try:
-        with open(filepath, encoding="utf-8") as f:
-            content = yaml.safe_load(f)
-        if content is None:
-            return None if return_none_on_empty else {}
-        if not isinstance(content, dict):
-            logger.error(f"YAML file {filepath} must have a dictionary as its root element for this application.")
-            return None
-        return normalize_keys_recursive(content) if normalize_keys else content
-    except FileNotFoundError:
-        logger.info(f"YAML file '{filepath}' not found (optional).")
-        return None
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML file {filepath}: {e}", exc_info=True)
-        return None
-    except Exception as e:
-        logger.error(
-            f"An unexpected error occurred while loading YAML file {filepath}: {e}",
-            exc_info=True,
-        )
-        return None
+        raise ValueError(f"File specified is not a YAML file: {filepath}")
+    with open(filepath, encoding="utf-8") as f:
+        content = yaml.safe_load(f)
+    if content is None:
+        if return_none_on_empty:
+            return {}
+        return {}
+    if not isinstance(content, dict):
+        raise ValueError(f"YAML file {filepath} must have a dictionary as its root element")
+    return normalize_keys_recursive(content) if normalize_keys else content
 
 
 # --- ingestion_utils.py ---

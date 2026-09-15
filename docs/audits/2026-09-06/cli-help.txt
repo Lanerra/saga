@@ -1,0 +1,16 @@
+09/07/2026, 05:24:27 root INFO Rich logging handler enabled for console.        
+09/07/2026, 05:24:27 logging_config INFO SAGA Logging setup complete.           
+Application Log Level: 20.                                                      
+usage: main.py [-h] {quick,bootstrap,generate,parse} ...
+
+SAGA - Autonomous Novel Generation
+
+options:
+  -h, --help            show this help message and exit
+
+Commands:
+  {quick,bootstrap,generate,parse}
+    quick               Quick mode: bootstrap and generate
+    bootstrap           Bootstrap mode: generate metadata
+    generate            Generate mode: run novel generation loop
+    parse               Parser mode: run parsers independently

@@ -7,7 +7,7 @@ outlines, embeddings, summaries) under `<project_dir>/.saga/content` and keeping
 only lightweight references in workflow state.
 
 Notes:
-- Writes are atomic (write to a temp file, then rename).
+- Writes are durable and create-only; identical replay preserves the original inode.
 - "Binary" persistence refuses unsafe formats (e.g., pickle) to avoid arbitrary
   code execution on load.
 """
@@ -15,13 +15,17 @@ Notes:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, NoReturn, TypedDict, cast
 
 import structlog
 
+import config
+from core.embedding_contract import embedding_identity, validate_embedding
 from core.exceptions import ContentIntegrityError
+from utils.file_io import ContainedFiles
 
 logger = structlog.get_logger(__name__)
 
@@ -40,6 +44,23 @@ class FrozenContentRef(dict[str, Any]):
 
         Mutation methods are blocked to ensure immutability.
     """
+
+    def __init__(self, reference: dict[str, Any]) -> None:
+        if self:
+            self._raise_immutable()
+        if not reference or any(type(value) not in (str, int) for value in reference.values()):
+            raise ValueError("ContentRef requires nonempty scalar metadata")
+        super().__init__(reference)
+
+    # Mypy requires the generic dict.__or__ overload shape even for a forbidden operation.
+    def __ior__(self, other: Any) -> NoReturn:  # type: ignore[misc]
+        self._raise_immutable()
+
+    def __copy__(self) -> FrozenContentRef:
+        return self
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> FrozenContentRef:
+        return self
 
     def _raise_immutable(self) -> NoReturn:
         raise TypeError("ContentRef is immutable")
@@ -107,9 +128,9 @@ class ContentManager:
         if not isinstance(project_dir, str) or not project_dir.strip():
             raise ValueError("project_dir is required")
 
-        self.project_dir = Path(project_dir)
+        self.project_dir = Path(project_dir).absolute()
         self.content_dir = self.project_dir / ".saga" / "content"
-        self.content_dir.mkdir(parents=True, exist_ok=True)
+        self._files = ContainedFiles(self.content_dir, durable=True)
 
     def clear_cache(self) -> None:
         """Invalidate any in-process caches.
@@ -139,16 +160,34 @@ class ContentManager:
         Returns:
             Absolute path to the content file on disk.
         """
-        # Sanitize identifier for filesystem
-        safe_id = str(identifier).replace("/", "_").replace("\\", "_")
-
-        # Create subdirectory for content type
-        type_dir = self.content_dir / content_type
-        type_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate filename with version
+        self._validate_component(content_type)
+        self._validate_component(extension)
+        if type(version) is not int or version < 0:
+            raise ValueError("Content version must be a non-negative integer")
+        safe_id = self._safe_identifier(identifier)
         filename = f"{safe_id}_v{version}.{extension}"
-        return type_dir / filename
+        relative = f"{content_type}/{filename}"
+        self._files.exists(relative)
+        return self.content_dir / relative
+
+    @staticmethod
+    def _validate_component(value: str) -> None:
+        if len(ContainedFiles.relative_path(value).parts) != 1:
+            raise ValueError("Content bucket and extension must be single path components")
+
+    @staticmethod
+    def _safe_identifier(identifier: str | int) -> str:
+        if type(identifier) not in (str, int):
+            raise ValueError("Content identifier must be a string or integer")
+        safe_id = str(identifier).replace("/", "_").replace("\\", "_").replace("..", "_")
+        ContentManager._validate_component(safe_id)
+        return safe_id
+
+    def _content_relative_path(self, project_relative: str) -> str:
+        path = ContainedFiles.relative_path(project_relative)
+        if path.parts[:2] != (".saga", "content") or len(path.parts) < 3:
+            raise ValueError("Content reference must identify a file under .saga/content")
+        return str(Path(*path.parts[2:]))
 
     def _get_relative_path(self, absolute_path: Path) -> str:
         """Convert an absolute path to a project-relative path string."""
@@ -160,34 +199,35 @@ class ContentManager:
 
         return hashlib.sha256(data).hexdigest()
 
-    def _validate_checksum_if_present(
-        self,
-        *,
-        ref: ContentRef | str | Path,
-        full_path: Path,
-        data_bytes: bytes,
-        caller: str,
-    ) -> None:
+    def _require_reference(self, ref: ContentRef | str | Path) -> ContentRef:
         if not isinstance(ref, dict):
-            return None
+            raise ValueError("Content reads require a ContentRef; path-only legacy references require explicit admit_legacy_reference")
+        self._validate_component(ref.get("content_type", ""))
+        version = ref.get("version")
+        if type(version) is not int or version < 0:
+            raise ContentIntegrityError("ContentRef.version must be a non-negative integer")
+        size = ref.get("size_bytes")
+        if type(size) is not int or size < 0:
+            raise ContentIntegrityError("strict read requires ContentRef.size_bytes metadata as a non-negative integer")
+        checksum = ref.get("checksum")
+        if not isinstance(checksum, str) or re.fullmatch(r"[0-9a-f]{64}", checksum) is None:
+            raise ContentIntegrityError("Strict read requires ContentRef.checksum as a SHA-256 hex digest")
+        return ref
 
-        if "checksum" not in ref:
-            logger.warning(
-                "ContentRef missing checksum; skipping integrity validation",
-                caller=caller,
-                path=str(full_path),
-            )
-            return None
+    def admit_legacy_reference(self, *, path: str, content_type: str, version: int, size_bytes: int, checksum: str) -> ContentRef:
+        """Explicitly admit a contained legacy path using independently expected metadata.
 
-        expected_checksum = ref.get("checksum")
-        if not isinstance(expected_checksum, str) or not expected_checksum:
-            raise ValueError(f"{caller} expected ContentRef.checksum to be a non-empty str when present; " f"got {expected_checksum!r} for path={full_path}")
-
-        actual_checksum = self._compute_checksum(data_bytes)
-        if actual_checksum != expected_checksum:
-            raise ValueError(f"{caller} detected checksum mismatch for content file: {full_path}. " f"expected={expected_checksum}, actual={actual_checksum}")
-
-        return None
+        The caller supplies the checksum and size from a trusted checkpoint or
+        preservation manifest. Never infer those values from unchecked current
+        bytes. This does not migrate lifecycle state or authorize project import.
+        Source bytes and names remain unchanged; no loader calls this adapter.
+        """
+        reference: ContentRef = {"path": path, "content_type": content_type, "version": version, "size_bytes": size_bytes, "checksum": checksum}
+        self._resolve_ref_path(reference, caller="ContentManager.admit_legacy_reference")
+        self._require_reference(reference)
+        content = self._files.read_bytes(self._content_relative_path(path))
+        self._validate_content_ref_integrity(content_ref=reference, full_path=self.project_dir / path, data_bytes=content, caller="ContentManager.admit_legacy_reference")
+        return cast(ContentRef, _freeze_content_ref(dict(reference)))
 
     def _validate_content_ref_integrity(
         self,
@@ -273,7 +313,7 @@ class ContentManager:
 
     def save_json(
         self,
-        data: dict[str, Any] | list[Any],
+        data: object,
         content_type: str,
         identifier: str | int,
         version: int = 1,
@@ -317,16 +357,14 @@ class ContentManager:
         )
 
     def _write_bytes_atomically(self, path: Path, data_bytes: bytes) -> None:
-        """Write bytes atomically (write to temp file, then rename).
+        """Create immutable bytes durably, or verify an identical replay.
 
         Args:
             path: Destination path.
             data_bytes: Bytes to write.
         """
-        temp_path = path.with_suffix(".tmp")
-        with temp_path.open("wb") as f:
-            f.write(data_bytes)
-        temp_path.replace(path)
+        relative = self._content_relative_path(self._get_relative_path(path))
+        self._files.write_bytes(relative, data_bytes, create_only=True)
 
     def save_binary(
         self,
@@ -404,27 +442,24 @@ class ContentManager:
             TypeError: If `ref` is not a supported reference type.
         """
         if isinstance(ref, Path):
-            return str(ref)
-
-        if isinstance(ref, str):
-            return ref
-
-        if isinstance(ref, dict):
-            path = ref.get("path")
-            if isinstance(path, str) and path:
-                return path
-
-            # Make the failure explicit and actionable (avoid KeyError hazards).
-            keys = sorted(list(ref.keys()))
-            raise ValueError(f"{caller} expected a ContentRef dict with required key 'path' (non-empty str); " f"got keys={keys}, ref={ref!r}")
-
-        raise TypeError(f"{caller} expected ContentRef | str | Path; got {type(ref)}")
+            path = str(ref)
+        elif isinstance(ref, str):
+            path = ref
+        elif isinstance(ref, dict):
+            reference_path = ref.get("path")
+            if not isinstance(reference_path, str) or not reference_path:
+                raise ValueError(f"{caller} expected a ContentRef dict with required key 'path' (non-empty str)")
+            path = reference_path
+        else:
+            raise TypeError(f"{caller} expected ContentRef | str | Path; got {type(ref)}")
+        self._content_relative_path(path)
+        return path
 
     def load_text(self, ref: ContentRef | str | Path) -> str:
         """Load UTF-8 text from a content reference.
 
         Args:
-            ref: A content reference dict or a path-like value.
+            ref: A complete content reference; legacy paths require explicit admission.
 
         Returns:
             The file contents as a string.
@@ -437,13 +472,11 @@ class ContentManager:
         """
         caller = "ContentManager.load_text"
         path_str = self._resolve_ref_path(ref, caller=caller)
+        content_ref = self._require_reference(ref)
         full_path = self.project_dir / path_str
 
-        if not full_path.exists():
-            raise FileNotFoundError(f"Content file not found: {full_path}")
-
-        data_bytes = full_path.read_bytes()
-        self._validate_checksum_if_present(ref=ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
+        data_bytes = self._files.read_bytes(self._content_relative_path(path_str))
+        self._validate_content_ref_integrity(content_ref=content_ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
 
         return data_bytes.decode("utf-8")
 
@@ -451,12 +484,10 @@ class ContentManager:
         """Load UTF-8 text and fail fast on `ContentRef` integrity mismatch."""
         caller = "ContentManager.load_text_strict"
         path_str = self._resolve_ref_path(content_ref, caller=caller)
+        self._require_reference(content_ref)
         full_path = self.project_dir / path_str
 
-        if not full_path.exists():
-            raise FileNotFoundError(f"Content file not found: {full_path}")
-
-        data_bytes = full_path.read_bytes()
+        data_bytes = self._files.read_bytes(self._content_relative_path(path_str))
         self._validate_content_ref_integrity(content_ref=content_ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
         return data_bytes.decode("utf-8")
 
@@ -464,7 +495,7 @@ class ContentManager:
         """Load JSON from a content reference.
 
         Args:
-            ref: A content reference dict or a path-like value.
+            ref: A complete content reference; legacy paths require explicit admission.
 
         Returns:
             The parsed JSON value.
@@ -478,13 +509,11 @@ class ContentManager:
         """
         caller = "ContentManager.load_json"
         path_str = self._resolve_ref_path(ref, caller=caller)
+        content_ref = self._require_reference(ref)
         full_path = self.project_dir / path_str
 
-        if not full_path.exists():
-            raise FileNotFoundError(f"Content file not found: {full_path}")
-
-        data_bytes = full_path.read_bytes()
-        self._validate_checksum_if_present(ref=ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
+        data_bytes = self._files.read_bytes(self._content_relative_path(path_str))
+        self._validate_content_ref_integrity(content_ref=content_ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
 
         return json.loads(data_bytes.decode("utf-8"))
 
@@ -492,12 +521,10 @@ class ContentManager:
         """Load JSON and fail fast on `ContentRef` integrity mismatch."""
         caller = "ContentManager.load_json_strict"
         path_str = self._resolve_ref_path(content_ref, caller=caller)
+        self._require_reference(content_ref)
         full_path = self.project_dir / path_str
 
-        if not full_path.exists():
-            raise FileNotFoundError(f"Content file not found: {full_path}")
-
-        data_bytes = full_path.read_bytes()
+        data_bytes = self._files.read_bytes(self._content_relative_path(path_str))
         self._validate_content_ref_integrity(content_ref=content_ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
         return json.loads(data_bytes.decode("utf-8"))
 
@@ -509,7 +536,7 @@ class ContentManager:
             deserialization.
 
         Args:
-            ref: A content reference dict or a path-like value.
+            ref: A complete content reference; legacy paths require explicit admission.
 
         Returns:
             The parsed payload:
@@ -527,9 +554,6 @@ class ContentManager:
         path_str = self._resolve_ref_path(ref, caller=caller)
         full_path = self.project_dir / path_str
 
-        if not full_path.exists():
-            raise FileNotFoundError(f"Content file not found: {full_path}")
-
         suffix = full_path.suffix.lower()
 
         if suffix == ".pkl":
@@ -539,8 +563,9 @@ class ContentManager:
                 f"or remove the file: {full_path}"
             )
 
-        data_bytes = full_path.read_bytes()
-        self._validate_checksum_if_present(ref=ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
+        content_ref = self._require_reference(ref)
+        data_bytes = self._files.read_bytes(self._content_relative_path(path_str))
+        self._validate_content_ref_integrity(content_ref=content_ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
 
         if suffix == ".json":
             return json.loads(data_bytes.decode("utf-8"))
@@ -578,17 +603,13 @@ class ContentManager:
 
     def exists(self, ref: ContentRef | str) -> bool:
         """Return whether the referenced content file exists on disk."""
-        path_str = ref["path"] if isinstance(ref, dict) else ref
-        full_path = self.project_dir / path_str
-        return full_path.exists()
+        path = self._resolve_ref_path(ref, caller="ContentManager.exists")
+        return self._files.exists(self._content_relative_path(path))
 
     def delete(self, ref: ContentRef | str) -> None:
         """Delete the referenced content file if it exists."""
-        path_str = ref["path"] if isinstance(ref, dict) else ref
-        full_path = self.project_dir / path_str
-
-        if full_path.exists():
-            full_path.unlink()
+        path = self._resolve_ref_path(ref, caller="ContentManager.delete")
+        self._files.delete(self._content_relative_path(path))
 
     def get_latest_version(
         self,
@@ -604,26 +625,14 @@ class ContentManager:
         Returns:
             The latest version number, or 0 when no versions exist.
         """
-        type_dir = self.content_dir / content_type
-        if not type_dir.exists():
-            return 0
-
-        safe_id = str(identifier).replace("/", "_").replace("\\", "_")
-        pattern = f"{safe_id}_v*.txt"
-
+        self._validate_component(content_type)
+        safe_id = self._safe_identifier(identifier)
+        pattern = re.compile(rf"{re.escape(safe_id)}_v([0-9]+)\.(txt|json|bin|npy|pkl)")
         versions = []
-        for ext in ["txt", "json", "bin", "npy", "pkl"]:
-            pattern = f"{safe_id}_v*.{ext}"
-            for path in type_dir.glob(pattern):
-                # Extract version from filename
-                stem = path.stem  # e.g., "chapter_1_v3"
-                if "_v" in stem:
-                    version_str = stem.split("_v")[-1]
-                    try:
-                        versions.append(int(version_str))
-                    except ValueError:
-                        continue
-
+        for name in self._files.list_names(content_type):
+            match = pattern.fullmatch(name)
+            if match is not None and self._files.exists(f"{content_type}/{name}"):
+                versions.append(int(match.group(1)))
         return max(versions) if versions else 0
 
 
@@ -717,27 +726,19 @@ def save_embedding(
     embedding: list[float],
     chapter: int,
     version: int = 1,
+    *, embedding_model: str = "",
 ) -> ContentRef:
     """Save a chapter embedding in a safe, non-pickle format."""
-    return manager.save_binary(embedding, "embedding", f"chapter_{chapter}", version)
+    vector = validate_embedding(embedding, model=embedding_model).tolist()
+    return manager.save_json({"model": embedding_model, "identity": embedding_identity(), "vector": vector}, "embedding", f"chapter_{chapter}", version)
 
 
 def load_embedding(manager: ContentManager, ref: ContentRef | str) -> list[float]:
     """Load a chapter embedding (safe formats only)."""
-    data = manager.load_binary(ref)
-
-    # `load_binary` returns list for `.npy` and JSON-decoded value for `.json`.
-    if isinstance(data, list):
-        # JSON may contain ints; normalize to floats.
-        normalized: list[float] = []
-        for v in data:
-            if isinstance(v, int | float):
-                normalized.append(float(v))
-            else:
-                raise ValueError(f"Embedding vector must be numeric; got element {type(v)}")
-        return normalized
-
-    raise ValueError(f"Unexpected embedding payload type: {type(data)}")
+    data = manager.load_json_strict(ref) if isinstance(ref, dict) else manager.load_json(ref)
+    if not isinstance(data, dict) or set(data) != {"model", "identity", "vector"} or data["identity"] != embedding_identity():
+        raise ValueError("Embedding artifact identity mismatch; regenerate from source text")
+    return validate_embedding(data["vector"], model=data["model"]).tolist()
 
 
 def save_scene_embeddings(
@@ -745,6 +746,7 @@ def save_scene_embeddings(
     embeddings: list[list[float]],
     chapter: int,
     version: int = 1,
+    *, embedding_model: str = "",
 ) -> ContentRef:
     """Save scene-level embeddings for a chapter as a single JSON artifact."""
     if not isinstance(embeddings, list):
@@ -759,12 +761,18 @@ def save_scene_embeddings(
             if not isinstance(value, float):
                 raise TypeError("scene embedding values must be float; " f"scene_index={embedding_index}, value_index={value_index}, got {type(value)}")
 
-    return manager.save_binary(embeddings, "scene_embeddings", f"chapter_{chapter}", version)
+    vectors = [validate_embedding(vector, model=embedding_model).tolist() for vector in embeddings]
+    if embedding_model != config.EMBEDDING_MODEL:
+        raise ValueError("Scene embedding model identity mismatch")
+    return manager.save_json({"model": embedding_model, "identity": embedding_identity(), "vectors": vectors}, "scene_embeddings", f"chapter_{chapter}", version)
 
 
 def load_scene_embeddings(manager: ContentManager, ref: ContentRef | str) -> list[list[float]]:
     """Load scene-level embeddings for a chapter (safe formats only)."""
-    data = manager.load_binary(ref)
+    payload = manager.load_json_strict(ref) if isinstance(ref, dict) else manager.load_json(ref)
+    if not isinstance(payload, dict) or set(payload) != {"model", "identity", "vectors"} or payload["identity"] != embedding_identity() or payload["model"] != config.EMBEDDING_MODEL:
+        raise ValueError("Scene embedding artifact identity mismatch; regenerate from source text")
+    data = payload["vectors"]
 
     if not isinstance(data, list):
         raise ValueError(f"scene embeddings payload must be a list; got {type(data)}")
@@ -776,11 +784,13 @@ def load_scene_embeddings(manager: ContentManager, ref: ContentRef | str) -> lis
 
         vector: list[float] = []
         for value_index, value in enumerate(embedding):
-            if not isinstance(value, float):
-                raise ValueError("scene embedding values must be float; " f"scene_index={embedding_index}, value_index={value_index}, got {type(value)}")
-            vector.append(value)
+            if isinstance(value, bool):
+                raise ValueError("scene embedding values must be numeric (bool is not allowed); " f"scene_index={embedding_index}, value_index={value_index}")
+            if not isinstance(value, int | float):
+                raise ValueError("scene embedding values must be numeric; " f"scene_index={embedding_index}, value_index={value_index}, got {type(value)}")
+            vector.append(float(value))
 
-        embeddings.append(vector)
+        embeddings.append(validate_embedding(vector, model=payload["model"]).tolist())
 
     return embeddings
 
@@ -860,11 +870,7 @@ def get_draft_text(state: Mapping[str, Any], manager: ContentManager) -> str:
         FileNotFoundError: If `draft_ref` is present but the referenced file is missing.
         ContentIntegrityError: If `draft_ref` is a `ContentRef` and strict integrity validation fails.
     """
-    import structlog
-
     from core.exceptions import MissingDraftReferenceError
-
-    structlog.get_logger(__name__)
 
     draft_ref = state.get("draft_ref")
     if not draft_ref:
@@ -890,7 +896,7 @@ def get_scene_drafts(state: Mapping[str, Any], manager: ContentManager) -> list[
         ValueError: If the referenced JSON payload is not a list.
     """
     scene_drafts_ref = state.get("scene_drafts_ref")
-    if not scene_drafts_ref:
+    if scene_drafts_ref is None:
         return []
 
     return manager.load_list_of_texts(scene_drafts_ref)
@@ -987,11 +993,10 @@ def get_chapter_outlines(state: Mapping[str, Any], manager: ContentManager) -> d
     result = {}
     if isinstance(data, dict):
         for k, v in data.items():
-            try:
+            if isinstance(k, str) and k.isdigit():
                 result[int(k)] = v
-            except (ValueError, TypeError):
-                # Skip non-integer keys (e.g. metadata)
-                pass
+            elif isinstance(k, int):
+                result[k] = v
     return result
 
 
@@ -1134,16 +1139,14 @@ def get_extracted_entities(state: Mapping[str, Any], manager: ContentManager) ->
 
     Raises:
         FileNotFoundError: If `extracted_entities_ref` is present but the referenced file is missing.
+        ValueError: If the referenced JSON payload is not a dict.
     """
     entities_ref = state.get("extracted_entities_ref")
-    if not entities_ref:
+    if entities_ref is None:
         # Fallback to in-state content if ref not available
         return state.get("extracted_entities", {})
 
-    data = manager.load_json_strict(cast(ContentRef, entities_ref)) if isinstance(entities_ref, dict) else manager.load_json(entities_ref)
-    if not isinstance(data, dict):
-        return {}
-    return cast(dict[str, list[dict[str, Any]]], data)
+    return load_extracted_entities(manager, entities_ref)
 
 
 def get_extracted_relationships(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
@@ -1162,16 +1165,14 @@ def get_extracted_relationships(state: Mapping[str, Any], manager: ContentManage
 
     Raises:
         FileNotFoundError: If `extracted_relationships_ref` is present but the referenced file is missing.
+        ValueError: If the referenced JSON payload is not a list.
     """
     relationships_ref = state.get("extracted_relationships_ref")
-    if not relationships_ref:
+    if relationships_ref is None:
         # Fallback to in-state content if ref not available
         return state.get("extracted_relationships", [])
 
-    data = manager.load_json_strict(cast(ContentRef, relationships_ref)) if isinstance(relationships_ref, dict) else manager.load_json(relationships_ref)
-    if not isinstance(data, list):
-        return []
-    return data
+    return load_extracted_relationships(manager, relationships_ref)
 
 
 def set_extracted_relationships(

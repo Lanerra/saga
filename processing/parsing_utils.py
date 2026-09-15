@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# from rdflib import Graph, URIRef, Literal, BNode # No longer needed for triples
-# from rdflib.namespace import RDF, RDFS # No longer needed for triples
 import structlog
 
 from models.kg_constants import VALID_NODE_LABELS
@@ -14,9 +12,6 @@ logger = structlog.get_logger(__name__)
 
 # Pre-compute normalized labels for case-insensitive matching
 _NORMALIZED_NODE_LABELS = {label.lower(): label for label in VALID_NODE_LABELS}
-
-# --- New RDF Triple Parsing using rdflib ---
-# Modified to be a custom plain-text triple parser
 
 
 def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | None]:
@@ -428,9 +423,7 @@ def parse_llm_triples(
 
         Determinism:
         - The returned list preserves the order of accepted lines in `text_block`.
-        - The only conditional predicate rewrite is `STATUS_IS` → `HAS_STATUS` when
-          `config.ENABLE_STATUS_IS_ALIAS` is disabled; failures to read config fall back to the
-          default behavior.
+        - `STATUS_IS` predicates are unconditionally rewritten to `HAS_STATUS`.
     """
     logger_func = logger
     triples_list: list[dict[str, Any]] = []
@@ -458,19 +451,11 @@ def parse_llm_triples(
 
         subject_details = _get_entity_type_and_name_from_text(subject_text)
         pred_norm = predicate_text.strip().upper().replace(" ", "_")
-        try:
-            import config  # local import to avoid cycles
 
-            if pred_norm == "STATUS_IS" and not getattr(config, "ENABLE_STATUS_IS_ALIAS", True):
-                pred_norm = "HAS_STATUS"
-        except Exception as e:
-            logger.warning(
-                "Failed to check ENABLE_STATUS_IS_ALIAS config, using default behavior",
-                predicate=pred_norm,
-                error=str(e),
-            )
+        if pred_norm == "STATUS_IS":
+            pred_norm = "HAS_STATUS"
 
-        predicate_str = pred_norm  # Normalize predicate
+        predicate_str = pred_norm
 
         if not subject_details.get("name") or not predicate_str:
             logger_func.warning(f"Line {line_num + 1}: Missing subject name or predicate: S='{subject_text}', P='{predicate_text}'")

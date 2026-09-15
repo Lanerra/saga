@@ -10,18 +10,21 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from core.service_context import get_services
 from data_access import character_queries
 from data_access.cache_coordinator import clear_all_data_access_caches
+
+pytestmark = pytest.mark.usefixtures("owned_graph_cache")
 
 
 @pytest.mark.asyncio
 class TestGetCharacterProfileFetchesNoRowDropping:
     """Regression tests: character row should be preserved even when optional patterns match nothing."""
 
-    async def test_get_character_profile_by_name_full_details(self, monkeypatch):
+    async def test_get_character_profile_by_name_full_details(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Profile by name returns core fields + optional collections when present."""
 
-        async def mock_read(query, params=None):
+        async def mock_read(query: str, params: object = None) -> list[dict[str, object]]:
             if "MATCH (c:Character {name: $name})" in query:
                 return [
                     {
@@ -41,7 +44,7 @@ class TestGetCharacterProfileFetchesNoRowDropping:
             return []
 
         monkeypatch.setattr(
-            character_queries.neo4j_manager,
+            get_services().database,
             "execute_read_query",
             AsyncMock(side_effect=mock_read),
         )
@@ -56,15 +59,12 @@ class TestGetCharacterProfileFetchesNoRowDropping:
         assert isinstance(profile.relationships["Bob"], dict)
         assert profile.relationships["Bob"]["type"] == "FRIEND_OF"
 
-        profile_dict = profile.to_dict()
-        assert profile_dict["development_in_chapter_1"] == "Event1"
-
         clear_all_data_access_caches()
 
-    async def test_get_character_profile_by_name_preserves_multi_relationships_same_target(self, monkeypatch):
+    async def test_get_character_profile_by_name_preserves_multi_relationships_same_target(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Regression: multiple relationships to the same target must not overwrite each other."""
 
-        async def mock_read(query, params=None):
+        async def mock_read(query: str, params: object = None) -> list[dict[str, object]]:
             if "MATCH (c:Character {name: $name})" in query:
                 return [
                     {
@@ -94,7 +94,7 @@ class TestGetCharacterProfileFetchesNoRowDropping:
             return []
 
         monkeypatch.setattr(
-            character_queries.neo4j_manager,
+            get_services().database,
             "execute_read_query",
             AsyncMock(side_effect=mock_read),
         )
@@ -115,10 +115,10 @@ class TestGetCharacterProfileFetchesNoRowDropping:
 
         clear_all_data_access_caches()
 
-    async def test_get_character_profile_by_name_no_optional_data_still_returns_profile(self, monkeypatch):
+    async def test_get_character_profile_by_name_no_optional_data_still_returns_profile(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Profile by name should not be dropped when traits/relationships/dev events are absent."""
 
-        async def mock_read(query, params=None):
+        async def mock_read(query: str, params: object = None) -> list[dict[str, object]]:
             if "MATCH (c:Character {name: $name})" in query:
                 return [
                     {
@@ -131,7 +131,7 @@ class TestGetCharacterProfileFetchesNoRowDropping:
             return []
 
         monkeypatch.setattr(
-            character_queries.neo4j_manager,
+            get_services().database,
             "execute_read_query",
             AsyncMock(side_effect=mock_read),
         )
@@ -144,10 +144,10 @@ class TestGetCharacterProfileFetchesNoRowDropping:
 
         clear_all_data_access_caches()
 
-    async def test_get_character_profile_by_id_no_optional_data_still_returns_profile(self, monkeypatch):
+    async def test_get_character_profile_by_id_no_optional_data_still_returns_profile(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Profile by id should not be dropped when traits/relationships/dev events are absent."""
 
-        async def mock_read(query, params=None):
+        async def mock_read(query: str, params: object = None) -> list[dict[str, object]]:
             if "MATCH (c:Character {id: $character_id})" in query:
                 return [
                     {
@@ -160,7 +160,7 @@ class TestGetCharacterProfileFetchesNoRowDropping:
             return []
 
         monkeypatch.setattr(
-            character_queries.neo4j_manager,
+            get_services().database,
             "execute_read_query",
             AsyncMock(side_effect=mock_read),
         )

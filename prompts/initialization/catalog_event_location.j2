@@ -1,0 +1,9 @@
+Catalog event location: select an exact Location ID from these candidates.
+Locations: {{ known_locations | compact_json }}
+Event ID: {{ event_id }}
+Event: {{ event_name }}
+Description: {{ event_description }}
+Cause: {{ event_cause }}
+Effect: {{ event_effect }}
+Return only JSON with exactly {"location_id": "<selected Location id>"}.
+If no candidate location is supported, return {"location_id": null}. Names are context, never keys. No invented IDs or extra fields.

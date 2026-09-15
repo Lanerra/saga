@@ -71,6 +71,25 @@ def test_load_json_strict_succeeds_when_checksum_and_size_match(tmp_path: Path) 
     assert loaded == payload
 
 
+def test_save_json_serializes_integer_outline_keys_without_mutating_input(tmp_path: Path) -> None:
+    manager = ContentManager(str(tmp_path))
+    payload = {1: {"key_beats": ["Arrival"]}}
+
+    reference = manager.save_json(payload, "chapter_outlines", "all")
+
+    assert manager.load_json_strict(reference) == {"1": {"key_beats": ["Arrival"]}}
+    assert payload == {1: {"key_beats": ["Arrival"]}}
+
+
+def test_save_json_rejects_nonserializable_values_without_writing_content(tmp_path: Path) -> None:
+    manager = ContentManager(str(tmp_path))
+
+    with pytest.raises(TypeError, match="Object of type object is not JSON serializable"):
+        manager.save_json(object(), "chapter_outlines", "all")
+
+    assert list(tmp_path.rglob("*.json")) == []
+
+
 def test_load_json_strict_raises_when_file_is_modified_after_ref_creation(tmp_path: Path) -> None:
     manager = ContentManager(str(tmp_path))
 
@@ -100,7 +119,7 @@ def test_get_draft_text_returns_text_when_draft_ref_present(tmp_path: Path) -> N
 
 def test_get_draft_text_raises_when_draft_ref_missing(tmp_path: Path) -> None:
     manager = ContentManager(str(tmp_path))
-    state = {}
+    state: dict[str, object] = {}
 
     with pytest.raises(MissingDraftReferenceError) as exc:
         get_draft_text(state, manager)

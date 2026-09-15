@@ -179,7 +179,7 @@ class TestRelationshipValidator:
             severity_mode="flexible",
         )
         assert is_valid is False
-        assert len(errors) > 0
+        assert len(errors) == 1
         assert "Structure" in errors[0]
 
     def test_validate_emotional_relationship_valid(self) -> None:
@@ -238,7 +238,7 @@ class TestRelationshipValidator:
         )
         assert is_valid is True
         assert errors == []
-        assert len(warnings) > 0
+        assert len(warnings) == 2
         assert any("Unknown relationship type 'MEMBER_OF'" in warning for warning in warnings)
         assert any("Unknown entity type 'Guild'" in warning for warning in warnings)
 
@@ -255,7 +255,7 @@ class TestRelationshipValidator:
         )
         assert is_valid is True
         assert errors == []
-        assert len(warnings) > 0
+        assert len(warnings) == 3
         assert any("Unknown relationship type 'MEMBER_OF'" in warning for warning in warnings)
         assert any("Unknown entity type 'Artifact'" in warning for warning in warnings)
         assert any("Unknown entity type 'Guild'" in warning for warning in warnings)
@@ -287,7 +287,7 @@ class TestRelationshipValidator:
             severity_mode="flexible",
         )
         assert is_valid is False
-        assert len(errors) > 0
+        assert len(errors) == 1
 
     def test_validate_temporal_relationship_valid(self) -> None:
         """Test validation of a valid temporal relationship."""
@@ -316,7 +316,7 @@ class TestRelationshipValidator:
             severity_mode="flexible",
         )
         assert is_valid is False
-        assert len(errors) > 0
+        assert len(errors) == 1
 
     def test_validate_ability_trait_valid(self) -> None:
         """Test validation of a valid ability/trait relationship."""
@@ -335,17 +335,16 @@ class TestRelationshipValidator:
     def test_validate_ability_trait_invalid(self) -> None:
         """Test validation of an invalid ability/trait relationship."""
         validator = RelationshipValidator(enable_strict_mode=True)
-        # Locations can't have character traits
         is_valid, errors, warnings = validator.validate(
             relationship_type="HAS_TRAIT",
             source_name="The Tower",
             source_type="Structure",
             target_name="Courage",
             target_type="Trait",
-            severity_mode="flexible",
+            severity_mode="strict",
         )
         assert is_valid is False
-        assert len(errors) > 0
+        assert len(errors) == 3
 
     def test_validate_flexible_mode_unknown_type(self) -> None:
         """Test that flexible mode allows unknown types with warnings."""
@@ -361,7 +360,7 @@ class TestRelationshipValidator:
         # Should be valid in flexible mode, but with warnings
         assert is_valid is True
         assert len(errors) == 0
-        assert len(warnings) > 0
+        assert len(warnings) == 1
 
     def test_validate_strict_mode_unknown_type(self) -> None:
         """Test that strict mode rejects unknown types."""
@@ -376,7 +375,7 @@ class TestRelationshipValidator:
         )
         # Should be invalid in strict mode
         assert is_valid is False
-        assert len(errors) > 0
+        assert len(errors) == 1
 
 
 class TestGetRelationshipValidator:

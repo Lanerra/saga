@@ -13,20 +13,22 @@ from typing import Any, Literal
 import structlog
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
 from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
+from langgraph.graph.state import CompiledStateGraph  # type: ignore[import-not-found]
 
 import config
+from core.langgraph.chapter_lifecycle import ChapterLifecycle
 from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.embedding_node import generate_scene_embeddings
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
+from core.langgraph.nodes.narrative_enrichment_node import enrich_narrative
 from core.langgraph.nodes.quality_assurance_node import check_quality
-from core.langgraph.nodes.relationship_normalization_node import (
-    normalize_relationships,
-)
+from core.langgraph.nodes.relationship_normalization_node import normalize_relationships
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
-from core.langgraph.state import NarrativeState
+from core.langgraph.quality_policy import validation_decision
+from core.langgraph.state import NarrativeState, validate_state_contract
 from core.langgraph.state_helpers import (
     clear_error_state,
     clear_extraction_state,
@@ -35,58 +37,6 @@ from core.langgraph.state_helpers import (
 )
 
 logger = structlog.get_logger(__name__)
-
-
-def should_revise_or_continue(
-    state: NarrativeState,
-) -> Literal["revise", "summarize"]:
-    """Route to revision or summarization for the Phase 2 graph.
-
-    Args:
-        state: Workflow state. Uses the following keys:
-            - needs_revision: Whether the validation phase requested revision.
-            - iteration_count: Number of revision cycles already attempted.
-            - max_iterations: Upper bound on revision cycles.
-            - force_continue: If true, skip revision regardless of validation.
-
-    Returns:
-        "revise" or "summarize".
-    """
-    needs_revision = state.get("needs_revision", False)
-    iteration_count = state.get("iteration_count", 0)
-    max_iterations = state.get("max_iterations", 3)
-    force_continue = state.get("force_continue", False)
-
-    logger.info(
-        "should_revise_or_continue: routing decision",
-        needs_revision=needs_revision,
-        iteration=iteration_count,
-        max_iterations=max_iterations,
-        force_continue=force_continue,
-    )
-
-    # If force_continue is set, skip revision and go to summary
-    if force_continue:
-        logger.info("should_revise_or_continue: force_continue enabled, routing to summarize")
-        return "summarize"
-
-    # If we've hit max iterations, go to summary
-    if iteration_count >= max_iterations:
-        logger.warning(
-            "should_revise_or_continue: max iterations reached, routing to summarize",
-            iteration_count=iteration_count,
-            max_iterations=max_iterations,
-        )
-        return "summarize"
-
-    # If needs revision and under max iterations, revise
-    if needs_revision:
-        logger.info("should_revise_or_continue: revision needed, routing to revise node")
-        return "revise"
-
-    # Otherwise, proceed to summary
-    logger.info("should_revise_or_continue: no revision needed, routing to summarize")
-    return "summarize"
 
 
 def should_handle_error(state: NarrativeState) -> Literal["error", "continue"]:
@@ -99,7 +49,7 @@ def should_handle_error(state: NarrativeState) -> Literal["error", "continue"]:
     Returns:
         "error" when `has_fatal_error` is true, otherwise "continue".
     """
-    if state.get("has_fatal_error", False):
+    if state.get("has_fatal_error", False) or state.get("revision_rollback_failure") is not None:
         logger.error(
             "should_handle_error: fatal error detected",
             error=state.get("last_error"),
@@ -125,7 +75,7 @@ def should_revise_or_handle_error(
         is requested and allowed, otherwise "continue".
     """
     # Check for fatal errors first
-    if state.get("has_fatal_error", False):
+    if state.get("has_fatal_error", False) or state.get("revision_rollback_failure") is not None:
         logger.error(
             "should_revise_or_handle_error: fatal error detected",
             error=state.get("last_error"),
@@ -138,6 +88,14 @@ def should_revise_or_handle_error(
     iteration_count = state.get("iteration_count", 0)
     max_iterations = state.get("max_iterations", 3)
     force_continue = state.get("force_continue", False)
+
+    if state.get("quality_checks"):
+        try:
+            validation_decision(state)
+        except ValueError:
+            if needs_revision and not force_continue and iteration_count < max_iterations:
+                return "revise"
+            return "error"
 
     if force_continue:
         logger.info("should_revise_or_handle_error: force_continue enabled, routing to continue")
@@ -166,22 +124,31 @@ def handle_fatal_error(state: NarrativeState) -> NarrativeState:
             (`last_error`, `error_node`).
 
     Returns:
-        Updated state with `current_node="error_handler"`.
+        Partial state update retaining fatal diagnostics, including a quality
+        rejection computed from checkpointed evidence rather than edge mutation.
     """
+    update: NarrativeState = {"current_node": "error_handler"}
+    rollback_failure = state.get("revision_rollback_failure")
+    if rollback_failure is not None:
+        update = {
+            "current_node": "error_handler",
+            "has_fatal_error": True,
+            "last_error": rollback_failure["error"],
+            "error_node": "revise",
+        }
+    elif not state.get("has_fatal_error", False) and state.get("quality_checks"):
+        try:
+            validation_decision(state)
+        except ValueError as error:
+            update.update({"has_fatal_error": True, "last_error": str(error), "error_node": "validate"})
+
     logger.error(
         "handle_fatal_error: workflow terminated due to fatal error",
-        error=state.get("last_error"),
-        failed_node=state.get("error_node"),
+        error=update.get("last_error", state.get("last_error")),
+        failed_node=update.get("error_node", state.get("error_node")),
         chapter=state.get("current_chapter"),
     )
-
-    # Could write error to file for debugging in the future
-    # error_file = Path(state["project_dir"]) / ".saga" / "last_error.json"
-
-    return {
-        **state,
-        "current_node": "error_handler",
-    }
+    return update
 
 
 @asynccontextmanager
@@ -194,19 +161,25 @@ async def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncIt
     Yields:
         An `AsyncSqliteSaver` instance.
     """
-    import os
+    from pathlib import Path
 
-    db_dir = os.path.dirname(db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
+    from utils.file_io import ContainedFiles
+
+    checkpoint_path = Path(db_path).absolute()
+    files = ContainedFiles(checkpoint_path.parent, durable=True)
 
     logger.info(
         "create_checkpointer: creating async SQLite checkpointer",
         db_path=db_path,
     )
 
-    async with AsyncSqliteSaver.from_conn_string(db_path) as checkpointer:
-        yield checkpointer
+    with files.exclusive_lock(checkpoint_path.name + ".writer.lock"):
+        # SQLite opens its own files, outside ContainedFiles' descriptor API.
+        # Admit every existing database/sidecar before handing over the path.
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            files.exists(checkpoint_path.name + suffix)
+        async with AsyncSqliteSaver.from_conn_string(db_path) as checkpointer:
+            yield checkpointer
 
 
 def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
@@ -223,7 +196,7 @@ def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
     init_step = state.get("initialization_step", "")
 
     # Check for failure indicators
-    if last_error or (init_step and "failed" in init_step.lower()):
+    if should_handle_error(state) == "error" or last_error or (init_step and "failed" in init_step.lower()):
         logger.error(
             "should_continue_init: initialization failed, halting workflow",
             error=last_error,
@@ -238,15 +211,18 @@ def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
     return "continue"
 
 
-def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"]:
-    """Route into initialization when `initialization_complete` is false.
+def should_initialize(state: NarrativeState) -> Literal["initialize", "generate", "error"]:
+    """Gate workflow entry before routing into initialization or generation.
 
     Args:
         state: Workflow state.
 
     Returns:
-        "initialize" when initialization is required, otherwise "generate".
+        "error" when blocked, otherwise "initialize" or "generate".
     """
+    if should_handle_error(state) == "error":
+        return "error"
+
     initialization_complete = state.get("initialization_complete", False)
 
     logger.info(
@@ -255,6 +231,20 @@ def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"
     )
 
     if not initialization_complete:
+        from pathlib import Path
+
+        from core.langgraph.content_manager import require_project_dir
+        from core.langgraph.initialization.persist_files_node import assert_initialization_files_absent
+
+        project_dir = Path(require_project_dir(state))
+        assert_initialization_files_absent(project_dir)
+        content_directory = project_dir / ".saga" / "content"
+        if content_directory.exists() and any(content_directory.iterdir()):
+            raise FileExistsError(
+                "Reinitialization is blocked: generated initialization content already exists. "
+                "Preserve the project and resume its active workflow or use a new project directory; "
+                "import/reconciliation requires the B18 acceptance protocol."
+            )
         logger.info("should_initialize: initialization needed, routing to init workflow")
         return "initialize"
     else:
@@ -269,8 +259,11 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
         state: Current workflow state.
 
     Returns:
-        Updated state with `current_chapter` incremented and flags reset.
+        Partial state update with `current_chapter` incremented and flags reset.
     """
+    lifecycle_update: NarrativeState = {}
+    if "lifecycle_version" in state:
+        lifecycle_update = ChapterLifecycle(state).stage().advance()
     next_chapter = state.get("current_chapter", 1) + 1
 
     logger.info(
@@ -280,15 +273,23 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "current_chapter": next_chapter,
         "iteration_count": 0,
         "force_continue": False,
         "chapter_plan_ref": None,
+        "draft_word_count": 0,
+        "coherence_score": None,
+        "prose_quality_score": None,
+        "plot_advancement_score": None,
+        "pacing_score": None,
+        "tone_consistency_score": None,
+        "quality_feedback": None,
         **clear_generation_artifacts(),
         **clear_validation_state(),
         **clear_error_state(),
         **clear_extraction_state(),
+        **lifecycle_update,
+        **({"extraction_source": None, "extraction_outcomes": [], "extraction_status": "failed"} if "lifecycle_version" in state else {}),
     }
 
 
@@ -303,7 +304,7 @@ def should_continue_to_next_chapter(
     Returns:
         "continue" to advance, "end" if finished, or "error" if fatal error.
     """
-    if state.get("has_fatal_error", False):
+    if should_handle_error(state) == "error":
         return "error"
 
     current = state.get("current_chapter", 1)
@@ -337,34 +338,38 @@ def should_continue_to_next_chapter(
     return "end"
 
 
-def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
+def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledStateGraph:
     """Create the end-to-end workflow graph (initialization + chapter loop).
 
     Args:
         checkpointer: Optional LangGraph checkpointer instance.
 
     Returns:
-        Compiled LangGraph StateGraph ready for execution
+        Compiled LangGraph graph ready for execution.
     """
     logger.info("create_full_workflow_graph: building complete workflow")
 
     from core.langgraph.initialization import (
         commit_initialization_to_graph,
+        extract_outline_relationships,
         generate_act_outlines,
+        generate_all_chapter_outlines,
         generate_chapter_outline,
         generate_character_sheets,
         generate_global_outline,
+        materialize_initialization_catalog,
         persist_initialization_files,
+        run_initialization_parsers,
     )
 
     # Create graph
     workflow = StateGraph(NarrativeState)
 
     # Add routing node for conditional entry
-    def route_entry(state: NarrativeState) -> NarrativeState:
+    def route_entry(state: NarrativeState) -> dict[str, str]:
         """Pass-through routing node for conditional entry."""
         logger.info("route_entry: determining workflow path")
-        return state
+        return {"current_node": "route"}
 
     workflow.add_node("route", route_entry)
 
@@ -379,7 +384,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
             step=step,
         )
         return {
-            **state,
             "has_fatal_error": True,
             "last_error": f"Initialization failed at step {step}: {error}",
         }
@@ -390,12 +394,17 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("init_character_sheets", generate_character_sheets)
     workflow.add_node("init_global_outline", generate_global_outline)
     workflow.add_node("init_act_outlines", generate_act_outlines)
+    workflow.add_node("init_all_chapter_outlines", generate_all_chapter_outlines)
+    workflow.add_node("init_catalog", materialize_initialization_catalog)
+    workflow.add_node("init_outline_relationships", extract_outline_relationships)
     workflow.add_node("init_commit_to_graph", commit_initialization_to_graph)
     workflow.add_node("init_persist_files", persist_initialization_files)
+    workflow.add_node("init_run_parsers", run_initialization_parsers)
 
     # Mark initialization complete
     def mark_initialization_complete(state: NarrativeState) -> NarrativeState:
         """Mark the initialization phase as complete."""
+        validate_state_contract({**state, "initialization_complete": True})
         logger.info(
             "mark_initialization_complete: initialization phase finished",
             title=state.get("title", ""),
@@ -403,7 +412,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
             has_act_outlines_ref=bool(state.get("act_outlines_ref")),
         )
         return {
-            **state,
             "initialization_complete": True,
             "initialization_step": "complete",
         }
@@ -422,6 +430,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("extract", create_scene_extraction_subgraph())
     workflow.add_node("gen_scene_embeddings", generate_scene_embeddings)
     workflow.add_node("assemble_chapter", assemble_chapter)
+    workflow.add_node("narrative_enrichment", enrich_narrative)
     workflow.add_node("normalize_relationships", normalize_relationships)
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())
@@ -443,6 +452,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         {
             "initialize": "init_character_sheets",
             "generate": "chapter_outline",
+            "error": "error_handler",
         },
     )
 
@@ -468,6 +478,30 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         "init_act_outlines",
         should_continue_init,
         {
+            "continue": "init_all_chapter_outlines",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_all_chapter_outlines",
+        should_continue_init,
+        {
+            "continue": "init_catalog",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_catalog",
+        should_continue_init,
+        {
+            "continue": "init_outline_relationships",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_outline_relationships",
+        should_continue_init,
+        {
             "continue": "init_commit_to_graph",
             "error": "init_error",
         },
@@ -482,6 +516,14 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     )
     workflow.add_conditional_edges(
         "init_persist_files",
+        should_continue_init,
+        {
+            "continue": "init_run_parsers",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_run_parsers",
         should_continue_init,
         {
             "continue": "init_complete",
@@ -505,9 +547,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         },
     )
 
-    # Generation flow
-    # Mainline Phase 2 ordering:
-    # generate → extract → gen_scene_embeddings → assemble_chapter → normalize_relationships → commit → validate → summarize …
+    # generate → extract → gen_scene_embeddings → assemble_chapter → narrative_enrichment → normalize_relationships → commit → validate → summarize …
     workflow.add_conditional_edges(
         "generate",
         should_handle_error,
@@ -520,7 +560,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     def should_continue_after_extract(
         state: NarrativeState,
     ) -> Literal["scene_embeddings", "error"]:
-        if state.get("has_fatal_error", False):
+        if should_handle_error(state) == "error":
             return "error"
 
         return "scene_embeddings"
@@ -543,6 +583,14 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     )
     workflow.add_conditional_edges(
         "assemble_chapter",
+        should_handle_error,
+        {
+            "continue": "narrative_enrichment",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "narrative_enrichment",
         should_handle_error,
         {
             "continue": "normalize_relationships",
@@ -631,7 +679,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=24,  # route + init_error + 6 init + 15 generation/QA nodes + error_handler
+        total_nodes=27,
         entry_point="route",
     )
 
@@ -649,7 +697,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 __all__ = [
     "create_checkpointer",
     "create_full_workflow_graph",
-    "should_revise_or_continue",
     "should_initialize",
     "should_handle_error",
     "should_revise_or_handle_error",

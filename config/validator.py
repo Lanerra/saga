@@ -27,7 +27,7 @@ Returns:
 
 from __future__ import annotations
 
-from .settings import settings as current_settings
+from . import get_settings
 
 
 def _add_issue(
@@ -63,6 +63,7 @@ def validate_all() -> dict:
         - `warning` when no errors exist but warning-level issues do,
         - `healthy` otherwise.
     """
+    current_settings = get_settings()
     issues: dict[str, list[dict[str, str]]] = {"errors": [], "warnings": [], "info": []}
 
     # 1️⃣ Pydantic field validation – already performed when the settings instance
@@ -83,7 +84,7 @@ def validate_all() -> dict:
             issues,
             "errors",
             "MAX_CONTEXT_TOKENS",
-            (f"MAX_CONTEXT_TOKENS ({current_settings.MAX_CONTEXT_TOKENS}) must be " f"greater than MAX_GENERATION_TOKENS ({current_settings.MAX_GENERATION_TOKENS})."),
+            (f"MAX_CONTEXT_TOKENS ({current_settings.MAX_CONTEXT_TOKENS}) must be greater than MAX_GENERATION_TOKENS ({current_settings.MAX_GENERATION_TOKENS})."),
         )
 
     # Embedding dimension consistency
@@ -92,11 +93,7 @@ def validate_all() -> dict:
             issues,
             "warnings",
             "NEO4J_VECTOR_DIMENSIONS",
-            (
-                f"NEO4J_VECTOR_DIMENSIONS ({current_settings.NEO4J_VECTOR_DIMENSIONS}) "
-                f"differs from EXPECTED_EMBEDDING_DIM ({current_settings.EXPECTED_EMBEDDING_DIM}). "
-                "This may cause indexing errors."
-            ),
+            (f"NEO4J_VECTOR_DIMENSIONS ({current_settings.NEO4J_VECTOR_DIMENSIONS}) differs from EXPECTED_EMBEDDING_DIM ({current_settings.EXPECTED_EMBEDDING_DIM}). This may cause indexing errors."),
         )
 
     # Cache sizes sanity (non‑negative and reasonable upper bounds)
@@ -125,10 +122,8 @@ def validate_all() -> dict:
         "TEMPERATURE_REVISION",
         "TEMPERATURE_PLANNING",
         "TEMPERATURE_EVALUATION",
-        "TEMPERATURE_CONSISTENCY_CHECK",
         "TEMPERATURE_KG_EXTRACTION",
         "TEMPERATURE_SUMMARY",
-        "TEMPERATURE_PATCH",
     ]
     for name in temp_fields:
         value = getattr(current_settings, name)

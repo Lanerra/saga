@@ -20,7 +20,6 @@ from core.langgraph.workflow import (
     create_full_workflow_graph,
     handle_fatal_error,
     should_handle_error,
-    should_revise_or_continue,
     should_revise_or_handle_error,
 )
 
@@ -137,16 +136,16 @@ def mock_all_nodes() -> Any:
         "current_node": "chapter_outline",
     }
 
+    mock_narrative_enrichment_node = MagicMock()
+    mock_narrative_enrichment_node.side_effect = lambda state: {
+        **state,
+        "current_node": "narrative_enrichment",
+    }
+
     mock_commit_node = MagicMock()
     mock_commit_node.side_effect = lambda state: {
         **state,
         "current_node": "commit",
-    }
-
-    mock_normalize_node = MagicMock()
-    mock_normalize_node.side_effect = lambda state: {
-        **state,
-        "current_node": "normalize_relationships",
     }
 
     mock_revise_node = MagicMock()
@@ -214,8 +213,8 @@ def mock_all_nodes() -> Any:
             "core.langgraph.initialization.generate_chapter_outline",
             side_effect=mock_chapter_outline_node,
         ),
+        patch("core.langgraph.workflow.enrich_narrative", side_effect=mock_narrative_enrichment_node),
         patch("core.langgraph.workflow.commit_to_graph", side_effect=mock_commit_node),
-        patch("core.langgraph.workflow.normalize_relationships", side_effect=mock_normalize_node),
         patch("core.langgraph.workflow.revise_chapter", side_effect=mock_revise_node),
         patch("core.langgraph.workflow.summarize_chapter", side_effect=mock_summarize_node),
         patch("core.langgraph.workflow.finalize_chapter", side_effect=mock_finalize_node),
@@ -228,7 +227,7 @@ def mock_all_nodes() -> Any:
             "extract": mock_extract_node,
             "gen_scene_embeddings": mock_scene_embeddings_node,
             "assemble_chapter": mock_assemble_chapter_node,
-            "normalize_relationships": mock_normalize_node,
+            "narrative_enrichment": mock_narrative_enrichment_node,
             "commit": mock_commit_node,
             "validate": mock_validate_node,
             "revise": mock_revise_node,
@@ -237,72 +236,6 @@ def mock_all_nodes() -> Any:
             "heal_graph": mock_heal_node,
             "check_quality": mock_quality_node,
         }
-
-
-class TestShouldReviseOrContinue:
-    """Tests for should_revise_or_continue routing function."""
-
-    def test_route_to_summarize_when_no_revision_needed(self) -> None:
-        """Test routing to summarize when needs_revision is False."""
-        # Using type ignore or creating partial dict because create_initial_state creates full structure
-        # but here we test with minimal required fields for the function
-        state: Any = {
-            "needs_revision": False,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "summarize"
-
-    def test_route_to_revise_when_revision_needed(self) -> None:
-        """Test routing to revise when needs_revision is True."""
-        state: Any = {
-            "needs_revision": True,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "revise"
-
-    def test_route_to_summarize_when_max_iterations_reached(self) -> None:
-        """Test routing to summarize when max iterations reached."""
-        state: Any = {
-            "needs_revision": True,
-            "iteration_count": 3,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "summarize"
-
-    def test_route_to_summarize_when_force_continue(self) -> None:
-        """Test routing to summarize when force_continue is enabled."""
-        state: Any = {
-            "needs_revision": True,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": True,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "summarize"
-
-    def test_route_to_revise_under_max_iterations(self) -> None:
-        """Test routing to revise when under max iterations."""
-        state: Any = {
-            "needs_revision": True,
-            "iteration_count": 1,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "revise"
 
 
 @pytest.mark.asyncio
@@ -321,7 +254,6 @@ class TestPhase2Workflow:
         mock_all_nodes["chapter_outline"].assert_called_once()
         mock_all_nodes["gen_scene_embeddings"].assert_called_once()
         mock_all_nodes["assemble_chapter"].assert_called_once()
-        mock_all_nodes["normalize_relationships"].assert_called_once()
         mock_all_nodes["validate"].assert_called_once()
         mock_all_nodes["commit"].assert_called_once()
         mock_all_nodes["summarize"].assert_called_once()
@@ -329,7 +261,6 @@ class TestPhase2Workflow:
         mock_all_nodes["heal_graph"].assert_called_once()
         mock_all_nodes["check_quality"].assert_called_once()
 
-        # Revision should not be called (no contradictions)
         mock_all_nodes["revise"].assert_not_called()
 
     async def test_workflow_with_single_revision(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
@@ -337,7 +268,7 @@ class TestPhase2Workflow:
         call_sequence: list[str] = []
         validate_call_count = 0
 
-        def mock_validate(s):
+        def mock_validate(s: NarrativeState) -> NarrativeState:
             nonlocal validate_call_count
             call_sequence.append("validate")
             validate_call_count += 1
@@ -362,7 +293,7 @@ class TestPhase2Workflow:
                 "current_node": "validate",
             }
 
-        def mock_commit(s):
+        def mock_commit(s: NarrativeState) -> NarrativeState:
             call_sequence.append("commit")
             return {
                 **s,
@@ -384,7 +315,6 @@ class TestPhase2Workflow:
         # Validation should be called twice (revise then accept)
         assert validate_call_count == 2
 
-        # Commit should happen twice: once from normalize_relationships, once after validation accepts
         assert mock_all_nodes["commit"].call_count == 2
 
     async def test_workflow_max_iterations_enforcement(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
@@ -449,15 +379,11 @@ class TestPhase2Workflow:
         # Execute workflow
         await graph.ainvoke(sample_generation_state)
 
-        # Check call order of some key nodes
-        # Chapter outline -> Generate -> Extract -> Scene Embeddings -> Assemble -> Normalize -> Validate -> Commit -> Summarize -> Finalize -> Heal -> Quality
-
         mock_all_nodes["chapter_outline"].assert_called_once()
         mock_all_nodes["generate"].assert_called_once()
         mock_all_nodes["extract"].assert_called_once()
         mock_all_nodes["gen_scene_embeddings"].assert_called_once()
         mock_all_nodes["assemble_chapter"].assert_called_once()
-        mock_all_nodes["normalize_relationships"].assert_called_once()
         mock_all_nodes["commit"].assert_called()
         mock_all_nodes["validate"].assert_called_once()
         mock_all_nodes["summarize"].assert_called_once()
@@ -506,7 +432,7 @@ class TestPhase2Workflow:
         # Configure validate to request revision twice then stop
         call_count = 0
 
-        def mock_validate(s):
+        def mock_validate(s: NarrativeState) -> NarrativeState:
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
@@ -579,10 +505,10 @@ def test_phase2_graph_check_quality_is_reachable() -> None:
     assert "check_quality" in visited
 
 
-@pytest.mark.asyncio
 class TestPhase2Integration:
     """Integration tests for Phase 2 workflow."""
 
+    @pytest.mark.asyncio
     async def test_complete_chapter_generation_workflow(self, sample_generation_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any) -> None:
         """Test complete end-to-end chapter generation."""
         # Create workflow
@@ -595,7 +521,7 @@ class TestPhase2Integration:
         assert result["current_chapter"] == 1
         assert result["initialization_complete"] is True
 
-    async def test_workflow_graph_structure(self) -> None:
+    def test_workflow_graph_structure(self) -> None:
         """Test that Phase 2 graph has correct structure."""
         graph = create_full_workflow_graph()
         graph_obj = graph.get_graph()
@@ -609,7 +535,7 @@ class TestPhase2Integration:
             "extract",
             "gen_scene_embeddings",
             "assemble_chapter",
-            "normalize_relationships",
+            "narrative_enrichment",
             "commit",
             "validate",
             "revise",
@@ -629,11 +555,9 @@ class TestPhase2Integration:
 
         edges = {(edge.source, edge.target) for edge in graph_obj.edges}
 
-        # Relationship persistence happens before validation
+        assert ("narrative_enrichment", "normalize_relationships") in edges
         assert ("normalize_relationships", "commit") in edges
-        # Validation happens after relationship commit
         assert ("commit", "validate") in edges
-        # If validation passes, continue to summarize
         assert ("validate", "summarize") in edges
 
     def test_workflow_revision_loop_routes_to_generate(self) -> None:
@@ -723,10 +647,7 @@ class TestErrorRoutingFunctions:
 
         result = handle_fatal_error(state)
 
-        assert result["current_node"] == "error_handler"
-        assert result["has_fatal_error"] is True
-        assert result["last_error"] == "Test fatal error"
-        assert result["error_node"] == "generate"
+        assert result == {"current_node": "error_handler"}
 
 
 @pytest.mark.asyncio
@@ -820,7 +741,6 @@ class TestWorkflowErrorHandling:
 
         assert result["current_node"] == "error_handler"
         mock_all_nodes["assemble_chapter"].assert_not_called()
-        mock_all_nodes["normalize_relationships"].assert_not_called()
 
     async def test_workflow_multi_chapter_loop(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that workflow loops back for multiple chapters."""

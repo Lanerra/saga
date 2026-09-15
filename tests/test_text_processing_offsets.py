@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from core.service_context import get_services
 from utils import text_processing
 
 
@@ -23,21 +24,21 @@ class DummyNLP:
 
 
 @pytest.mark.asyncio
-async def test_find_quote_offsets_no_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(text_processing.spacy_manager, "_nlp", None)
-    monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
-    # When spaCy is not available, the function falls back to basic sentence segmentation
-    # and token similarity matching, so it may still return a result
+@pytest.mark.parametrize("document_vector, expected", [([1.0, 0.0], (0, 3, 0, 3)), ([0.0, 1.0], None)])
+async def test_find_quote_offsets_no_model(monkeypatch: pytest.MonkeyPatch, document_vector: list[float], expected: tuple[int, int, int, int] | None) -> None:
+    monkeypatch.setattr(text_processing, "_get_spacy_nlp", lambda: None)
+    async def embedding(text: str) -> list[float]:
+        assert text in {"doc", "quote"}
+        return [1.0, 0.0] if text == "quote" else document_vector
+
+    monkeypatch.setattr(get_services().language_model, 'async_get_embedding', embedding)
     result = await text_processing.find_quote_and_sentence_offsets_with_spacy("doc", "quote")
-    # The function uses token similarity fallback with threshold 0.45
-    # With "doc" and "quote", it finds some similarity and returns offsets
-    assert result == (0, 3, 0, 3)
+    assert result == expected
 
 
 @pytest.mark.asyncio
 async def test_find_quote_offsets_direct(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(text_processing.spacy_manager, "_nlp", DummyNLP())
-    monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
+    monkeypatch.setattr(text_processing, "_get_spacy_nlp", lambda: DummyNLP())
     result = await text_processing.find_quote_and_sentence_offsets_with_spacy("Hello world", "world")
     assert result == (6, 11, 0, len("Hello world"))
 
@@ -46,8 +47,7 @@ async def test_find_quote_offsets_direct(monkeypatch: pytest.MonkeyPatch) -> Non
 async def test_find_quote_offsets_fuzzy_punctuation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(text_processing.spacy_manager, "_nlp", DummyNLP())
-    monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
+    monkeypatch.setattr(text_processing, "_get_spacy_nlp", lambda: DummyNLP())
     result = await text_processing.find_quote_and_sentence_offsets_with_spacy("Hello world.", "Hello world!")
     assert result == (0, 11, 0, len("Hello world."))
 
@@ -56,8 +56,7 @@ async def test_find_quote_offsets_fuzzy_punctuation(
 async def test_find_quote_offsets_fuzzy_extra_word(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(text_processing.spacy_manager, "_nlp", DummyNLP())
-    monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
+    monkeypatch.setattr(text_processing, "_get_spacy_nlp", lambda: DummyNLP())
     result = await text_processing.find_quote_and_sentence_offsets_with_spacy("Hello world.", "Hello world again")
     assert result == (0, 12, 0, len("Hello world."))
 
@@ -66,10 +65,8 @@ async def test_find_quote_offsets_fuzzy_extra_word(
 async def test_find_quote_offsets_token_similarity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(text_processing.spacy_manager, "_nlp", DummyNLP())
-    monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
+    monkeypatch.setattr(text_processing, "_get_spacy_nlp", lambda: DummyNLP())
 
-    # Force partial_ratio_alignment to fail
     class DummyAlign:
         def __init__(self) -> None:
             self.score = 0.0

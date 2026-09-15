@@ -9,9 +9,10 @@ from async_lru import alru_cache
 from neo4j.exceptions import Neo4jError
 
 import config
-from core.db_manager import neo4j_manager
 from core.exceptions import handle_database_error
 from core.schema_validator import schema_validator
+from core.service_context import get_services
+from data_access.cache_coordinator import guard_graph_cache
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
@@ -24,7 +25,7 @@ from utils import classify_category_label
 logger = structlog.get_logger(__name__)
 
 # Cache to prevent repeated type upgrade logging for the same entity
-_upgrade_logged = set()
+_upgrade_logged: set[str] = set()
 
 # Valid relationship types for narrative knowledge graphs - canonical reference set.
 #
@@ -70,7 +71,7 @@ def _infer_from_category_simple(category: str, name: str) -> str:
     return result
 
 
-def _infer_specific_node_type(name: str, category: str = "", fallback_type: str = "WorldElement") -> str:
+def _infer_specific_node_type(name: str, category: str = "", fallback_type: str | None = "WorldElement") -> str:
     """Select a canonical node label for an entity.
 
     Args:
@@ -79,7 +80,7 @@ def _infer_specific_node_type(name: str, category: str = "", fallback_type: str 
             specify a canonical label.
         fallback_type: Caller-supplied type hint. When it matches a canonical label in
             `VALID_NODE_LABELS`, it is used as-is. `"WorldElement"` is treated as a sentinel
-            meaning "infer from category".
+            meaning "infer from category", as are None and an empty string.
 
     Returns:
         A canonical node label from `VALID_NODE_LABELS`.
@@ -94,7 +95,7 @@ def _infer_specific_node_type(name: str, category: str = "", fallback_type: str 
         return "Item"
 
     # Respect explicit canonical label provided by caller.
-    if fallback_type in VALID_NODE_LABELS:
+    if fallback_type is not None and fallback_type in VALID_NODE_LABELS:
         return fallback_type
 
     # If caller provided a non-sentinel fallback, try to validate/normalize it.
@@ -182,140 +183,6 @@ def validate_relationship_type_for_cypher_interpolation(proposed_type: str) -> s
     return raw
 
 
-async def _promote_dynamic_relationships_to_typed_relationships(*, valid_types: list[str]) -> int:
-    """
-    Promote ``DYNAMIC_REL`` relationships into typed relationships (write operation).
-
-    Determinism/contract notes:
-    - This only promotes when ``r.type`` is already a safe, allowlisted relationship type.
-    - It preserves all properties except the ``type`` property (which is used only as a marker).
-    """
-    promotion_query = """
-    MATCH (s)-[r:DYNAMIC_REL]->(o)
-    WHERE r.type IS NOT NULL
-      AND r.type <> 'UNKNOWN'
-      AND r.type <> 'DYNAMIC_REL'
-      AND r.type IN $valid_types
-    WITH s, r, o, r.type as rel_type, properties(r) as rel_props
-
-    CALL apoc.create.relationship(
-        s,
-        rel_type,
-        apoc.map.removeKey(rel_props, 'type'),
-        o
-    ) YIELD rel
-
-    DELETE r
-    RETURN count(rel) AS promoted
-    """
-
-    try:
-        results = await neo4j_manager.execute_write_query(promotion_query, {"valid_types": valid_types})
-        return results[0].get("promoted", 0) if results else 0
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(
-            f"Failed to promote dynamic relationships to typed relationships: {exc}",
-            exc_info=True,
-        )
-        return 0
-
-
-async def normalize_and_deduplicate_relationships(
-    *,
-    run_validation: bool = True,
-    run_type_consolidation: bool = True,
-    run_deduplication: bool = True,
-    run_dynamic_promotion: bool = True,
-) -> dict[str, int]:
-    """
-    Canonical KG relationship maintenance pipeline (authoritative entrypoint).
-
-    This is the ONE function callers should use for relationship-type maintenance in Neo4j.
-    Other helpers (including ``promote_dynamic_relationships``) delegate to this to avoid
-    divergent behavior over time.
-
-    Deterministic contract / step ordering:
-    1) Validation / normalization of ``DYNAMIC_REL.type`` strings
-       - Fixes format variants (e.g. spaces/lowercase) using ``validate_relationship_type``.
-    2) Type consolidation (format normalization of relationship TYPE names in the graph)
-       - Renames non-canonical relationship types to the normalized canonical form.
-       - NOTE: Despite historical naming, this does NOT do semantic similarity.
-    3) Deduplication
-       - Removes exact duplicate relationships of the same type between the same nodes.
-    4) Optional promotion of ``DYNAMIC_REL`` -> typed relationships
-       - Only promotes when ``r.type`` is allowlisted (``VALID_RELATIONSHIP_TYPES``).
-
-    Args:
-        run_validation: Whether to validate/correct ``DYNAMIC_REL.type`` strings.
-        run_type_consolidation: Whether to consolidate relationship type format variants.
-        run_deduplication: Whether to deduplicate identical relationships.
-        run_dynamic_promotion: Whether to promote ``DYNAMIC_REL`` into typed relationships.
-
-    Returns:
-        Dict with counts (always present, deterministic keys):
-            {
-              "validated": int,
-              "consolidated": int,
-              "deduplicated": int,
-              "promoted": int,
-              "total": int
-            }
-    """
-
-    counts: dict[str, int] = {
-        "validated": 0,
-        "consolidated": 0,
-        "deduplicated": 0,
-        "promoted": 0,
-        "total": 0,
-    }
-
-    try:
-        logger.info(
-            "Starting relationship maintenance pipeline",
-            run_validation=run_validation,
-            run_type_consolidation=run_type_consolidation,
-            run_deduplication=run_deduplication,
-            run_dynamic_promotion=run_dynamic_promotion,
-        )
-
-        if run_validation:
-            counts["validated"] = await _validate_and_correct_relationship_types()
-            logger.info(f"✓ Validated {counts['validated']} relationship types")
-
-        if run_type_consolidation:
-            counts["consolidated"] = await consolidate_similar_relationships()
-            logger.info(f"✓ Consolidated {counts['consolidated']} relationships to canonical forms")
-
-        if run_deduplication:
-            counts["deduplicated"] = await deduplicate_relationships()
-            logger.info(f"✓ Deduplicated {counts['deduplicated']} duplicate relationships")
-
-        if run_dynamic_promotion:
-            counts["promoted"] = await _promote_dynamic_relationships_to_typed_relationships(valid_types=list(VALID_RELATIONSHIP_TYPES))
-            logger.info(f"✓ Promoted {counts['promoted']} DYNAMIC_REL relationships to typed relationships")
-
-        counts["total"] = counts["validated"] + counts["consolidated"] + counts["deduplicated"] + counts["promoted"]
-
-        logger.info(
-            "Relationship maintenance pipeline complete",
-            total=counts["total"],
-            validated=counts["validated"],
-            consolidated=counts["consolidated"],
-            deduplicated=counts["deduplicated"],
-            promoted=counts["promoted"],
-        )
-
-        return counts
-
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(
-            f"Relationship maintenance pipeline failed: {exc}",
-            exc_info=True,
-        )
-        return counts
-
-
 def _get_cypher_labels(entity_type: str | None) -> str:
     """Return a schema-allowlisted Cypher label clause for query interpolation.
 
@@ -374,87 +241,6 @@ def _get_cypher_labels(entity_type: str | None) -> str:
 
     # Removed implicit inheritance of Entity label
     return f":{canonical}"
-
-
-def _get_constraint_safe_merge(
-    labels_cypher: str,
-    name_param: str,
-    create_ts_var: str = "s",
-    id_param: str | None = None,
-) -> tuple[str, list[str]]:
-    """Build a constraint-safe `MERGE` clause for multi-label nodes.
-
-    Args:
-        labels_cypher: A colon-delimited label string (for example, `":Character:Item"`).
-            This value is expected to be constructed from allowlisted labels upstream.
-        name_param: The Cypher parameter name used for the node's `name` match key when
-            `id_param` is not provided.
-        create_ts_var: The variable name used for the merged node in the returned Cypher.
-        id_param: Optional Cypher parameter name used for a stable identity merge key.
-
-    Returns:
-        A tuple of:
-        - merge_query: A `MERGE (...)` clause that uses a single constraint-sensitive primary
-          label to avoid violating Neo4j schema constraints.
-        - additional_set_labels: Any remaining labels that should be applied via `SET` after
-          the merge.
-
-    Notes:
-        This function does not validate labels; it assumes `labels_cypher` was produced from
-        schema-allowlisted label sources. Do not pass untrusted labels to this helper.
-    """
-    # Parse the labels to identify constraint-sensitive ones
-    labels = [label.strip() for label in labels_cypher.split(":") if label.strip()]
-    # All VALID_NODE_LABELS now have constraints
-    constraint_labels = list(VALID_NODE_LABELS) + [
-        "NovelInfo",
-        "WorldContainer",
-        "PlotPoint",
-        "ValueNode",
-    ]
-
-    # Find the first constraint-sensitive label to use in MERGE
-    primary_label = None
-    additional_labels: list[str] = []
-
-    # If we have a stable id to merge on, search for a constraint label
-    if id_param:
-        # Find valid primary label from constraints
-        for label in labels:
-            if label in constraint_labels:
-                primary_label = label
-                break
-
-        if primary_label:
-            additional_labels = [l for l in labels if l != primary_label]
-            merge_query = f"MERGE ({create_ts_var}:{primary_label} {{id: ${id_param}}})"
-            return merge_query, additional_labels
-        else:
-            # Fallback for when no known constraint label matches (should be rare)
-            # Use the first label as primary
-            primary_label = labels[0] if labels else "Item"
-            additional_labels = labels[1:] if len(labels) > 1 else []
-            merge_query = f"MERGE ({create_ts_var}:{primary_label} {{id: ${id_param}}})"
-            return merge_query, additional_labels
-
-    for label in labels:
-        if label in constraint_labels:
-            if primary_label is None:
-                primary_label = label
-            else:
-                additional_labels.append(label)
-        else:
-            additional_labels.append(label)
-
-    # If no constraint-sensitive label found, use first label or a canonical fallback.
-    if primary_label is None:
-        primary_label = labels[0] if labels else "Item"
-        additional_labels = labels[1:] if len(labels) > 1 else []
-
-    # Build the MERGE query with only the primary constraint label
-    merge_query = f"MERGE ({create_ts_var}:{primary_label} {{name: ${name_param}}})"
-
-    return merge_query, additional_labels
 
 
 async def add_kg_triples_batch_to_db(
@@ -532,96 +318,21 @@ async def add_kg_triples_batch_to_db(
 
         subject_label = _get_cypher_labels(subject_type).lstrip(":")
 
-        # Base parameters for the relationship
-        rel_props = {
-            "type": predicate_clean,
-            KG_REL_CHAPTER_ADDED: chapter_number,
-            KG_IS_PROVISIONAL: is_from_flawed_draft,
-            "confidence": 1.0,
-        }
-
-        params: dict[str, Any] = {
-            "subject_label": subject_label,
-            "subject_name_param": subject_name,
-            "rel_props_param": rel_props,
-            "predicate_clean_param": predicate_clean,
-            "chapter_number_param": int(chapter_number),
-        }
-
-        subject_id: str | None = None
-        if subject_type == "Character":
-            try:
-                from processing.entity_deduplication import generate_entity_id
-
-                subject_id = generate_entity_id(subject_name, "character", int(chapter_number))
-            except (ImportError, ValueError, TypeError, AttributeError):
-                subject_id = None
-
-        params["subject_id_param"] = subject_id
+        subject_id = subject_info.get("id")
 
         if is_literal_object:
             if object_literal_val is None:
                 logger.warning(f"Neo4j (Batch): Literal object is None for triple: {triple_dict}")
                 continue
 
-            params["object_literal_value_param"] = str(object_literal_val)
-            params["value_node_type_param"] = "Literal"
+            from data_access.cypher_builders.native_builders import relationship_statement
 
-            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{str(object_literal_val).strip()}|{chapter_number}"
-            rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
-            params["rel_id_param"] = rel_id
-
-            if subject_id:
-                subject_merge_query = """
-                MERGE (s {id: $subject_id_param})
-                ON CREATE SET
-                    s.created_ts = timestamp(),
-                    s.updated_ts = timestamp(),
-                    s.created_chapter = $chapter_number_param,
-                    s.type = $subject_label,
-                    s.name = $subject_name_param,
-                    s.is_provisional = true
-                ON MATCH SET s.updated_ts = timestamp()
-                WITH s
-                CALL apoc.create.addLabels(s, [$subject_label]) YIELD node AS s_ignore
-                WITH s
-                """
-            else:
-                subject_merge_query = """
-                CALL apoc.merge.node(
-                    [$subject_label],
-                    {name: $subject_name_param},
-                    {
-                        created_ts: timestamp(),
-                        updated_ts: timestamp(),
-                        created_chapter: $chapter_number_param,
-                        type: $subject_label,
-                        name: $subject_name_param,
-                        is_provisional: true
-                    },
-                    {updated_ts: timestamp()}
-                ) YIELD node AS s
-                SET s.id = coalesce(s.id, randomUUID())
-                WITH s
-                """
-
-            query = f"""
-            {subject_merge_query}
-
-            MERGE (o:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
-            ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
-            ON MATCH SET o.updated_ts = timestamp()
-
-            CALL apoc.merge.relationship(
-                s,
-                $predicate_clean_param,
-                {{id: $rel_id_param}},
-                apoc.map.merge($rel_props_param, {{created_ts: timestamp(), updated_ts: timestamp()}}),
-                o,
-                apoc.map.merge($rel_props_param, {{updated_ts: timestamp()}})
-            ) YIELD rel
-            RETURN rel
-            """
+            query, params = relationship_statement(
+                {"name": subject_name, "type": subject_label, "id": subject_id}, predicate_clean,
+                {"value": str(object_literal_val)}, chapter_number, origin="import",
+                provisional=is_from_flawed_draft, literal=True,
+                description=triple_dict.get("description", ""), confidence=triple_dict.get("confidence", 1.0),
+            )
             statements_with_params.append((query, params))
 
         elif object_entity_info and isinstance(object_entity_info, dict) and object_entity_info.get("name"):
@@ -643,69 +354,16 @@ async def add_kg_triples_batch_to_db(
                     object_type = validated_object_type
 
             object_label = _get_cypher_labels(object_type).lstrip(":")
-            params["object_label"] = object_label
-            params["object_name_param"] = object_name
 
-            object_id: str | None = None
-            if object_type == "Character":
-                try:
-                    from processing.entity_deduplication import generate_entity_id
 
-                    object_id = generate_entity_id(object_name, "character", int(chapter_number))
-                except (ImportError, ValueError, TypeError, AttributeError):
-                    object_id = None
-            params["object_id_param"] = object_id
+            from data_access.cypher_builders.native_builders import relationship_statement
 
-            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{object_name.strip().lower()}|{chapter_number}"
-            rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
-            params["rel_id_param"] = rel_id
-
-            subject_merge_query = """
-            OPTIONAL MATCH (s_match)
-            WHERE s_match.id = $subject_id_param
-               OR ($subject_label IN labels(s_match) AND s_match.name = $subject_name_param)
-            WITH head(collect(s_match)) as s_found
-
-            CALL apoc.do.when(s_found IS NULL,
-                'CREATE (n) SET n.created_ts = timestamp(), n.updated_ts = timestamp(), n.created_chapter = $chapter, n.type = $label, n.name = $name, n.is_provisional = true, n.id = coalesce($id, randomUUID()) RETURN n as s',
-                'SET s_found.updated_ts = timestamp(), s_found.id = coalesce(s_found.id, $id, randomUUID()) RETURN s_found as s',
-                {chapter: $chapter_number_param, label: $subject_label, name: $subject_name_param, id: $subject_id_param, s_found: s_found}
-            ) YIELD value
-            WITH value.s as s
-            CALL apoc.create.addLabels(s, [$subject_label]) YIELD node as s_ignore
-            WITH s
-            """
-
-            object_merge_query = """
-            OPTIONAL MATCH (o_match)
-            WHERE o_match.id = $object_id_param
-               OR ($object_label IN labels(o_match) AND o_match.name = $object_name_param)
-            WITH s, head(collect(o_match)) as o_found
-
-            CALL apoc.do.when(o_found IS NULL,
-                'CREATE (n) SET n.created_ts = timestamp(), n.updated_ts = timestamp(), n.created_chapter = $chapter, n.type = $label, n.name = $name, n.is_provisional = true, n.id = coalesce($id, randomUUID()) RETURN n as o',
-                'SET o_found.updated_ts = timestamp(), o_found.id = coalesce(o_found.id, $id, randomUUID()) RETURN o_found as o',
-                {chapter: $chapter_number_param, label: $object_label, name: $object_name_param, id: $object_id_param, o_found: o_found}
-            ) YIELD value
-            WITH s, value.o as o
-            CALL apoc.create.addLabels(o, [$object_label]) YIELD node as o_ignore
-            WITH s, o
-            """
-
-            query = f"""
-            {subject_merge_query}
-            {object_merge_query}
-
-            CALL apoc.merge.relationship(
-                s,
-                $predicate_clean_param,
-                {{id: $rel_id_param}},
-                apoc.map.merge($rel_props_param, {{created_ts: timestamp(), updated_ts: timestamp()}}),
-                o,
-                apoc.map.merge($rel_props_param, {{updated_ts: timestamp()}})
-            ) YIELD rel
-            RETURN rel
-            """
+            query, params = relationship_statement(
+                {"name": subject_name, "type": subject_label, "id": subject_id}, predicate_clean,
+                {"name": object_name, "type": object_label, "id": object_entity_info.get("id")},
+                chapter_number, origin="import", provisional=is_from_flawed_draft,
+                description=triple_dict.get("description", ""), confidence=triple_dict.get("confidence", 1.0),
+            )
             statements_with_params.append((query, params))
         else:
             logger.warning(f"Neo4j (Batch): Invalid or missing object information in triple dict: {triple_dict}")
@@ -721,12 +379,12 @@ async def add_kg_triples_batch_to_db(
         query_preview=preview_query.strip()[:350],
         preview_subject_label=preview_params.get("subject_label"),
         preview_object_label=preview_params.get("object_label"),
-        preview_predicate=preview_params.get("predicate_clean_param"),
-        preview_chapter=preview_params.get("chapter_number_param"),
+        preview_predicate=preview_params.get("predicate_clean"),
+        preview_chapter=preview_params.get("chapter"),
     )
 
     try:
-        await neo4j_manager.execute_cypher_batch(statements_with_params)
+        await get_services().database.execute_cypher_batch(statements_with_params)
 
         logger.info(f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements.")
 
@@ -745,7 +403,8 @@ async def add_kg_triples_batch_to_db(
         raise
 
 
-@alru_cache(maxsize=256, ttl=300)  # Cache for 5 minutes with 256 entries max
+@guard_graph_cache
+@alru_cache(maxsize=256, ttl=300)
 async def _query_kg_from_db_cached(
     subject: str | None = None,
     predicate: str | None = None,
@@ -832,7 +491,7 @@ async def _query_kg_from_db_cached(
 
     full_query = match_clause + where_clause + return_clause + order_clause + limit_clause_str
     try:
-        results = await neo4j_manager.execute_read_query(full_query, parameters)
+        results = await get_services().database.execute_read_query(full_query, parameters)
         triples_list: list[dict[str, Any]] = [dict(record) for record in results] if results else []
         logger.debug(f"Neo4j: KG query returned {len(triples_list)} results. Query: '{full_query[:200]}...' Params: {parameters}")
         return triples_list
@@ -908,7 +567,10 @@ async def get_most_recent_value_from_db(
     Returns:
         The object value for the most recent matching relationship. The value may be a string
         or a best-effort conversion to `int`/`float`/`bool` when the stored value is a string.
-        Returns None when inputs are invalid or when no matching value exists.
+        Returns None when no matching value exists.
+
+    Raises:
+        Neo4jError: If the database query fails.
 
     Notes:
         Security:
@@ -947,35 +609,29 @@ async def get_most_recent_value_from_db(
     limit_clause_str = " LIMIT 1"
 
     full_query = match_clause + where_clause + return_clause + order_clause + limit_clause_str
-    try:
-        results = await neo4j_manager.execute_read_query(full_query, parameters)
-        if results and results[0] and "object" in results[0]:
-            value = results[0]["object"]
-            # Attempt to convert to number if it looks like one, as ValueNode.value stores as string from current triple parsing
-            if isinstance(value, str):
-                if re.match(r"^-?\d+$", value):
-                    value = int(value)
-                elif re.match(r"^-?\d*\.\d+$", value):
-                    value = float(value)
-                elif value.lower() == "true":
-                    value = True
-                elif value.lower() == "false":
-                    value = False
+    results = await get_services().database.execute_read_query(full_query, parameters)
+    if results and results[0] and "object" in results[0]:
+        value = results[0]["object"]
+        if isinstance(value, str):
+            if re.match(r"^-?\d+$", value):
+                value = int(value)
+            elif re.match(r"^-?\d*\.\d+$", value):
+                value = float(value)
+            elif value.lower() == "true":
+                value = True
+            elif value.lower() == "false":
+                value = False
 
-            logger.debug(
-                f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
-            )
-            return value
-    except (Neo4jError, KeyError, ValueError, TypeError) as e:
-        logger.error(
-            f"Neo4j: Error querying KG. Query: '{full_query[:200]}...', Params: {parameters}, Error: {e}",
-            exc_info=True,
+        logger.debug(
+            f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
         )
+        return value
     logger.debug(f"Neo4j: No value found for ({subject}, {predicate}) up to Ch {chapter_limit}, include_provisional={include_provisional}.")
     return None
 
 
-@alru_cache(maxsize=64, ttl=600)  # Cache novel info properties for 10 minutes
+@guard_graph_cache
+@alru_cache(maxsize=64, ttl=600)
 async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | None:
     """Return a property value from the NovelInfo node (cached).
 
@@ -1007,7 +663,7 @@ async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | No
     novel_id_param = config.MAIN_NOVEL_INFO_NODE_ID
     query = "MATCH (ni:NovelInfo {id: $novel_id_param}) " f"RETURN ni.{key} AS value"
     try:
-        results = await neo4j_manager.execute_read_query(query, {"novel_id_param": novel_id_param})
+        results = await get_services().database.execute_read_query(query, {"novel_id_param": novel_id_param})
         if results and results[0] and "value" in results[0]:
             return results[0]["value"]
         return None
@@ -1130,8 +786,8 @@ async def get_chapter_context_for_entity(
     CALL (e) {{
       WITH e
       OPTIONAL MATCH (e)-[]->(event:Event)
-      WHERE event.chapter IS NOT NULL
-      WITH collect(DISTINCT event.chapter) AS chapters
+      WHERE event.created_chapter IS NOT NULL
+      WITH collect(DISTINCT event.created_chapter) AS chapters
       RETURN chapters[..$max_event_chapters] AS event_chapters
     }}
 
@@ -1167,7 +823,7 @@ async def get_chapter_context_for_entity(
             query_preview=query.strip()[:250],
             params=params,
         )
-        results = await neo4j_manager.execute_read_query(query, params)
+        results = await get_services().database.execute_read_query(query, params)
         return results if results else []
     except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(
@@ -1204,41 +860,15 @@ async def find_contradictory_trait_characters(
     for trait1, trait2 in contradictory_trait_pairs:
         query = """
         MATCH (c:Character)
-        WHERE $trait1_param IN c.traits AND $trait2_param IN c.traits
+        WHERE ANY(t IN c.traits WHERE toLower(t) = toLower($trait1_param))
+          AND ANY(t IN c.traits WHERE toLower(t) = toLower($trait2_param))
         RETURN c.name AS character_name, $trait1_param AS trait1, $trait2_param AS trait2
         """
         params = {"trait1_param": trait1, "trait2_param": trait2}
-        try:
-            results = await neo4j_manager.execute_read_query(query, params)
-            if results:
-                all_findings.extend(results)
-        except (Neo4jError, KeyError, ValueError, TypeError) as e:
-            logger.error(
-                f"Error checking for contradictory traits '{trait1}' vs '{trait2}': {e}",
-                exc_info=True,
-            )
+        results = await get_services().database.execute_read_query(query, params)
+        all_findings.extend(results)
 
     return all_findings
-
-
-async def find_post_mortem_activity() -> list[dict[str, Any]]:
-    """DEPRECATED: Find characters with relationship activity after an `IS_DEAD` chapter.
-
-    Returns:
-        An empty list. This function is deprecated because IS_DEAD relationships are no
-        longer used. Character status (including death) is now stored as a property on
-        Character nodes.
-
-    Notes:
-        This function was a diagnostic query that relied on IS_DEAD relationships which
-        have been removed from the schema. The function is retained for backward
-        compatibility but always returns an empty list.
-    """
-    logger.debug(
-        "find_post_mortem_activity() is deprecated and returns empty. "
-        "IS_DEAD relationships are no longer used; status is a node property."
-    )
-    return []
 
 
 async def find_candidate_duplicate_entities(
@@ -1420,7 +1050,7 @@ async def find_candidate_duplicate_entities(
             query_preview=query.strip()[:250],
             params=params,
         )
-        results = await neo4j_manager.execute_read_query(query, params)
+        results = await get_services().database.execute_read_query(query, params)
         return results if results else []
     except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(f"Error finding candidate duplicate entities: {e}", exc_info=True)
@@ -1465,7 +1095,7 @@ async def get_entity_context_for_resolution(
     """
     params = {"entity_id": entity_id}
     try:
-        results = await neo4j_manager.execute_read_query(query, params)
+        results = await get_services().database.execute_read_query(query, params)
         if results:
             return results[0]
         else:
@@ -1479,7 +1109,7 @@ async def get_entity_context_for_resolution(
         ) from e
 
 
-async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = 3) -> bool:
+async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = config.LLM_RETRY_ATTEMPTS) -> bool:
     """
     Merges one entity (source) into another (target) using atomic Neo4j operations with retry logic.
     The source node will be deleted after its relationships are moved.
@@ -1518,7 +1148,7 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
         [target, source],
         {
             properties: 'discard',
-            mergeRels: true,
+            mergeRels: false,
             produceSelfRel: false,
             preserveExistingSelfRels: true,
             countMerge: true
@@ -1527,7 +1157,7 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
     SET node.merge_reason = $reason,
         node.merge_timestamp = timestamp(),
-        node.last_updated = timestamp(),
+        node.updated_ts = timestamp(),
         node.description =
             CASE
                 WHEN source_description = '' THEN node.description
@@ -1539,7 +1169,7 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
     RETURN node.id AS id
     """
 
-    results = await neo4j_manager.execute_write_query(
+    results = await get_services().database.execute_write_query(
         merge_query,
         {
             "source_id": source_id,
@@ -1550,82 +1180,17 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
     return bool(results and results[0] and results[0].get("id"))
 
 
-async def promote_dynamic_relationships() -> int:
-    """
-    Deprecated entrypoint: use ``normalize_and_deduplicate_relationships`` instead
-    This function historically performed:
-    - validation/correction of ``DYNAMIC_REL.type`` strings, then
-    - promotion of ``DYNAMIC_REL`` -> typed relationships.
-
-    To prevent drift, it is now a thin wrapper around the canonical pipeline.
-    Return value is preserved for backwards compatibility: the number of relationships
-    processed for validation + promotion (not including consolidation/deduplication).
-    """
-    counts = await normalize_and_deduplicate_relationships(
-        run_validation=True,
-        run_type_consolidation=False,
-        run_deduplication=False,
-        run_dynamic_promotion=True,
-    )
-    return int(counts.get("validated", 0) + counts.get("promoted", 0))
-
-
-async def _validate_and_correct_relationship_types() -> int:
-    """Validate and correct existing relationship types."""
-    # Find all DYNAMIC_REL relationships with type properties
-    validation_query = """
-    MATCH (s)-[r:DYNAMIC_REL]->(o)
-    WHERE r.type IS NOT NULL
-      AND r.type <> 'UNKNOWN'
-      AND r.type <> 'DYNAMIC_REL'
-    RETURN elementId(r) as rel_id, r.type as current_type
-    """
-
-    try:
-        results = await neo4j_manager.execute_read_query(validation_query)
-        if not results:
-            return 0
-
-        corrected_count = 0
-
-        for record in results:
-            current_type = record["current_type"]
-            validated_type = validate_relationship_type(current_type)
-
-            if validated_type != current_type:
-                # Update to validated type
-                update_query = """
-                MATCH ()-[r:DYNAMIC_REL]->()
-                WHERE elementId(r) = $rel_id
-                SET r.type = $new_type
-                RETURN count(*) as updated
-                """
-
-                await neo4j_manager.execute_write_query(
-                    update_query,
-                    {"rel_id": record["rel_id"], "new_type": validated_type},
-                )
-                corrected_count += 1
-                logger.debug(f"Corrected relationship type: '{current_type}' -> '{validated_type}'")
-
-        return corrected_count
-
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(f"Failed to validate relationship types: {exc}", exc_info=True)
-        return 0
-
-
 async def deduplicate_relationships() -> int:
     query = """
     MATCH (s)-[r]->(o)
-    WITH s, type(r) AS rel_type, o, collect(r) AS rels
+    WITH s, type(r) AS rel_type, o, r.chapter_added AS chapter, r.assertion_origin AS origin, r.id AS assertion_id, collect(r) AS rels
     WHERE size(rels) > 1
     CALL apoc.refactor.mergeRelationships(rels, {properties: 'combine'}) YIELD rel
     RETURN count(rel) AS deduplicated
     """
 
     try:
-        results = await neo4j_manager.execute_write_query(query)
+        results = await get_services().database.execute_write_query(query)
         return results[0].get("deduplicated", 0) if results else 0
     except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(f"Failed to deduplicate relationships: {exc}", exc_info=True)
@@ -1653,7 +1218,7 @@ async def consolidate_similar_relationships() -> int:
     """
 
     try:
-        current_results = await neo4j_manager.execute_read_query(query_current)
+        current_results = await get_services().database.execute_read_query(query_current)
         current_types = [r["rel_type"] for r in current_results if r.get("rel_type")]
 
         consolidation_count = 0
@@ -1673,7 +1238,7 @@ async def consolidate_similar_relationships() -> int:
 
             consolidate_query = """
             CALL apoc.periodic.iterate(
-                "MATCH (s)-[r]-(o) WHERE type(r) = $current_type RETURN s, r, o",
+                "MATCH (s)-[r]->(o) WHERE type(r) = $current_type RETURN s, r, o",
                 "WITH s, r, o CALL apoc.create.relationship(s, $canonical_type, properties(r), o) YIELD rel DELETE r RETURN count(*) AS changed",
                 {batchSize: 1000, parallel: false, params: {current_type: $current_type, canonical_type: $canonical_type}}
             ) YIELD total
@@ -1681,7 +1246,7 @@ async def consolidate_similar_relationships() -> int:
             """
 
             try:
-                consolidate_results = await neo4j_manager.execute_write_query(
+                consolidate_results = await get_services().database.execute_write_query(
                     consolidate_query,
                     {"current_type": current_type, "canonical_type": canonical_type},
                 )
@@ -1701,30 +1266,38 @@ async def consolidate_similar_relationships() -> int:
         return 0
 
 
+_MAX_SHORTEST_PATH_DEPTH = 10
+
+
 async def get_shortest_path_length_between_entities(name1: str, name2: str, max_depth: int = 4) -> int | None:
     """Return the shortest path length between two entities if it exists.
 
     Args:
         name1: First entity name
         name2: Second entity name
-        max_depth: Maximum path depth to search
+        max_depth: Maximum path depth to search (capped at 10)
 
     Returns:
         Path length or None if no path exists
 
     Raises:
+        ValueError: If max_depth exceeds the safety cap.
         DatabaseError: On database errors
     """
     if max_depth <= 0:
         return None
 
+    if max_depth > _MAX_SHORTEST_PATH_DEPTH:
+        raise ValueError(f"max_depth={max_depth} exceeds safety cap of {_MAX_SHORTEST_PATH_DEPTH}")
+
+    safe_depth = int(max_depth)
     query = f"""
     MATCH (a {{name: $name1}}), (b {{name: $name2}})
-    MATCH p = shortestPath((a)-[*..{max_depth}]-(b))
+    MATCH p = shortestPath((a)-[*..{safe_depth}]-(b))
     RETURN length(p) AS len
     """
     try:
-        results = await neo4j_manager.execute_read_query(query, {"name1": name1, "name2": name2})
+        results = await get_services().database.execute_read_query(query, {"name1": name1, "name2": name2})
         if results:
             return results[0].get("len")
         return None

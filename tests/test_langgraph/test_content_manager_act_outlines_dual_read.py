@@ -9,14 +9,14 @@ import pytest
 from core.langgraph.content_manager import ContentManager, get_act_outlines
 
 
-def test_get_act_outlines_v1_int_keys(tmp_path: Path) -> None:
+def test_get_act_outlines_v1_int_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = ContentManager(str(tmp_path))
-    manager.load_json = Mock(
+    monkeypatch.setattr(manager, "load_json", Mock(
         return_value={
             2: {"act_number": 2, "act_role": "confrontation"},
             1: {"act_number": 1, "act_role": "setup"},
         }
-    )
+    ))
 
     state = {"act_outlines_ref": {"path": "ignored.json"}}
     act_outlines = get_act_outlines(state, manager)
@@ -26,14 +26,14 @@ def test_get_act_outlines_v1_int_keys(tmp_path: Path) -> None:
     assert act_outlines[2]["act_role"] == "confrontation"
 
 
-def test_get_act_outlines_v1_string_keys(tmp_path: Path) -> None:
+def test_get_act_outlines_v1_string_keys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = ContentManager(str(tmp_path))
-    manager.load_json = Mock(
+    monkeypatch.setattr(manager, "load_json", Mock(
         return_value={
             "2": {"act_number": 2, "act_role": "confrontation"},
             "1": {"act_number": 1, "act_role": "setup"},
         }
-    )
+    ))
 
     state = {"act_outlines_ref": {"path": "ignored.json"}}
     act_outlines = get_act_outlines(state, manager)
@@ -43,14 +43,14 @@ def test_get_act_outlines_v1_string_keys(tmp_path: Path) -> None:
     assert act_outlines[2]["act_role"] == "confrontation"
 
 
-def test_get_act_outlines_v2_list(tmp_path: Path) -> None:
+def test_get_act_outlines_v2_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = ContentManager(str(tmp_path))
-    manager.load_json = Mock(
+    monkeypatch.setattr(manager, "load_json", Mock(
         return_value=[
             {"act_number": 2, "act_role": "confrontation"},
             {"act_number": 1, "act_role": "setup"},
         ]
-    )
+    ))
 
     state = {"act_outlines_ref": {"path": "ignored.json"}}
     act_outlines = get_act_outlines(state, manager)
@@ -60,9 +60,9 @@ def test_get_act_outlines_v2_list(tmp_path: Path) -> None:
     assert act_outlines[2]["act_role"] == "confrontation"
 
 
-def test_get_act_outlines_v2_container(tmp_path: Path) -> None:
+def test_get_act_outlines_v2_container(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = ContentManager(str(tmp_path))
-    manager.load_json = Mock(
+    monkeypatch.setattr(manager, "load_json", Mock(
         return_value={
             "format_version": 2,
             "acts": [
@@ -70,7 +70,7 @@ def test_get_act_outlines_v2_container(tmp_path: Path) -> None:
                 {"act_number": 1, "act_role": "setup"},
             ],
         }
-    )
+    ))
 
     state = {"act_outlines_ref": {"path": "ignored.json"}}
     act_outlines = get_act_outlines(state, manager)
@@ -80,14 +80,14 @@ def test_get_act_outlines_v2_container(tmp_path: Path) -> None:
     assert act_outlines[2]["act_role"] == "confrontation"
 
 
-def test_get_act_outlines_rejects_duplicate_act_numbers_in_v2(tmp_path: Path) -> None:
+def test_get_act_outlines_rejects_duplicate_act_numbers_in_v2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     manager = ContentManager(str(tmp_path))
-    manager.load_json = Mock(
+    monkeypatch.setattr(manager, "load_json", Mock(
         return_value=[
             {"act_number": 1, "act_role": "setup"},
             {"act_number": 1, "act_role": "setup"},
         ]
-    )
+    ))
 
     state = {"act_outlines_ref": {"path": "ignored.json"}}
     with pytest.raises(ValueError, match="Duplicate act_number"):

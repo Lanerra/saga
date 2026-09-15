@@ -13,12 +13,14 @@ def clear_generation_artifacts() -> dict:
         Dictionary with generation fields cleared for merging into state.
     """
     return {
+        "chapter_plan_ref": None,
         "draft_ref": None,
         "embedding_ref": None,
         "scene_embeddings_ref": None,
         "generated_embedding": None,
         "scene_drafts_ref": None,
         "current_scene_index": 0,
+        "chapter_plan_scene_count": 0,
     }
 
 
@@ -32,6 +34,8 @@ def clear_validation_state() -> dict:
         "contradictions": [],
         "needs_revision": False,
         "revision_guidance_ref": None,
+        "quality_checks": {},
+        "graph_quality_check": {},
     }
 
 

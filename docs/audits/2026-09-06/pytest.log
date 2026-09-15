@@ -1,0 +1,1661 @@
+/tmp/saga-audit-20260906/venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:208: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+........................................................................ [  4%]
+...........FFFFFFFFFFFFFFFFF..........F.........................+++++++++++++++++++++++++++++++++++ Timeout ++++++++++++++++++++++++++++++++++++
+~~~~~~~~~~~~~~~~~~~~~ Stack of asyncio_0 (132256495437504) ~~~~~~~~~~~~~~~~~~~~~
+  File "/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/threading.py", line 1032, in _bootstrap
+    self._bootstrap_inner()
+  File "/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 90, in _worker
+    work_item = work_queue.get(block=True)
++++++++++++++++++++++++++++++++++++ Timeout ++++++++++++++++++++++++++++++++++++
+FF...................................................................... [ 12%]
+........................................................................ [ 16%]
+....................F....................................F......F....... [ 20%]
+........................................................................ [ 25%]
+........................................................................ [ 29%]
+...........................................F............................ [ 33%]
+........................................................................ [ 38%]
+........................................................................ [ 42%]
+........................................................................ [ 46%]
+..F.FF.........................FFFFFFF...................F.........F.... [ 50%]
+...........F............................................................ [ 55%]
+....................F................................................... [ 59%]
+........................................................................ [ 63%]
+.........................F.............................................. [ 68%]
+........................................................................ [ 72%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 85%]
+........................................................................ [ 89%]
+..................................FF......F............................. [ 93%]
+.............F.......................................................... [ 97%]
+..................................                                       [100%]
+=================================== FAILURES ===================================
+___ TestCommitNodeEntityPersistence.test_commit_to_graph_creates_entity_ids ____
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:48: in test_commit_to_graph_creates_entity_ids
+    await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 2, 'world_items': 1, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:36'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+_ TestCommitNodeEntityPersistence.test_commit_to_graph_handles_empty_extractions _
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:88: in test_commit_to_graph_handles_empty_extractions
+    await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:36'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+__ TestCommitNodeEntityPersistence.test_commit_to_graph_deduplicates_entities __
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:120: in test_commit_to_graph_deduplicates_entities
+    await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:36'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+_ TestCommitNodeRelationshipPersistence.test_commit_to_graph_creates_relationships _
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:180: in test_commit_to_graph_creates_relationships
+    await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:36'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+_ TestCommitNodeRelationshipPersistence.test_commit_to_graph_handles_missing_relationships _
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:220: in test_commit_to_graph_handles_missing_relationships
+    await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:36'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+__ TestCommitNodeChapterPersistence.test_commit_to_graph_creates_chapter_node __
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:263: in test_commit_to_graph_creates_chapter_node
+    await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:36'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+_ TestCommitNodeChapterPersistence.test_commit_to_graph_links_chapter_to_entities _
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:302: in test_commit_to_graph_links_chapter_to_entities
+    await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:36'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+___ TestCommitNodeErrorHandling.test_commit_to_graph_handles_database_errors ___
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:337: in test_commit_to_graph_handles_database_errors
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:36'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:36'}
+___ TestCommitNodeErrorHandling.test_commit_to_graph_handles_missing_content ___
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:352: in test_commit_to_graph_handles_missing_content
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+_______ TestCommitNodeStateManagement.test_commit_to_graph_updates_state _______
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:386: in test_commit_to_graph_updates_state
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+_ TestCommitNodeStateManagement.test_commit_to_graph_preserves_existing_state __
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node.py:426: in test_commit_to_graph_preserves_existing_state
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+_______ TestCommitNodeIntegration.test_commit_to_graph_with_valid_state ________
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node_simple.py:37: in test_commit_to_graph_with_valid_state
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+____ TestCommitNodeIntegration.test_commit_to_graph_with_empty_extractions _____
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node_simple.py:68: in test_commit_to_graph_with_empty_extractions
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+______ TestCommitNodeIntegration.test_commit_to_graph_with_relationships _______
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node_simple.py:113: in test_commit_to_graph_with_relationships
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+____ TestCommitNodeIntegration.test_commit_to_graph_handles_database_error _____
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node_simple.py:144: in test_commit_to_graph_handles_database_error
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+____ TestCommitNodeIntegration.test_commit_to_graph_handles_missing_content ____
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node_simple.py:159: in test_commit_to_graph_handles_missing_content
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+________ TestCommitNodeIntegration.test_commit_to_graph_preserves_state ________
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/core/langgraph/nodes/test_commit_node_simple.py:196: in test_commit_to_graph_preserves_state
+    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 0, 'world_items': 0, 'relationships': 0, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:23:37'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:37'}
+___ TestSmartTruncateScene.test_truncation_preserves_head_and_tail_sections ____
+tests/core/langgraph/nodes/test_context_retrieval_node.py:102: in test_truncation_preserves_head_and_tail_sections
+    assert len(head_words) == 5
+E   AssertionError: assert 8 == 5
+E    +  where 8 = len(['w0', 'w1', 'w2', 'w3', 'w4', 'w5', ...])
+------------------------------ Captured log call -------------------------------
+ERROR    core.text_processing_service:text_processing_service.py:77 {'exc_info': True, 'event': "Unexpected error getting tokenizer for 'test-model': AUDIT_OFFLINE_BLOCK: socket.getaddrinfo", 'level': 'error', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:23:37'}
+WARNING  core.text_processing_service:text_processing_service.py:108 {'event': "count_tokens: Failed to get tokenizer for 'test-model'. Falling back to character-based estimate: 4889 chars -> ~1222 tokens.", 'level': 'warning', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:23:37'}
+________________________ test_generation_subgraph_flow _________________________
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:508: in runtest
+    super().runtest()
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:773: in inner
+    _loop.run_until_complete(task)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:678: in run_until_complete
+    self.run_forever()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:645: in run_forever
+    self._run_once()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:1961: in _run_once
+    event_list = self._selector.select(timeout)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/selectors.py:468: in select
+    fd_event_list = self._selector.poll(timeout, max_ev)
+E   Failed: Timeout (>8.0s) from pytest-timeout.
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.scene_planning_node:scene_planning_node.py:225 {'chapter': 1, 'event': 'plan_scenes: planning scenes for chapter', 'level': 'info', 'logger': 'core.langgraph.nodes.scene_planning_node', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.langgraph.nodes.scene_planning_node:scene_planning_node.py:303 {'count': 2, 'event': 'plan_scenes: successfully planned scenes', 'level': 'info', 'logger': 'core.langgraph.nodes.scene_planning_node', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    core.langgraph.nodes.scene_planning_node:scene_planning_node.py:164 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'event': '_ensure_scene_characters_exist: failed to fetch existing characters', 'level': 'error', 'logger': 'core.langgraph.nodes.scene_planning_node', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.langgraph.nodes.scene_planning_node:scene_planning_node.py:318 {'chapter': 1, 'version': 2, 'plan_size': 472, 'event': 'plan_scenes: chapter plan externalized', 'level': 'info', 'logger': 'core.langgraph.nodes.scene_planning_node', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.langgraph.nodes.context_retrieval_node:context_retrieval_node.py:72 {'event': 'retrieve_context: fetching scene-specific context', 'level': 'info', 'logger': 'core.langgraph.nodes.context_retrieval_node', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     prompts.prompt_data_getters:prompt_data_getters.py:393 {'event': 'Fetching and formatting filtered character profiles as PLAIN TEXT up to chapter 0.', 'level': 'info', 'logger': 'prompts.prompt_data_getters', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     data_access.character_queries:character_queries.py:119 {'event': "Loading character profile 'Hero' from Neo4j...", 'level': 'info', 'logger': 'data_access.character_queries', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    prompts.prompt_data_getters:prompt_data_getters.py:351 {'event': "Error fetching character 'Hero' from Neo4j: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'level': 'error', 'logger': 'prompts.prompt_data_getters', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    core.text_processing_service:text_processing_service.py:77 {'exc_info': True, 'event': "Unexpected error getting tokenizer for 'qwen3-a3b': AUDIT_OFFLINE_BLOCK: socket.getaddrinfo", 'level': 'error', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:23:38'}
+WARNING  core.text_processing_service:text_processing_service.py:142 {'event': "truncate_text_by_tokens: Failed to get tokenizer for 'qwen3-a3b'. Falling back to character-based truncation: 16384 tokens -> ~65536 chars.", 'level': 'warning', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    data_access.scene_queries:scene_queries.py:73 {'chapter': 1, 'scene_index': 0, 'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'exc_info': True, 'event': 'get_scene_events: error fetching scene events', 'level': 'error', 'logger': 'data_access.scene_queries', 'timestamp': '09/07/2026, 05:23:38'}
+WARNING  core.langgraph.nodes.context_plot_retrieval:context_plot_retrieval.py:59 {'chapter': 1, 'scene_index': 0, 'error': "Failed to fetch scene events: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'event': 'context_plot: non-fatal error getting scene events, continuing without them', 'level': 'warning', 'logger': 'core.langgraph.nodes.context_plot_retrieval', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    data_access.scene_queries:scene_queries.py:221 {'characters': ['Hero'], 'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'exc_info': True, 'event': 'get_character_relationships_for_scene: error fetching relationships', 'level': 'error', 'logger': 'data_access.scene_queries', 'timestamp': '09/07/2026, 05:23:38'}
+WARNING  core.langgraph.nodes.context_plot_retrieval:context_plot_retrieval.py:108 {'characters': ['Hero'], 'error': "Failed to fetch character relationships: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'event': 'context_plot: non-fatal error getting character relationships, continuing without them', 'level': 'warning', 'logger': 'core.langgraph.nodes.context_plot_retrieval', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    data_access.scene_queries:scene_queries.py:283 {'characters': ['Hero'], 'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'exc_info': True, 'event': 'get_character_items: error fetching items', 'level': 'error', 'logger': 'data_access.scene_queries', 'timestamp': '09/07/2026, 05:23:38'}
+WARNING  core.langgraph.nodes.context_plot_retrieval:context_plot_retrieval.py:162 {'characters': ['Hero'], 'error': "Failed to fetch character items: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'event': 'context_plot: non-fatal error getting character items, continuing without them', 'level': 'warning', 'logger': 'core.langgraph.nodes.context_plot_retrieval', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    data_access.scene_queries:scene_queries.py:337 {'chapter': 1, 'scene_index': 0, 'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'exc_info': True, 'event': 'get_scene_items: error fetching scene items', 'level': 'error', 'logger': 'data_access.scene_queries', 'timestamp': '09/07/2026, 05:23:38'}
+WARNING  core.langgraph.nodes.context_scene_retrieval:context_scene_retrieval.py:63 {'chapter': 1, 'scene_index': 0, 'error': "Failed to fetch scene items: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'event': 'context_scene: non-fatal error getting scene items, continuing without them', 'level': 'warning', 'logger': 'core.langgraph.nodes.context_scene_retrieval', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    data_access.kg_queries:kg_queries.py:621 {'exc_info': True, 'event': "Neo4j: Error querying KG. Query: 'MATCH (s)-[r]->(o)  WHERE s.name = $subject_param AND coalesce(r.chapter_added, -1) <= $chapter_limit_param AND coalesce(r.is_provisional, FALSE) = FALSE\n    RETURN s.name AS subject,\n           type(...', Params: {'subject_param': 'Room', 'chapter_limit_param': 0}, Error: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'level': 'error', 'logger': 'data_access.kg_queries', 'timestamp': '09/07/2026, 05:23:38'}
+WARNING  core.langgraph.nodes.context_scene_retrieval:context_scene_retrieval.py:310 {'location': 'Room', 'error': 'Database connection failed during query_kg_from_db (Details: {\'operation\': \'query_kg_from_db\', \'original_error\': "Database error during connection (Details: {\'operation\': \'connection\', \'original_error\': \'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo\', \'error_type\': \'RuntimeError\', \'uri\': \'bolt://localhost:7687\'})", \'error_type\': \'DatabaseError\', \'query_preview\': \'MATCH (s)-[r]->(o)  WHERE s.name = $subject_param AND coalesce(r.chapter_added, -1) <= $chapter_limit_param AND coalesce(r.is_provisional, FALSE) = FALSE\\n    RETURN s.name AS subject,\\n           type(\', \'params\': {\'subject_param\': \'Room\', \'chapter_limit_param\': 0}})', 'event': 'context_scene: non-fatal error getting location context, continuing without it', 'level': 'warning', 'logger': 'core.langgraph.nodes.context_scene_retrieval', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    core.text_processing_service:text_processing_service.py:77 {'exc_info': True, 'event': "Unexpected error getting tokenizer for 'nomic-embed-text:latest': AUDIT_OFFLINE_BLOCK: socket.getaddrinfo", 'level': 'error', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:23:38'}
+WARNING  core.text_processing_service:text_processing_service.py:142 {'event': "truncate_text_by_tokens: Failed to get tokenizer for 'nomic-embed-text:latest'. Falling back to character-based truncation: 8192 tokens -> ~32768 chars.", 'level': 'warning', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 1): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:23:38'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 3.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:23:38'}
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 2): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:23:41'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 6.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:23:41'}
+---------------------------- Captured log teardown -----------------------------
+ERROR    asyncio:base_events.py:1833 an error occurred during closing of asynchronous generator <async_generator object Pregel.astream at 0x36c97c80>
+asyncgen: <async_generator object Pregel.astream at 0x36c97c80>
+RuntimeError: aclose(): asynchronous generator is already running
+ERROR    asyncio:base_events.py:1833 an error occurred during closing of asynchronous generator <async_generator object PregelRunner.atick at 0x784955bc9600>
+asyncgen: <async_generator object PregelRunner.atick at 0x784955bc9600>
+RuntimeError: aclose(): asynchronous generator is already running
+_____________ TestGenerationSubgraph.test_generation_subgraph_flow _____________
+tests/core/langgraph/subgraphs/test_generation_subgraph_unittest.py:18: in test_generation_subgraph_flow
+    patch(
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/unittest/mock.py:1467: in __enter__
+    original, local = self.get_original()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/unittest/mock.py:1437: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'core.langgraph.nodes.context_retrieval_node' from '/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_retrieval_node.py'> does not have the attribute 'get_reliable_kg_facts_for_drafting_prompt'
+______________________ test_normalize_punctuation_variant ______________________
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:508: in runtest
+    super().runtest()
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:773: in inner
+    _loop.run_until_complete(task)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:678: in run_until_complete
+    self.run_forever()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:645: in run_forever
+    self._run_once()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:1961: in _run_once
+    event_list = self._selector.select(timeout)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/selectors.py:468: in select
+    fd_event_list = self._selector.poll(timeout, max_ev)
+E   Failed: Timeout (>8.0s) from pytest-timeout.
+------------------------------ Captured log call -------------------------------
+ERROR    core.text_processing_service:text_processing_service.py:77 {'exc_info': True, 'event': "Unexpected error getting tokenizer for 'nomic-embed-text:latest': AUDIT_OFFLINE_BLOCK: socket.getaddrinfo", 'level': 'error', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:23:46'}
+WARNING  core.text_processing_service:text_processing_service.py:142 {'event': "truncate_text_by_tokens: Failed to get tokenizer for 'nomic-embed-text:latest'. Falling back to character-based truncation: 8192 tokens -> ~32768 chars.", 'level': 'warning', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:23:46'}
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 1): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:23:46'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 3.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:23:46'}
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 2): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:23:49'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 6.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:23:49'}
+______________________ test_parse_and_persist_integration ______________________
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:508: in runtest
+    super().runtest()
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:773: in inner
+    _loop.run_until_complete(task)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:678: in run_until_complete
+    self.run_forever()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:645: in run_forever
+    self._run_once()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:1961: in _run_once
+    event_list = self._selector.select(timeout)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/selectors.py:468: in select
+    fd_event_list = self._selector.poll(timeout, max_ev)
+E   Failed: Timeout (>8.0s) from pytest-timeout.
+------------------------------ Captured log call -------------------------------
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:981 {'event': 'Parsing act outline from /tmp/tmpgxpqacn0.json', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:987 {'extra': {'chapter': 0}, 'event': 'Parsed act outline data', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:990 {'event': 'Parsing act key events from act outline', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:996 {'extra': {'chapter': 0}, 'event': 'Parsed 5 act key events', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:999 {'event': 'Parsing location name enrichment from act outline', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:1005 {'extra': {'chapter': 0}, 'event': 'Parsed 3 location names', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:1008 {'event': 'Creating ActKeyEvent event nodes in Neo4j', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:1015 {'event': 'Enriching Location nodes with names', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:1022 {'event': 'Extracting new world items from act outline text', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:23:54'}
+---------------------------- Captured log teardown -----------------------------
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 1): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 3.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:02'}
+________________ test_parse_and_persist_with_new_relationships _________________
+tests/test_act_outline_parser.py:385: in test_parse_and_persist_with_new_relationships
+    assert success is True
+E   assert False is True
+------------------------------ Captured log call -------------------------------
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:981 {'event': 'Parsing act outline from /tmp/tmp9d_q2_0u.json', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:987 {'extra': {'chapter': 0}, 'event': 'Parsed act outline data', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:990 {'event': 'Parsing act key events from act outline', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:996 {'extra': {'chapter': 0}, 'event': 'Parsed 5 act key events', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:999 {'event': 'Parsing location name enrichment from act outline', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:1005 {'extra': {'chapter': 0}, 'event': 'Parsed 3 location names', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:1008 {'event': 'Creating ActKeyEvent event nodes in Neo4j', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:1015 {'event': 'Enriching Location nodes with names', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.act_outline_parser:act_outline_parser.py:1022 {'event': 'Extracting new world items from act outline text', 'level': 'info', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+ERROR    core.llm_interface_refactored:llm_interface_refactored.py:409 {'model': 'qwen3-a3b', 'prompt_sha1': 'd62cf199b432', 'prompt_len': 2428, 'error': '<asyncio.locks.Semaphore object at 0x78495fdf9850 [locked]> is bound to a different event loop', 'exc_info': True, 'event': 'get_completion: primary model failed', 'level': 'error', 'logger': 'core.llm_interface_refactored', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.llm_interface_refactored:llm_interface_refactored.py:422 {'fallback_model': 'qwen3-a3b', 'primary_model': 'qwen3-a3b', 'prompt_sha1': 'd62cf199b432', 'event': 'get_completion: attempting fallback model', 'level': 'info', 'logger': 'core.llm_interface_refactored', 'timestamp': '09/07/2026, 05:24:02'}
+ERROR    core.llm_interface_refactored:llm_interface_refactored.py:466 {'primary_model': 'qwen3-a3b', 'fallback_model': 'qwen3-a3b', 'prompt_sha1': 'd62cf199b432', 'prompt_len': 2428, 'error': '<asyncio.locks.Semaphore object at 0x78495fdf9850 [locked]> is bound to a different event loop', 'exc_info': True, 'event': 'get_completion: fallback model failed', 'level': 'error', 'logger': 'core.llm_interface_refactored', 'timestamp': '09/07/2026, 05:24:02'}
+ERROR    core.parsers.act_outline_parser:act_outline_parser.py:1077 {'exc_info': True, 'event': "Error in parse_and_persist: LLM completion failed (Details: {'primary_model': 'qwen3-a3b', 'fallback_model': 'qwen3-a3b', 'allow_fallback': True, 'prompt_sha1': 'd62cf199b432', 'prompt_len': 2428, 'primary_error': '<asyncio.locks.Semaphore object at 0x78495fdf9850 [locked]> is bound to a different event loop', 'primary_error_type': 'RuntimeError', 'fallback_error': '<asyncio.locks.Semaphore object at 0x78495fdf9850 [locked]> is bound to a different event loop', 'fallback_error_type': 'RuntimeError'})", 'level': 'error', 'logger': 'core.parsers.act_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+____________ TestFullPipelineIntegration.test_stage2_global_outline ____________
+tests/test_full_pipeline_integration.py:215: in test_stage2_global_outline
+    assert success is True
+E   assert False is True
+------------------------------ Captured log call -------------------------------
+INFO     core.parsers.global_outline_parser:global_outline_parser.py:679 {'event': 'Parsing global outline from /tmp/tmpbu4zmcs1.json', 'level': 'info', 'logger': 'core.parsers.global_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.global_outline_parser:global_outline_parser.py:685 {'extra': {'chapter': 0}, 'event': 'Parsed global outline data', 'level': 'info', 'logger': 'core.parsers.global_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.global_outline_parser:global_outline_parser.py:688 {'event': 'Parsing major plot points from global outline', 'level': 'info', 'logger': 'core.parsers.global_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.global_outline_parser:global_outline_parser.py:694 {'extra': {'chapter': 0}, 'event': 'Parsed 4 major plot points', 'level': 'info', 'logger': 'core.parsers.global_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.parsers.global_outline_parser:global_outline_parser.py:697 {'event': 'Parsing locations from global outline', 'level': 'info', 'logger': 'core.parsers.global_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+ERROR    core.llm_interface_refactored:llm_interface_refactored.py:409 {'model': 'qwen3-a3b', 'prompt_sha1': 'e658eaf96bf0', 'prompt_len': 3093, 'error': '<asyncio.locks.Semaphore object at 0x78495fdf9850 [locked]> is bound to a different event loop', 'exc_info': True, 'event': 'get_completion: primary model failed', 'level': 'error', 'logger': 'core.llm_interface_refactored', 'timestamp': '09/07/2026, 05:24:02'}
+INFO     core.llm_interface_refactored:llm_interface_refactored.py:422 {'fallback_model': 'qwen3-a3b', 'primary_model': 'qwen3-a3b', 'prompt_sha1': 'e658eaf96bf0', 'event': 'get_completion: attempting fallback model', 'level': 'info', 'logger': 'core.llm_interface_refactored', 'timestamp': '09/07/2026, 05:24:02'}
+ERROR    core.llm_interface_refactored:llm_interface_refactored.py:466 {'primary_model': 'qwen3-a3b', 'fallback_model': 'qwen3-a3b', 'prompt_sha1': 'e658eaf96bf0', 'prompt_len': 3093, 'error': '<asyncio.locks.Semaphore object at 0x78495fdf9850 [locked]> is bound to a different event loop', 'exc_info': True, 'event': 'get_completion: fallback model failed', 'level': 'error', 'logger': 'core.llm_interface_refactored', 'timestamp': '09/07/2026, 05:24:02'}
+ERROR    core.parsers.global_outline_parser:global_outline_parser.py:785 {'exc_info': True, 'event': "Error in parse_and_persist: LLM completion failed (Details: {'primary_model': 'qwen3-a3b', 'fallback_model': 'qwen3-a3b', 'allow_fallback': True, 'prompt_sha1': 'e658eaf96bf0', 'prompt_len': 3093, 'primary_error': '<asyncio.locks.Semaphore object at 0x78495fdf9850 [locked]> is bound to a different event loop', 'primary_error_type': 'RuntimeError', 'fallback_error': '<asyncio.locks.Semaphore object at 0x78495fdf9850 [locked]> is bound to a different event loop', 'fallback_error_type': 'RuntimeError'})", 'level': 'error', 'logger': 'core.parsers.global_outline_parser', 'timestamp': '09/07/2026, 05:24:02'}
+_________________ test_commit_initialization_to_graph_success __________________
+tests/test_langgraph/test_commit_init_node.py:136: in test_commit_initialization_to_graph_success
+    assert result["initialization_step"] == "committed_to_graph"
+E   AssertionError: assert 'commit_failed' == 'committed_to_graph'
+E     
+E     - committed_to_graph
+E     + commit_failed
+------------------------------ Captured log call -------------------------------
+WARNING  core.langgraph.initialization.commit_init_node:commit_init_node.py:83 {'event': 'commit_initialization_to_graph: no outline_relationships_ref in state', 'level': 'warning', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:03'}
+INFO     core.langgraph.initialization.commit_init_node:commit_init_node.py:85 {'characters': 2, 'has_global_outline': True, 'outline_relationships': 0, 'event': 'commit_initialization_to_graph: starting initialization data commit', 'level': 'info', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:03'}
+INFO     core.langgraph.initialization.commit_init_node:commit_init_node.py:534 {'count': 1, 'event': '_parse_world_items_extraction: extracted world items', 'level': 'info', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:03'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:03'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:03'}
+ERROR    core.langgraph.initialization.commit_init_node:commit_init_node.py:160 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'exc_info': True, 'event': 'commit_initialization_to_graph: fatal error during commit', 'level': 'error', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:03'}
+___________________ test_commit_initialization_no_characters ___________________
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:508: in runtest
+    super().runtest()
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:773: in inner
+    _loop.run_until_complete(task)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:678: in run_until_complete
+    self.run_forever()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:645: in run_forever
+    self._run_once()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:1961: in _run_once
+    event_list = self._selector.select(timeout)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/selectors.py:468: in select
+    fd_event_list = self._selector.poll(timeout, max_ev)
+E   Failed: Timeout (>8.0s) from pytest-timeout.
+------------------------------ Captured log call -------------------------------
+WARNING  core.langgraph.initialization.commit_init_node:commit_init_node.py:83 {'event': 'commit_initialization_to_graph: no outline_relationships_ref in state', 'level': 'warning', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:03'}
+INFO     core.langgraph.initialization.commit_init_node:commit_init_node.py:85 {'characters': 0, 'has_global_outline': True, 'outline_relationships': 0, 'event': 'commit_initialization_to_graph: starting initialization data commit', 'level': 'info', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:03'}
+WARNING  core.langgraph.initialization.commit_init_node:commit_init_node.py:93 {'event': 'commit_initialization_to_graph: no character sheets to commit', 'level': 'warning', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:03'}
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 1): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:03'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 3.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:03'}
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 2): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:06'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 6.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:06'}
+_________________ test_commit_initialization_no_global_outline _________________
+tests/test_langgraph/test_commit_init_node.py:203: in test_commit_initialization_no_global_outline
+    assert result["initialization_step"] == "committed_to_graph"
+E   AssertionError: assert 'commit_failed' == 'committed_to_graph'
+E     
+E     - committed_to_graph
+E     + commit_failed
+------------------------------ Captured log call -------------------------------
+WARNING  core.langgraph.initialization.commit_init_node:commit_init_node.py:83 {'event': 'commit_initialization_to_graph: no outline_relationships_ref in state', 'level': 'warning', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.initialization.commit_init_node:commit_init_node.py:85 {'characters': 2, 'has_global_outline': False, 'outline_relationships': 0, 'event': 'commit_initialization_to_graph: starting initialization data commit', 'level': 'info', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+ERROR    core.langgraph.initialization.commit_init_node:commit_init_node.py:160 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'exc_info': True, 'event': 'commit_initialization_to_graph: fatal error during commit', 'level': 'error', 'logger': 'core.langgraph.initialization.commit_init_node', 'timestamp': '09/07/2026, 05:24:11'}
+________ TestCommitToGraph.test_commit_with_entities_and_relationships _________
+tests/test_langgraph/test_commit_node.py:78: in test_commit_with_entities_and_relationships
+    assert result["last_error"] is None
+E   assert "Commit to graph failed: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})" is None
+------------------------------ Captured log setup ------------------------------
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:106 {'original': 'object', 'normalized': 'Item', 'event': 'Normalizing entity type', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 2, 'world_items': 1, 'relationships': 1, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+ERROR    core.langgraph.nodes.commit_node:commit_node.py:568 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'chapter': 1, 'exc_info': True, 'event': 'commit_to_graph: fatal error during commit', 'level': 'error', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:253 {'chapter': 1, 'event': '_rollback_commit: successfully rolled back chapter', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:580 {'chapter': 1, 'event': 'commit_to_graph: rollback successful after commit failure', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+_ TestCommitToGraph.test_extraction_normalization_commit_reads_normalized_ref __
+tests/test_langgraph/test_commit_node.py:229: in test_extraction_normalization_commit_reads_normalized_ref
+    assert result["last_error"] is None
+E   assert "Commit to graph failed: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})" is None
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.extraction_nodes:extraction_nodes.py:49 {'chapter': 1, 'entities_size': 347, 'relationships_size': 190, 'event': 'consolidate_extraction: using pre-externalized content', 'level': 'info', 'logger': 'core.langgraph.nodes.extraction_nodes', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.extraction_nodes:extraction_nodes.py:76 {'chapter': 1, 'version': 1, 'entities_size': 347, 'relationships_size': 190, 'event': 'consolidate_extraction: content externalized', 'level': 'info', 'logger': 'core.langgraph.nodes.extraction_nodes', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.relationship_normalization_node:relationship_normalization_node.py:71 {'chapter': 1, 'relationships': 1, 'vocabulary_size': 1, 'event': 'normalize_relationships: starting', 'level': 'info', 'logger': 'core.langgraph.nodes.relationship_normalization_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.relationship_normalization_node:relationship_normalization_node.py:178 {'chapter': 1, 'total_relationships': 1, 'normalized': 1, 'novel': 0, 'rejected': 0, 'property_relationships': 0, 'rejection_rate': '0.00%', 'vocabulary_size': 1, 'top_relationships': [('WORKS_WITH', 2)], 'event': 'normalize_relationships: complete', 'level': 'info', 'logger': 'core.langgraph.nodes.relationship_normalization_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 2, 'world_items': 0, 'relationships': 1, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+ERROR    core.langgraph.nodes.commit_node:commit_node.py:568 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'chapter': 1, 'exc_info': True, 'event': 'commit_to_graph: fatal error during commit', 'level': 'error', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:253 {'chapter': 1, 'event': '_rollback_commit: successfully rolled back chapter', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:580 {'chapter': 1, 'event': 'commit_to_graph: rollback successful after commit failure', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+___________ TestCommitToGraph.test_commit_handles_errors_gracefully ____________
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/test_langgraph/test_commit_node.py:255: in test_commit_handles_errors_gracefully
+    result = await commit_to_graph(state)
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log setup ------------------------------
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:106 {'original': 'object', 'normalized': 'Item', 'event': 'Normalizing entity type', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 2, 'world_items': 1, 'relationships': 1, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+____________ TestCommitToGraph.test_commit_with_embedding_from_ref _____________
+tests/test_langgraph/test_commit_node.py:286: in test_commit_with_embedding_from_ref
+    assert result["last_error"] is None
+E   assert "Commit to graph failed: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})" is None
+------------------------------ Captured log setup ------------------------------
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:106 {'original': 'object', 'normalized': 'Item', 'event': 'Normalizing entity type', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 2, 'world_items': 1, 'relationships': 1, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+ERROR    core.langgraph.nodes.commit_node:commit_node.py:568 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'chapter': 1, 'exc_info': True, 'event': 'commit_to_graph: fatal error during commit', 'level': 'error', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:253 {'chapter': 1, 'event': '_rollback_commit: successfully rolled back chapter', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:580 {'chapter': 1, 'event': 'commit_to_graph: rollback successful after commit failure', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+__________ TestCommitToGraph.test_commit_with_embedding_load_failure ___________
+tests/test_langgraph/test_commit_node.py:314: in test_commit_with_embedding_load_failure
+    assert result["last_error"] is None
+E   assert "Commit to graph failed: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})" is None
+------------------------------ Captured log setup ------------------------------
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:106 {'original': 'object', 'normalized': 'Item', 'event': 'Normalizing entity type', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 2, 'world_items': 1, 'relationships': 1, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+ERROR    core.langgraph.nodes.commit_node:commit_node.py:568 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'chapter': 1, 'exc_info': True, 'event': 'commit_to_graph: fatal error during commit', 'level': 'error', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:253 {'chapter': 1, 'event': '_rollback_commit: successfully rolled back chapter', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:580 {'chapter': 1, 'event': 'commit_to_graph: rollback successful after commit failure', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+____________ TestCommitToGraph.test_commit_with_fallback_embedding _____________
+tests/test_langgraph/test_commit_node.py:332: in test_commit_with_fallback_embedding
+    assert result["last_error"] is None
+E   assert "Commit to graph failed: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})" is None
+------------------------------ Captured log setup ------------------------------
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:106 {'original': 'object', 'normalized': 'Item', 'event': 'Normalizing entity type', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 2, 'world_items': 1, 'relationships': 1, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+ERROR    core.langgraph.nodes.commit_node:commit_node.py:568 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'chapter': 1, 'exc_info': True, 'event': 'commit_to_graph: fatal error during commit', 'level': 'error', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:253 {'chapter': 1, 'event': '_rollback_commit: successfully rolled back chapter', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:580 {'chapter': 1, 'event': 'commit_to_graph: rollback successful after commit failure', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+______ TestCommitToGraph.test_commit_with_duplicate_world_items_in_batch _______
+tests/test_langgraph/test_commit_node.py:365: in test_commit_with_duplicate_world_items_in_batch
+    with patch(
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/unittest/mock.py:1467: in __enter__
+    original, local = self.get_original()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/unittest/mock.py:1437: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'core.langgraph.nodes.commit_node' from '/tmp/saga-audit-20260906/source/core/langgraph/nodes/commit_node.py'> does not have the attribute 'generate_entity_id'
+------------------------------ Captured log setup ------------------------------
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:94 {'original': 'character', 'normalized': 'Character', 'event': 'Normalizing entity type (case)', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.schema_validator:schema_validator.py:106 {'original': 'object', 'normalized': 'Item', 'event': 'Normalizing entity type', 'level': 'info', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+_ TestBuildRelationshipStatements.test_commit_rejects_unknown_entity_label_at_persistence_boundary _
+tests/test_langgraph/test_commit_node.py:987: in test_commit_rejects_unknown_entity_label_at_persistence_boundary
+    assert "Invalid entity type" in result["last_error"]
+E   assert 'Invalid entity type' in "Commit to graph failed: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})"
+------------------------------ Captured log call -------------------------------
+WARNING  core.schema_validator:schema_validator.py:117 {'error': "Invalid entity type 'MadeUpLabel'. Must be one of: Chapter, Character, Event, Item, Location, Scene", 'type_name': 'MadeUpLabel', 'event': 'Schema violation', 'level': 'warning', 'logger': 'core.schema_validator', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 1, 'characters': 2, 'world_items': 0, 'relationships': 1, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+WARNING  core.langgraph.nodes.commit_node:commit_node.py:191 {'relationship': 'Alice(MadeUpLabel) -KNOWS-> Bob(Character)', 'warnings': ["Unknown entity type 'MadeUpLabel'. Node labels are canonical at persistence boundaries; use a canonical label (e.g., Character/Location/Event/Item/Trait/Chapter) or ensure it maps to one."], 'chapter': 1, 'event': 'pre_commit_validation: relationship validation warnings', 'level': 'warning', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+ERROR    core.langgraph.nodes.commit_node:commit_node.py:568 {'error': "Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})", 'chapter': 1, 'exc_info': True, 'event': 'commit_to_graph: fatal error during commit', 'level': 'error', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:253 {'chapter': 1, 'event': '_rollback_commit: successfully rolled back chapter', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.langgraph.nodes.commit_node:commit_node.py:580 {'chapter': 1, 'event': 'commit_to_graph: rollback successful after commit failure', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+___ TestCommitNodeIdempotency.test_commit_to_graph_idempotency_call_sequence ___
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/test_langgraph/test_commit_node_idempotency.py:74: in test_commit_to_graph_idempotency_call_sequence
+    await commit_to_graph(state)
+core/langgraph/nodes/commit_node.py:373: in commit_to_graph
+    existing_names = await _get_existing_entity_names()
+core/langgraph/nodes/commit_node.py:283: in _get_existing_entity_names
+    results = await neo4j_manager.execute_read_query(query, {})
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.langgraph.nodes.commit_node:commit_node.py:331 {'chapter': 2, 'characters': 0, 'world_items': 0, 'relationships': 1, 'event': 'commit_to_graph', 'level': 'info', 'logger': 'core.langgraph.nodes.commit_node', 'timestamp': '09/07/2026, 05:24:11'}
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:11'}
+________ test_retrieve_context_writes_new_versions_without_overwriting _________
+tests/test_langgraph/test_content_ref_integrity_and_versioning.py:78: in test_retrieve_context_writes_new_versions_without_overwriting
+    patch(
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/unittest/mock.py:1467: in __enter__
+    original, local = self.get_original()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/unittest/mock.py:1437: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'core.langgraph.nodes.context_retrieval_node' from '/tmp/saga-audit-20260906/source/core/langgraph/nodes/context_retrieval_node.py'> does not have the attribute '_get_scene_character_context'
+_______________ TestNarrativeEnrichmentNode.test_process_success _______________
+core/db_manager.py:87: in connect
+    await asyncio.to_thread(sync_driver.verify_connectivity)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1090: in verify_connectivity
+    self._get_server_info(session_config)
+../venv/lib/python3.12/site-packages/neo4j/_sync/driver.py:1305: in _get_server_info
+    return session._get_server_info()
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:183: in _get_server_info
+    self._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/session.py:136: in _connect
+    super()._connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/work/workspace.py:199: in _connect
+    self._connection = self._pool.acquire(**acquire_kwargs_)
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:676: in acquire
+    return self._acquire(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:417: in _acquire
+    return connection_creator()
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:230: in connection_creator
+    connection = self.opener(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_pool.py:637: in opener
+    return Bolt.open(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py:368: in open
+    s, protocol_version, handshake, data = BoltSocket.connect(
+../venv/lib/python3.12/site-packages/neo4j/_sync/io/_bolt_socket.py:319: in connect
+    for resolved_address in resolved_addresses:
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:196: in resolve_address
+    for address_dns_resolved in NetworkUtil._dns_resolver(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:144: in _dns_resolver
+    info = NetworkUtil.get_address_info(
+../venv/lib/python3.12/site-packages/neo4j/_async_compat/network/_util.py:130: in get_address_info
+    return socket.getaddrinfo(host, port, family, type, proto, flags)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/socket.py:978: in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+/home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/offline_runner.py:20: in deny_external
+    raise RuntimeError(f'AUDIT_OFFLINE_BLOCK: {event}')
+E   RuntimeError: AUDIT_OFFLINE_BLOCK: socket.getaddrinfo
+
+The above exception was the direct cause of the following exception:
+tests/test_langgraph/test_narrative_enrichment_node.py:102: in test_process_success
+    result = await node.process(sample_narrative_text, 1)
+core/langgraph/nodes/narrative_enrichment_node.py:88: in process
+    physical_descriptions = await parser.extract_physical_descriptions()
+core/parsers/narrative_enrichment_parser.py:123: in extract_physical_descriptions
+    characters = await get_character_profiles()
+data_access/character_queries.py:607: in get_character_profiles
+    results = await neo4j_manager.execute_read_query(query, params)
+core/db_manager.py:361: in execute_read_query
+    await self._ensure_connected()
+core/db_manager.py:233: in _ensure_connected
+    await self.connect()
+core/db_manager.py:159: in connect
+    raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+E   core.exceptions.DatabaseError: Database error during connection (Details: {'operation': 'connection', 'original_error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'error_type': 'RuntimeError', 'uri': 'bolt://localhost:7687'})
+------------------------------ Captured log call -------------------------------
+INFO     core.db_manager:db_manager.py:232 {'event': 'Driver is None, attempting to connect.', 'level': 'info', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:12'}
+CRITICAL core.db_manager:db_manager.py:152 {'uri': 'bolt://localhost:7687', 'error': 'AUDIT_OFFLINE_BLOCK: socket.getaddrinfo', 'exc_info': True, 'event': 'Unexpected error during Neo4j connection', 'level': 'critical', 'logger': 'core.db_manager', 'timestamp': '09/07/2026, 05:24:12'}
+________ test_llm_service_patch_list_covers_all_module_level_importers _________
+tests/test_langgraph_orchestrator.py:756: in test_llm_service_patch_list_covers_all_module_level_importers
+    assert missing == [], f"Missing llm_service patch modules: {missing}"
+E   AssertionError: Missing llm_service patch modules: ['core.langgraph.nodes.context_scene_retrieval']
+E   assert ['core.langgr...ne_retrieval'] == []
+E     
+E     Left contains one more item: 'core.langgraph.nodes.context_scene_retrieval'
+E     Use -v to get more diff
+___________________________ test_load_model_explicit ___________________________
+tests/test_spacy_service.py:57: in test_load_model_explicit
+    assert result is True
+E   assert False is True
+------------------------------ Captured log call -------------------------------
+ERROR    core.spacy_service:spacy_service.py:98 {'event': 'spaCy library not installed. Install with: pip install spacy', 'level': 'error', 'logger': 'core.spacy_service', 'timestamp': '09/07/2026, 05:24:13'}
+__________________________ test_load_model_idempotent __________________________
+tests/test_spacy_service.py:66: in test_load_model_idempotent
+    assert result is True
+E   assert False is True
+------------------------------ Captured log call -------------------------------
+ERROR    core.spacy_service:spacy_service.py:98 {'event': 'spaCy library not installed. Install with: pip install spacy', 'level': 'error', 'logger': 'core.spacy_service', 'timestamp': '09/07/2026, 05:24:13'}
+ERROR    core.spacy_service:spacy_service.py:98 {'event': 'spaCy library not installed. Install with: pip install spacy', 'level': 'error', 'logger': 'core.spacy_service', 'timestamp': '09/07/2026, 05:24:13'}
+_____________________ test_normalize_entity_name_fallback ______________________
+tests/test_spacy_service.py:179: in test_normalize_entity_name_fallback
+    assert result == "dark tower"
+E   AssertionError: assert 'the dark tower' == 'dark tower'
+E     
+E     - dark tower
+E     + the dark tower
+E     ? ++++
+------------------------------ Captured log call -------------------------------
+ERROR    core.spacy_service:spacy_service.py:98 {'event': 'spaCy library not installed. Install with: pip install spacy', 'level': 'error', 'logger': 'core.spacy_service', 'timestamp': '09/07/2026, 05:24:13'}
+WARNING  core.spacy_service:spacy_service.py:330 {'event': 'normalize_entity_name: spaCy model not loaded, using fallback', 'level': 'warning', 'logger': 'core.spacy_service', 'timestamp': '09/07/2026, 05:24:13'}
+_______________________ test_find_quote_offsets_no_model _______________________
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:508: in runtest
+    super().runtest()
+../venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:773: in inner
+    _loop.run_until_complete(task)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:678: in run_until_complete
+    self.run_forever()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:645: in run_forever
+    self._run_once()
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:1961: in _run_once
+    event_list = self._selector.select(timeout)
+/home/dlewis3/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/selectors.py:468: in select
+    fd_event_list = self._selector.poll(timeout, max_ev)
+E   Failed: Timeout (>8.0s) from pytest-timeout.
+------------------------------ Captured log call -------------------------------
+WARNING  utils.text_processing:text_processing.py:583 {'event': 'get_text_segments: spaCy model not loaded. Falling back to basic sentence segmentation (less accurate).', 'level': 'warning', 'logger': 'utils.text_processing', 'timestamp': '09/07/2026, 05:24:13'}
+ERROR    core.text_processing_service:text_processing_service.py:77 {'exc_info': True, 'event': "Unexpected error getting tokenizer for 'nomic-embed-text:latest': AUDIT_OFFLINE_BLOCK: socket.getaddrinfo", 'level': 'error', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:24:13'}
+WARNING  core.text_processing_service:text_processing_service.py:142 {'event': "truncate_text_by_tokens: Failed to get tokenizer for 'nomic-embed-text:latest'. Falling back to character-based truncation: 8192 tokens -> ~32768 chars.", 'level': 'warning', 'logger': 'core.text_processing_service', 'timestamp': '09/07/2026, 05:24:13'}
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 1): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:13'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 3.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:13'}
+ERROR    core.http_client_service:http_client_service.py:117 {'exc_info': True, 'event': 'Unexpected HTTP error (attempt 2): unhandled errors in a TaskGroup (1 sub-exception)', 'level': 'error', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:16'}
+INFO     core.http_client_service:http_client_service.py:125 {'event': 'Retrying in 6.00s due to: ExceptionGroup', 'level': 'info', 'logger': 'core.http_client_service', 'timestamp': '09/07/2026, 05:24:16'}
+=============================== warnings summary ===============================
+tests/core/langgraph/test_workflow.py::TestWorkflowGraphStructure::test_workflow_graph_has_expected_nodes
+  /tmp/saga-audit-20260906/venv/lib/python3.12/site-packages/_pytest/unraisableexception.py:85: PytestUnraisableExceptionWarning: Exception ignored in: <coroutine object arun_with_retry at 0x78495dff65a0>
+  
+  Traceback (most recent call last):
+    File "/tmp/saga-audit-20260906/venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py", line 137, in arun_with_retry
+      return await task.proc.ainvoke(task.input, config)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  RuntimeError: coroutine ignored GeneratorExit
+  During task with name 'retrieve_context' and id 'b920e489-5214-6a9b-a733-ea5b2f0924cd'
+  
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+tests/test_langgraph/test_phase2_workflow.py::TestPhase2Integration::test_workflow_graph_persistence_wiring_is_after_validation
+  tests/test_langgraph/test_phase2_workflow.py:551: PytestWarning: The test <Function test_workflow_graph_persistence_wiring_is_after_validation> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_workflow_graph_persistence_wiring_is_after_validation(self) -> None:
+
+tests/test_langgraph/test_phase2_workflow.py::TestPhase2Integration::test_workflow_revision_loop_routes_to_generate
+  tests/test_langgraph/test_phase2_workflow.py:563: PytestWarning: The test <Function test_workflow_revision_loop_routes_to_generate> is marked with '@pytest.mark.asyncio' but it is not an async function. Please remove the asyncio mark. If the test is not marked explicitly, check for global marks applied via 'pytestmark'.
+    def test_workflow_revision_loop_routes_to_generate(self) -> None:
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/dlewis3/Desktop/AI/saga/docs/audits/2026-09-06/pytest.xml -
+=========================== short test summary info ============================
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeEntityPersistence::test_commit_to_graph_creates_entity_ids
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeEntityPersistence::test_commit_to_graph_handles_empty_extractions
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeEntityPersistence::test_commit_to_graph_deduplicates_entities
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeRelationshipPersistence::test_commit_to_graph_creates_relationships
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeRelationshipPersistence::test_commit_to_graph_handles_missing_relationships
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeChapterPersistence::test_commit_to_graph_creates_chapter_node
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeChapterPersistence::test_commit_to_graph_links_chapter_to_entities
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeErrorHandling::test_commit_to_graph_handles_database_errors
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeErrorHandling::test_commit_to_graph_handles_missing_content
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeStateManagement::test_commit_to_graph_updates_state
+FAILED tests/core/langgraph/nodes/test_commit_node.py::TestCommitNodeStateManagement::test_commit_to_graph_preserves_existing_state
+FAILED tests/core/langgraph/nodes/test_commit_node_simple.py::TestCommitNodeIntegration::test_commit_to_graph_with_valid_state
+FAILED tests/core/langgraph/nodes/test_commit_node_simple.py::TestCommitNodeIntegration::test_commit_to_graph_with_empty_extractions
+FAILED tests/core/langgraph/nodes/test_commit_node_simple.py::TestCommitNodeIntegration::test_commit_to_graph_with_relationships
+FAILED tests/core/langgraph/nodes/test_commit_node_simple.py::TestCommitNodeIntegration::test_commit_to_graph_handles_database_error
+FAILED tests/core/langgraph/nodes/test_commit_node_simple.py::TestCommitNodeIntegration::test_commit_to_graph_handles_missing_content
+FAILED tests/core/langgraph/nodes/test_commit_node_simple.py::TestCommitNodeIntegration::test_commit_to_graph_preserves_state
+FAILED tests/core/langgraph/nodes/test_context_retrieval_node.py::TestSmartTruncateScene::test_truncation_preserves_head_and_tail_sections
+FAILED tests/core/langgraph/subgraphs/test_generation_subgraph.py::test_generation_subgraph_flow
+FAILED tests/core/langgraph/subgraphs/test_generation_subgraph_unittest.py::TestGenerationSubgraph::test_generation_subgraph_flow
+FAILED tests/core/test_relationship_normalization.py::test_normalize_punctuation_variant
+FAILED tests/test_act_outline_parser.py::test_parse_and_persist_integration
+FAILED tests/test_act_outline_parser.py::test_parse_and_persist_with_new_relationships
+FAILED tests/test_full_pipeline_integration.py::TestFullPipelineIntegration::test_stage2_global_outline
+FAILED tests/test_langgraph/test_commit_init_node.py::test_commit_initialization_to_graph_success
+FAILED tests/test_langgraph/test_commit_init_node.py::test_commit_initialization_no_characters
+FAILED tests/test_langgraph/test_commit_init_node.py::test_commit_initialization_no_global_outline
+FAILED tests/test_langgraph/test_commit_node.py::TestCommitToGraph::test_commit_with_entities_and_relationships
+FAILED tests/test_langgraph/test_commit_node.py::TestCommitToGraph::test_extraction_normalization_commit_reads_normalized_ref
+FAILED tests/test_langgraph/test_commit_node.py::TestCommitToGraph::test_commit_handles_errors_gracefully
+FAILED tests/test_langgraph/test_commit_node.py::TestCommitToGraph::test_commit_with_embedding_from_ref
+FAILED tests/test_langgraph/test_commit_node.py::TestCommitToGraph::test_commit_with_embedding_load_failure
+FAILED tests/test_langgraph/test_commit_node.py::TestCommitToGraph::test_commit_with_fallback_embedding
+FAILED tests/test_langgraph/test_commit_node.py::TestCommitToGraph::test_commit_with_duplicate_world_items_in_batch
+FAILED tests/test_langgraph/test_commit_node.py::TestBuildRelationshipStatements::test_commit_rejects_unknown_entity_label_at_persistence_boundary
+FAILED tests/test_langgraph/test_commit_node_idempotency.py::TestCommitNodeIdempotency::test_commit_to_graph_idempotency_call_sequence
+FAILED tests/test_langgraph/test_content_ref_integrity_and_versioning.py::test_retrieve_context_writes_new_versions_without_overwriting
+FAILED tests/test_langgraph/test_narrative_enrichment_node.py::TestNarrativeEnrichmentNode::test_process_success
+FAILED tests/test_langgraph_orchestrator.py::test_llm_service_patch_list_covers_all_module_level_importers
+FAILED tests/test_spacy_service.py::test_load_model_explicit - assert False i...
+FAILED tests/test_spacy_service.py::test_load_model_idempotent - assert False...
+FAILED tests/test_spacy_service.py::test_normalize_entity_name_fallback - Ass...
+FAILED tests/test_text_processing_offsets.py::test_find_quote_offsets_no_model
+43 failed, 1639 passed, 3 warnings in 46.73s

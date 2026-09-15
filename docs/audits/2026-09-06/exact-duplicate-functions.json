@@ -1,0 +1,30 @@
+[
+  [
+    {
+      "path": "core/langgraph/nodes/context_character_retrieval.py",
+      "symbol": "_extract_scene_characters",
+      "line": 77,
+      "end": 96
+    },
+    {
+      "path": "core/langgraph/nodes/context_retrieval_node.py",
+      "symbol": "_extract_scene_characters",
+      "line": 273,
+      "end": 292
+    }
+  ],
+  [
+    {
+      "path": "core/parsers/chapter_outline_parser.py",
+      "symbol": "create_location_nodes",
+      "line": 591,
+      "end": 645
+    },
+    {
+      "path": "core/parsers/global_outline_parser.py",
+      "symbol": "create_location_nodes",
+      "line": 400,
+      "end": 454
+    }
+  ]
+]

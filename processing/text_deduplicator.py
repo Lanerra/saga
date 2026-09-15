@@ -8,8 +8,8 @@ This module performs two-stage deduplication:
 Notes:
     - Fingerprints are computed as `md5(normalized_segment_text)` where normalization is delegated
       to `utils._normalize_text_for_matching()`.
-    - Semantic comparison is gated by `config.DEDUPLICATION_USE_SEMANTIC` and requires embedding
-      calls via the LLM embedding service. Those calls may be non-deterministic.
+    - Semantic comparison is gated by the `use_semantic_comparison` constructor parameter and
+      requires embedding calls via the LLM embedding service.
     - `min_segment_length_chars` currently suppresses fingerprint-based deduplication for short
       segments, but semantic comparison may still evaluate them.
     - When duplicates are removed, the output text is reconstructed by splicing out the selected
@@ -29,7 +29,7 @@ import structlog
 
 import config
 import utils
-from core.llm_interface_refactored import llm_service
+from core.service_context import get_services
 
 logger = structlog.get_logger(__name__)
 
@@ -39,9 +39,9 @@ class TextDeduplicator:
 
     def __init__(
         self,
-        similarity_threshold: float = config.DEDUPLICATION_SEMANTIC_THRESHOLD,
-        use_semantic_comparison: bool = config.DEDUPLICATION_USE_SEMANTIC,
-        min_segment_length_chars: int = config.DEDUPLICATION_MIN_SEGMENT_LENGTH,
+        similarity_threshold: float = 0.55,
+        use_semantic_comparison: bool = False,
+        min_segment_length_chars: int = 150,
         prefer_newer: bool = False,
     ) -> None:
         self.similarity_threshold = similarity_threshold
@@ -69,7 +69,7 @@ class TextDeduplicator:
 
             Ordering and stability:
             - `prefer_newer=False` keeps the first occurrence encountered in forward order.
-            - `prefer_newer=True` iterates from the end and tends to keep later occurrences by
+            - `prefer_newer=True` iterates from the end and keeps later occurrences by
               removing earlier segments when duplicates are detected.
             - The returned text preserves the relative order of all kept segments because it is
               produced by splicing spans out of the original string.
@@ -77,7 +77,7 @@ class TextDeduplicator:
             Determinism and failure modes:
             - When semantic comparison is enabled, results may vary with embedding provider output.
             - Embedding failures for individual segments are ignored; those segments are treated as
-              non-duplicates for semantic comparison.
+              non-duplicates for semantic comparison. Cancellation and total deadlines propagate.
             - If cosine similarity raises due to shape mismatch, similarity is treated as `0.0`
               for that comparison.
         """
@@ -102,11 +102,8 @@ class TextDeduplicator:
             norm = normalized_cache[idx]
             fingerprint = hashlib.md5(norm.encode()).hexdigest()
             if fingerprint in fingerprint_map:
-                other_idx = fingerprint_map[fingerprint]
-                remove_idx = idx if not self.prefer_newer else other_idx
-                indices_to_remove.add(remove_idx)
-                if self.prefer_newer:
-                    fingerprint_map[fingerprint] = idx
+                # Traversal already encodes the preference; retain the first encountered.
+                indices_to_remove.add(idx)
                 continue
             fingerprint_map[fingerprint] = idx
 
@@ -120,11 +117,13 @@ class TextDeduplicator:
             # Process embeddings in batches to control memory usage and API load
             for i in range(0, len(unique_indices), batch_size):
                 batch_indices = unique_indices[i : i + batch_size]
-                batch_tasks = [llm_service.async_get_embedding(segments[idx][0]) for idx in batch_indices]
+                batch_tasks = [get_services().language_model.async_get_embedding(segments[idx][0]) for idx in batch_indices]
                 batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
 
                 for batch_idx, result in zip(batch_indices, batch_results, strict=False):
-                    if not isinstance(result, Exception):
+                    if isinstance(result, (asyncio.CancelledError, TimeoutError)):
+                        raise result
+                    if not isinstance(result, BaseException):
                         embeddings[batch_idx] = cast(np.ndarray | None, result)
 
             keepers: list[int] = []
@@ -145,11 +144,7 @@ class TextDeduplicator:
                         logger.warning("Cosine similarity shape mismatch handled: setting to 0.0 for deduplication compatibility.")
                         similarity = 0.0
                     if similarity > self.similarity_threshold:
-                        remove_idx = idx if not self.prefer_newer else kept_idx
-                        indices_to_remove.add(remove_idx)
-                        if self.prefer_newer and remove_idx == kept_idx:
-                            keepers.remove(kept_idx)
-                            keepers.append(idx)
+                        indices_to_remove.add(idx)
                         is_dup = True
                         break
                 if not is_dup:

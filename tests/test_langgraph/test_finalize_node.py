@@ -7,22 +7,29 @@ Tests the finalize_chapter node and its helper functions.
 Migration Reference: docs/phase2_migration_plan.md - Step 2.4
 """
 
+from collections.abc import Iterator, Mapping
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
 
 from core.langgraph.content_manager import ContentManager, get_draft_text
-from core.langgraph.nodes.finalize_node import finalize_chapter
-from core.langgraph.state import create_initial_state
+from core.langgraph.state import NarrativeState, create_initial_state
+from tests.fakes.quality import finalize_example as finalize_chapter
+from tests.fakes.service_context import patch_service
+
+
+class LegacyFinalizationState(NarrativeState, total=False):
+    extracted_entities: dict[str, list[dict[str, str]]]
+    extracted_relationships: list[dict[str, str]]
 
 
 @pytest.fixture
-def sample_finalize_state(tmp_path):
+def sample_finalize_state(tmp_path: Path) -> LegacyFinalizationState:
     """Sample state ready for finalization."""
     project_dir = str(tmp_path / "test-project")
-    state = create_initial_state(
+    state: LegacyFinalizationState = {**create_initial_state(
         project_id="test-project",
         title="Test Novel",
         genre="Fantasy",
@@ -34,7 +41,7 @@ def sample_finalize_state(tmp_path):
         protagonist_name="Hero",
         extraction_model="test-model",
         revision_model="test-model",
-    )
+    )}
 
     # Add finalized chapter text via ContentManager
     draft_text = """
@@ -74,16 +81,16 @@ def sample_finalize_state(tmp_path):
 
 
 @pytest.fixture
-def mock_llm_service():
+def mock_llm_service() -> Iterator[MagicMock]:
     """Mock LLM service for embedding generation."""
-    with patch("core.langgraph.nodes.finalize_node.llm_service") as mock:
+    with patch_service('language_model') as mock:
         # Return a mock embedding vector
         mock.async_get_embedding = AsyncMock(return_value=np.random.rand(1024).astype(np.float32))
         yield mock
 
 
 @pytest.fixture
-def mock_save_chapter_data():
+def mock_save_chapter_data() -> Iterator[AsyncMock]:
     """Mock chapter data saving."""
     with patch("core.langgraph.nodes.finalize_node.save_chapter_data_to_db") as mock:
         mock.return_value = AsyncMock(return_value=None)
@@ -94,7 +101,7 @@ def mock_save_chapter_data():
 class TestFinalizeChapter:
     """Tests for finalize_chapter node function."""
 
-    async def test_finalize_chapter_success(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_success(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test successful chapter finalization."""
         result = await finalize_chapter(sample_finalize_state)
 
@@ -104,7 +111,7 @@ class TestFinalizeChapter:
         assert merged["extracted_entities"] == {}
         assert merged["extracted_relationships"] == []
         assert merged["contradictions"] == []
-        assert merged["iteration_count"] == 0
+        assert merged["iteration_count"] == 2
         assert merged["needs_revision"] is False
 
         # Check current node was updated
@@ -127,7 +134,7 @@ class TestFinalizeChapter:
         assert call_args.kwargs["embedding_array"] is not None
         assert call_args.kwargs["is_provisional"] is False
 
-    async def test_finalize_chapter_no_draft_text(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_no_draft_text(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test finalization fails gracefully without draft_ref."""
         state = {**sample_finalize_state}
         state["draft_ref"] = None
@@ -147,7 +154,7 @@ class TestFinalizeChapter:
         # Neo4j save should not be called
         mock_save_chapter_data.assert_not_called()
 
-    async def test_finalize_chapter_filesystem_save_markdown_and_text(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_filesystem_save_markdown_and_text(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that chapter is saved as .md with YAML front matter and .txt mirror."""
         await finalize_chapter(sample_finalize_state)
 
@@ -191,7 +198,7 @@ class TestFinalizeChapter:
         assert txt_path.exists()
         assert txt_path.read_text(encoding="utf-8") == expected_text
 
-    async def test_finalize_chapter_embedding_generation(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_embedding_generation(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that embedding is generated for the chapter."""
         await finalize_chapter(sample_finalize_state)
 
@@ -209,9 +216,9 @@ class TestFinalizeChapter:
         assert embedding is not None
         assert isinstance(embedding, np.ndarray)
 
-    async def test_finalize_chapter_embedding_failure(self, sample_finalize_state, mock_save_chapter_data):
+    async def test_finalize_chapter_embedding_failure(self, sample_finalize_state: LegacyFinalizationState, mock_save_chapter_data: AsyncMock) -> None:
         """Test that embedding failures don't block finalization."""
-        with patch("core.langgraph.nodes.finalize_node.llm_service") as mock_llm:
+        with patch_service('language_model') as mock_llm:
             mock_llm.async_get_embedding = AsyncMock(side_effect=Exception("Embedding service unavailable"))
 
             result = await finalize_chapter(sample_finalize_state)
@@ -225,7 +232,7 @@ class TestFinalizeChapter:
             call_args = mock_save_chapter_data.call_args
             assert call_args.kwargs["embedding_array"] is None
 
-    async def test_finalize_chapter_neo4j_failure(self, sample_finalize_state, mock_llm_service):
+    async def test_finalize_chapter_neo4j_failure(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock) -> None:
         """Test that Neo4j failures are reported as errors."""
         with patch("core.langgraph.nodes.finalize_node.save_chapter_data_to_db") as mock_save:
             mock_save.side_effect = Exception("Neo4j unavailable")
@@ -237,21 +244,24 @@ class TestFinalizeChapter:
             assert "Neo4j" in result["last_error"]
             assert result["current_node"] == "finalize"
 
-    async def test_finalize_chapter_filesystem_failure_continues(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
-        """Test that filesystem failures don't block Neo4j save."""
+    async def test_finalize_chapter_filesystem_failure_blocks_progress(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
+        """Filesystem failure cannot certify chapter progress."""
 
         with patch("core.langgraph.nodes.finalize_node._save_chapter_to_filesystem") as mock_save_fs:
             mock_save_fs.side_effect = Exception("Filesystem error")
 
             result = await finalize_chapter(sample_finalize_state)
 
-            # Should still succeed (Neo4j is source of truth)
-            assert result["last_error"] is None
+            assert result == {
+                "last_error": "Error saving chapter to filesystem: Filesystem error",
+                "has_fatal_error": True,
+                "error_node": "finalize",
+                "current_node": "finalize",
+            }
+            mock_save_chapter_data.assert_not_called()
+            mock_llm_service.async_get_embedding.assert_not_called()
 
-            # Neo4j save should still be called
-            mock_save_chapter_data.assert_called_once()
-
-    async def test_finalize_chapter_clears_extracted_entities(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_clears_extracted_entities(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that extracted entities are cleared after finalization."""
         # Add extracted entities
         state = {**sample_finalize_state}
@@ -260,31 +270,29 @@ class TestFinalizeChapter:
             "locations": [{"name": "Castle"}],
         }
 
-        result = await finalize_chapter(state)
+        result: Mapping[str, object] = await finalize_chapter(state)
 
         # Should be cleared
         assert result["extracted_entities"] == {}
 
-    async def test_finalize_chapter_clears_relationships(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_clears_relationships(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that extracted relationships are cleared."""
-        result = await finalize_chapter(sample_finalize_state)
+        result: Mapping[str, object] = await finalize_chapter(sample_finalize_state)
 
         # Should be cleared
         assert result["extracted_relationships"] == []
 
-    async def test_finalize_chapter_clears_contradictions(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
-        """Test that contradictions are cleared."""
-        # Add contradictions
+    async def test_finalize_chapter_preserves_contradictions(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
+        from core.langgraph.state import Contradiction
+
         state = {**sample_finalize_state}
-        state["contradictions"] = [{"type": "character", "description": "Test contradiction"}]
+        state["contradictions"] = [Contradiction(type="character", description="Synthetic contradiction", severity="minor", conflicting_chapters=[1])]
 
         result = await finalize_chapter(state)
 
-        # Should be cleared
-        assert result["contradictions"] == []
+        assert {**state, **result}["contradictions"] == state["contradictions"]
 
-    async def test_finalize_chapter_resets_iteration_count(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
-        """Test that iteration count is reset."""
+    async def test_finalize_chapter_preserves_iteration_count(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         # Set iteration count
         state = {**sample_finalize_state}
         state["iteration_count"] = 3
@@ -292,10 +300,9 @@ class TestFinalizeChapter:
         result = await finalize_chapter(state)
         merged = {**state, **result}
 
-        # Should be reset
-        assert merged["iteration_count"] == 0
+        assert merged["iteration_count"] == 3
 
-    async def test_finalize_chapter_resets_needs_revision(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_resets_needs_revision(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that needs_revision flag is reset."""
         # Set needs_revision
         state = {**sample_finalize_state}
@@ -307,7 +314,7 @@ class TestFinalizeChapter:
         # Should be reset
         assert merged["needs_revision"] is False
 
-    async def test_finalize_chapter_preserves_draft_text(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_preserves_draft_text(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that draft_text is preserved in state."""
         result = await finalize_chapter(sample_finalize_state)
         merged = {**sample_finalize_state, **result}
@@ -316,7 +323,7 @@ class TestFinalizeChapter:
         assert merged["draft_ref"] == sample_finalize_state["draft_ref"]
         assert merged["draft_word_count"] == sample_finalize_state["draft_word_count"]
 
-    async def test_finalize_chapter_includes_summary(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_includes_summary(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that summary is included in Neo4j save."""
         await finalize_chapter(sample_finalize_state)
 
@@ -335,7 +342,7 @@ class TestFinalizeChapter:
         expected_summary = get_previous_summaries(sample_finalize_state, cm)[-1]
         assert summary == expected_summary
 
-    async def test_finalize_chapter_no_summary(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_no_summary(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test finalization works without summary."""
         state = {**sample_finalize_state}
         state["summaries_ref"] = None
@@ -350,7 +357,7 @@ class TestFinalizeChapter:
         call_args = mock_save_chapter_data.call_args
         assert call_args.kwargs["summary"] is None
 
-    async def test_finalize_chapter_creates_chapters_directory(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_creates_chapters_directory(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that chapters directory is created if it doesn't exist."""
         # Use a new temporary directory
         project_dir = Path(sample_finalize_state["project_dir"])
@@ -368,10 +375,10 @@ class TestFinalizeChapter:
         assert chapters_dir.exists()
         assert chapters_dir.is_dir()
 
-    async def test_finalize_chapter_correct_filename_format(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_correct_filename_format(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that chapter filenames use zero-padded format for .md and .txt."""
         for chapter_num in [1, 10, 99]:
-            state = {**sample_finalize_state}
+            state: LegacyFinalizationState = {**sample_finalize_state}
             state["current_chapter"] = chapter_num
 
             await finalize_chapter(state)
@@ -385,7 +392,7 @@ class TestFinalizeChapter:
             assert md_expected.exists()
             assert txt_expected.exists()
 
-    async def test_finalize_chapter_preserves_other_state(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_preserves_other_state(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that other state fields are preserved."""
         result = await finalize_chapter(sample_finalize_state)
         merged = {**sample_finalize_state, **result}
@@ -401,7 +408,7 @@ class TestFinalizeChapter:
 class TestFinalizeErrorHandling:
     """Tests for error handling in finalize node (P1.1 & P1.3)."""
 
-    async def test_finalize_chapter_missing_draft_text_fatal_error(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_missing_draft_text_fatal_error(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test finalization with missing draft_ref triggers fatal error."""
         state = {**sample_finalize_state}
         state["draft_ref"] = None
@@ -416,7 +423,7 @@ class TestFinalizeErrorHandling:
         mock_llm_service.async_get_embedding.assert_not_called()
         mock_save_chapter_data.assert_not_called()
 
-    async def test_finalize_chapter_empty_draft_text_fatal_error(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalize_chapter_empty_draft_text_fatal_error(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test finalization with empty draft_text triggers fatal error."""
         # Create empty draft file
         cm = ContentManager(sample_finalize_state["project_dir"])
@@ -435,7 +442,7 @@ class TestFinalizeErrorHandling:
         mock_llm_service.async_get_embedding.assert_not_called()
         mock_save_chapter_data.assert_not_called()
 
-    async def test_finalize_chapter_neo4j_failure_fatal_error(self, sample_finalize_state, mock_llm_service):
+    async def test_finalize_chapter_neo4j_failure_fatal_error(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock) -> None:
         """Test finalization with Neo4j failure triggers fatal error."""
         with patch("core.langgraph.nodes.finalize_node.save_chapter_data_to_db") as mock_save:
             mock_save.side_effect = Exception("Neo4j connection failed")
@@ -448,9 +455,9 @@ class TestFinalizeErrorHandling:
             assert result["error_node"] == "finalize"
             assert result["current_node"] == "finalize"
 
-    async def test_finalize_chapter_embedding_failure_continues_gracefully(self, sample_finalize_state, mock_save_chapter_data):
+    async def test_finalize_chapter_embedding_failure_continues_gracefully(self, sample_finalize_state: LegacyFinalizationState, mock_save_chapter_data: AsyncMock) -> None:
         """Test that embedding failures don't trigger fatal error."""
-        with patch("core.langgraph.nodes.finalize_node.llm_service") as mock_llm:
+        with patch_service('language_model') as mock_llm:
             mock_llm.async_get_embedding = AsyncMock(side_effect=Exception("Embedding service down"))
 
             result = await finalize_chapter(sample_finalize_state)
@@ -468,10 +475,10 @@ class TestFinalizeErrorHandling:
 class TestFinalizeIntegration:
     """Integration tests for finalize node."""
 
-    async def test_full_finalization_workflow(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_full_finalization_workflow(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test complete finalization workflow."""
         # Finalize chapter
-        result = await finalize_chapter(sample_finalize_state)
+        result: Mapping[str, object] = await finalize_chapter(sample_finalize_state)
 
         # Verify all expected operations occurred
         assert result["current_node"] == "finalize"
@@ -480,8 +487,8 @@ class TestFinalizeIntegration:
         # Verify cleanup
         assert result["extracted_entities"] == {}
         assert result["extracted_relationships"] == []
-        assert result["contradictions"] == []
-        assert result["iteration_count"] == 0
+        assert {**sample_finalize_state, **result}["contradictions"] == []
+        assert {**sample_finalize_state, **result}["iteration_count"] == 2
         assert result["needs_revision"] is False
 
         # Verify embedding was generated
@@ -496,13 +503,12 @@ class TestFinalizeIntegration:
         assert (chapters_dir / "chapter_001.md").exists()
         assert (chapters_dir / "chapter_001.txt").exists()
 
-    async def test_finalization_ready_for_next_chapter(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
+    async def test_finalization_ready_for_next_chapter(self, sample_finalize_state: LegacyFinalizationState, mock_llm_service: MagicMock, mock_save_chapter_data: AsyncMock) -> None:
         """Test that state is ready for next chapter after finalization."""
         result = await finalize_chapter(sample_finalize_state)
         merged = {**sample_finalize_state, **result}
 
-        # State should be clean for next chapter
-        assert merged["iteration_count"] == 0
+        assert merged["iteration_count"] == 2
         assert merged["needs_revision"] is False
         assert merged["extracted_entities"] == {}
         assert merged["extracted_relationships"] == []

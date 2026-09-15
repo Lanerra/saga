@@ -17,16 +17,57 @@ from typing import Any
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import ContentManager, require_project_dir
+from core.langgraph.initialization.snapshot import require, strict_json
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
 from core.schema_validator import schema_validator
+from core.service_context import get_services
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
 from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
+
+
+def _character_sheet_contract(character_name: str, other_characters: list[str]) -> dict[str, Any]:
+    from models.kg_constants import RELATIONSHIP_TYPES
+
+    relationship = {
+        "type": "object", "additionalProperties": False, "required": ["type", "description"],
+        "properties": {"type": {"type": "string", "enum": sorted(RELATIONSHIP_TYPES)}, "description": {"type": "string"}},
+    }
+    properties: dict[str, Any] = {name: {"type": "string"} for name in ("description", "motivations", "background", "internal_conflict")}
+    properties.update({
+        "name": {"type": "string", "enum": [character_name]},
+        "status": {"type": "string", "enum": ["Active"]},
+        "traits": {"type": "array", "items": {"type": "string", "pattern": "^[a-zA-Z0-9-]+$"}},
+        "skills": {"type": "array", "items": {"type": "string"}},
+        "relationships": {"type": "object", "properties": {name: relationship for name in other_characters if name != character_name}, "required": [], "additionalProperties": False},
+    })
+    return {"type": "json_schema", "json_schema": {"name": "character_sheet", "strict": config.STRUCTURED_OUTPUT_STRICT, "schema": {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}}}
+
+
+def _admit_character_sheet(response: str, contract: dict[str, Any]) -> dict[str, Any]:
+    """Reject invalid generated sheets before retention; never normalize model choices."""
+    properties = contract["json_schema"]["schema"]["properties"]
+    data = strict_json(response)
+    require(isinstance(data, dict) and set(data) == set(properties), "Character sheet fields differ from contract")
+    for name, specification in properties.items():
+        value = data[name]
+        if specification["type"] == "string":
+            require(isinstance(value, str), f"Character sheet {name} must be a string")
+            require("enum" not in specification or value in specification["enum"], f"Invalid character sheet {name}")
+        elif specification["type"] == "array":
+            require(isinstance(value, list) and all(isinstance(item, str) for item in value), f"Character sheet {name} must be strings")
+    require(all(re.fullmatch(r"[a-zA-Z0-9-]+", trait) for trait in data["traits"]), "Invalid character traits")
+    relationships = data["relationships"]
+    candidates = properties["relationships"]["properties"]
+    require(isinstance(relationships, dict) and set(relationships).issubset(candidates), "Unknown character relationship target")
+    for target, relationship in relationships.items():
+        require(isinstance(relationship, dict) and set(relationship) == {"type", "description"}, "Malformed character relationship")
+        require(relationship["type"] in candidates[target]["properties"]["type"]["enum"], "Invalid character relationship type")
+        require(isinstance(relationship["description"], str), "Invalid character relationship description")
+    return dict(data, type="Character")
 
 
 async def _get_existing_traits() -> list[str]:
@@ -48,7 +89,7 @@ async def _get_existing_traits() -> list[str]:
         ORDER BY trait_name
         LIMIT 100
         """
-        results = await neo4j_manager.execute_read_query(query)
+        results = await get_services().database.execute_read_query(query)
         if results:
             traits = [r["trait_name"] for r in results if r.get("trait_name")]
             logger.info(
@@ -175,19 +216,16 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         for target, data in relationships_value.items():
             if not isinstance(target, str):
                 continue
-            
+
             # Handle new format: {"type": "FAMILY_OF", "description": "..."}
             if isinstance(data, dict):
-                 structured_relationships[target] = {
-                    "type": data.get("type", ""),
-                    "description": data.get("description", "")
-                }
+                structured_relationships[target] = {"type": data.get("type", ""), "description": data.get("description", "")}
             # Handle old format: "Childhood friend"
             elif isinstance(data, str):
                 structured_relationships[target] = {
                     "description": data,
                 }
-                
+
         parsed["relationships"] = structured_relationships
 
     # Double check that we are using a valid type (should be 'Character')
@@ -226,7 +264,6 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
         error_msg = "Missing required fields: title and genre"
         logger.error("generate_character_sheets: validation failed", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "character_sheets",
             "initialization_step": "character_sheets_failed",
@@ -244,7 +281,6 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
         error_msg = "Failed to generate character list"
         logger.error("generate_character_sheets: character list generation failed")
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "character_sheets",
             "initialization_step": "character_sheets_failed",
@@ -273,11 +309,10 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
                 character=character_name,
             )
 
-    if not character_sheets:
-        error_msg = "Failed to generate any character sheets"
-        logger.error("generate_character_sheets: no sheets generated")
+    if len(character_sheets) != len(character_list):
+        error_msg = "Failed to generate any character sheets" if not character_sheets else "Failed to generate all selected character sheets"
+        logger.error("generate_character_sheets: incomplete character selection")
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "character_sheets",
             "initialization_step": "character_sheets_failed",
@@ -306,7 +341,6 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "character_sheets_ref": character_sheets_ref,
         "current_node": "character_sheets",
         "last_error": None,
@@ -327,6 +361,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
     prompt = render_prompt(
         "initialization/generate_character_list.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
@@ -350,7 +385,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
 
     for attempt_index, temperature in enumerate(temperatures, start=1):
         try:
-            response, _ = await llm_service.async_call_llm(
+            response, _ = await get_services().language_model.async_call_llm(
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=temperature,
@@ -426,12 +461,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
 
             placeholder_names = [name for name in validated_names if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)]
             if placeholder_names:
-                logger.error(
-                    "_generate_character_list: placeholder names detected",
-                    prompt_sha1=prompt_sha1,
-                    placeholders=placeholder_names,
-                    names=validated_names,
-                )
+                raise ValueError(f"Placeholder character names detected: {placeholder_names}")
 
             logger.info(
                 "_generate_character_list: generated list",
@@ -486,10 +516,11 @@ async def _generate_character_sheet(
         existing_traits_hint = f"\n\nExisting traits in the story (consider reusing to create interconnectedness): " f"{', '.join(traits_sample)}"
 
     from models.kg_constants import RELATIONSHIP_TYPES
-    
+
     prompt = render_prompt(
         "initialization/generate_character_sheet.j2",
         {
+            "original_prompt": state.get("original_prompt", ""),
             "title": state.get("title", ""),
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
@@ -502,18 +533,20 @@ async def _generate_character_sheet(
         },
     )
 
+    contract = _character_sheet_contract(character_name, other_characters)
     temperatures = [0.7, 0.3, 0.1]
     last_exception = None
 
     for attempt_index, temperature in enumerate(temperatures, start=1):
         try:
-            response, usage = await llm_service.async_call_llm(
+            response, usage = await get_services().language_model.async_call_llm(
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=temperature,
                 max_tokens=config.MAX_GENERATION_TOKENS,
                 allow_fallback=False,
-                auto_clean_response=True,
+                auto_clean_response=False,
+                response_format=contract,
                 system_prompt=get_system_prompt("initialization"),
             )
 
@@ -531,7 +564,7 @@ async def _generate_character_sheet(
             )
 
             # Parse the structured response into CharacterProfile-compatible format
-            sheet = _parse_character_sheet_response(response, character_name)
+            sheet = _admit_character_sheet(response, contract)
 
             # Add metadata
             sheet["is_protagonist"] = is_protagonist

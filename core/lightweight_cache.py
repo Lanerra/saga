@@ -36,6 +36,11 @@ DEFAULT_MAXSIZE: int = 1024
 """Default per-service cache bound to prevent unbounded growth."""
 
 
+def _validate_maxsize(maxsize: int) -> None:
+    if type(maxsize) is not int or maxsize <= 0:
+        raise ValueError("Cache maxsize must be a positive integer")
+
+
 @dataclass(frozen=True)
 class _CacheEntry:
     value: Any
@@ -46,11 +51,17 @@ class _ServiceCache:
     """Per-service cache with TTL + LRU eviction + a lock."""
 
     def __init__(self, *, maxsize: int) -> None:
-        if maxsize <= 0:
-            raise ValueError(f"maxsize must be > 0, got {maxsize}")
+        _validate_maxsize(maxsize)
         self.maxsize = maxsize
         self._lock = threading.Lock()
         self._data: OrderedDict[str, _CacheEntry] = OrderedDict()
+
+    def resize(self, maxsize: int) -> None:
+        _validate_maxsize(maxsize)
+        with self._lock:
+            self.maxsize = maxsize
+            self._purge_expired_locked(_now())
+            self._evict_lru_locked()
 
     def _purge_expired_locked(self, now: float) -> None:
         if not self._data:
@@ -117,17 +128,17 @@ _SERVICE_CACHES_LOCK = threading.Lock()
 
 
 def _ensure_service(service_name: str, *, maxsize: int | None = None) -> _ServiceCache:
+    if maxsize is not None:
+        _validate_maxsize(maxsize)
     with _SERVICE_CACHES_LOCK:
         cache = _SERVICE_CACHES.get(service_name)
         if cache is None:
-            cache = _ServiceCache(maxsize=maxsize or DEFAULT_MAXSIZE)
+            cache = _ServiceCache(maxsize=DEFAULT_MAXSIZE if maxsize is None else maxsize)
             _SERVICE_CACHES[service_name] = cache
             return cache
 
         if maxsize is not None and maxsize != cache.maxsize:
-            # Best-effort compatibility: allow configuration updates without
-            # forcing a "stop the world" refactor.
-            cache.maxsize = maxsize
+            cache.resize(maxsize)
 
         return cache
 

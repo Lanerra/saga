@@ -6,15 +6,16 @@ import structlog
 from async_lru import alru_cache  # type: ignore[import-untyped]
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
-import utils
-from core.db_manager import neo4j_manager
 from core.exceptions import handle_database_error
 from core.schema_validator import validate_kg_object
+from core.service_context import get_services
 from models import CharacterProfile
+from models.kg_models import project_relationships_by_target
 
+from .cache_coordinator import guard_graph_cache
 from .cypher_builders.native_builders import NativeCypherBuilder
 
-# Mapping from normalized character names to canonical display names
+# Mapping from exact character names to canonical display names
 #
 # Lifecycle contract (P1):
 # - `resolve_character_name()` is best-effort ONLY (purely in-memory; no DB IO).
@@ -25,43 +26,41 @@ from .cypher_builders.native_builders import NativeCypherBuilder
 CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
 
 
-def clear_character_name_map() -> None:
-    """Clear the in-process character name canonicalization map.
-
-    Notes:
-        This only clears in-memory state used by [`resolve_character_name()`](data_access/character_queries.py:43).
-        It does not modify Neo4j.
-    """
-    CHAR_NAME_TO_CANONICAL.clear()
-
-
 def rebuild_character_name_map(characters: list["CharacterProfile"]) -> None:
-    """Rebuild the character name canonicalization map from a list of profiles.
+    """Rebuild the character name canonicalization map from a complete list of profiles.
+
+    Clears all existing entries and rebuilds from scratch. Use this only when the provided
+    list represents the full set of characters (e.g. after fetching all from the database).
 
     Args:
-        characters: Character profiles to use as the authoritative source of canonical
-            display names.
-
-    Returns:
-        None.
-
-    Notes:
-        This clears existing entries to avoid stale accumulation across runs/tests. This is
-        an in-process cache and is populated as a side effect of:
-        - [`sync_characters()`](data_access/character_queries.py:484) (write path), and
-        - [`get_character_profiles()`](data_access/character_queries.py:543) (read path).
+        characters: The complete set of character profiles.
     """
     CHAR_NAME_TO_CANONICAL.clear()
     for char in characters:
         if isinstance(char, CharacterProfile) and char.name:
-            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
+            CHAR_NAME_TO_CANONICAL[char.name] = char.name
+
+
+def update_character_name_map(characters: list["CharacterProfile"]) -> None:
+    """Add or update entries in the character name canonicalization map.
+
+    Unlike `rebuild_character_name_map`, this does not clear existing entries. Use this
+    when syncing a subset of characters to avoid losing mappings for characters not in
+    the current batch.
+
+    Args:
+        characters: Character profiles whose name mappings should be added or updated.
+    """
+    for char in characters:
+        if isinstance(char, CharacterProfile) and char.name:
+            CHAR_NAME_TO_CANONICAL[char.name] = char.name
 
 
 def resolve_character_name(name: str) -> str:
     """Return a canonical character display name when a mapping is known.
 
     Args:
-        name: A character name variant.
+        name: An exact character display name; no inferred aliases.
 
     Returns:
         The canonical display name when the in-memory mapping has an entry. Otherwise
@@ -73,12 +72,13 @@ def resolve_character_name(name: str) -> str:
     """
     if not name:
         return name
-    return CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id(name), name)
+    return CHAR_NAME_TO_CANONICAL.get(name, name)
 
 
 logger = structlog.get_logger(__name__)
 
 
+@guard_graph_cache
 @alru_cache(maxsize=128)
 async def get_character_profile_by_name(name: str, *, include_provisional: bool = False) -> CharacterProfile | None:
     """Return a character profile by name.
@@ -122,7 +122,6 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
 
     query = """
         MATCH (c:Character {name: $name})
-        WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
         // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
@@ -133,7 +132,7 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
                 DISTINCT CASE
                     WHEN coalesce(r.source_profile_managed, false) = true
                      AND (
-                          $include_provisional = true
+                          $include_provisional = TRUE
                           OR coalesce(r.is_provisional, FALSE) = FALSE
                      )
                     THEN {
@@ -150,7 +149,7 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
             [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
     """
 
-    results = await neo4j_manager.execute_read_query(query, {"name": canonical_name, "include_provisional": include_provisional})
+    results = await get_services().database.execute_read_query(query, {"name": canonical_name, "include_provisional": include_provisional})
     if not results or not results[0].get("c"):
         logger.info(f"No character profile found for '{canonical_name}'.")
         return None
@@ -215,27 +214,12 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
 
         rels_by_target[target_name].append(rel_props_cleaned)
 
-    # Deterministic/stable output:
-    # - sort targets
-    # - sort multi-relationship lists within each target
-    relationships: dict[str, Any] = {}
-    for target_name in sorted(rels_by_target.keys()):
-        rel_list = rels_by_target[target_name]
-        rel_list_sorted = sorted(
-            rel_list,
-            key=lambda r: (
-                str(r.get("type", "")),
-                str(r.get("description", "")),
-                str(r.get("chapter_added", "")),
-            ),
-        )
-        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
-
-    profile["relationships"] = relationships
+    profile["relationships"] = project_relationships_by_target(rels_by_target)
 
     return CharacterProfile.from_dict(name, profile)
 
 
+@guard_graph_cache
 @alru_cache(maxsize=128)
 async def get_character_profile_by_id(character_id: str, *, include_provisional: bool = False) -> CharacterProfile | None:
     """Return a character profile by id.
@@ -276,7 +260,6 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
     query = """
         MATCH (c:Character {id: $character_id})
-        WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
         // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
@@ -287,7 +270,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
                 DISTINCT CASE
                     WHEN coalesce(r.source_profile_managed, false) = true
                      AND (
-                          $include_provisional = true
+                          $include_provisional = TRUE
                           OR coalesce(r.is_provisional, FALSE) = FALSE
                      )
                     THEN {
@@ -304,7 +287,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
             [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
     """
 
-    results = await neo4j_manager.execute_read_query(
+    results = await get_services().database.execute_read_query(
         query,
         {"character_id": character_id, "include_provisional": include_provisional},
     )
@@ -326,6 +309,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
     # Collect all relationships, grouping by target_name to preserve multiple relationship
     # types to the same target (matching get_character_profile_by_name behavior)
     from collections import defaultdict
+
     rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     for rel_rec in record["relationships"]:
@@ -335,11 +319,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
         rel_props_full = rel_rec.get("rel_props", {})
         rel_props_cleaned = {}
         if isinstance(rel_props_full, dict):
-            rel_props_cleaned = {
-                k: v
-                for k, v in rel_props_full.items()
-                if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]
-            }
+            rel_props_cleaned = {k: v for k, v in rel_props_full.items() if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]}
         # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
         # Fall back to legacy property-based typing if present.
         rel_type = rel_rec.get("rel_type")
@@ -350,25 +330,10 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
         if "chapter_added" in rel_props_full:
             rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
-        
+
         rels_by_target[target_name].append(rel_props_cleaned)
 
-    # Build final relationships dict with consistent shape:
-    # - Single relationship: dict
-    # - Multiple relationships: list
-    relationships: dict[str, Any] = {}
-    for target_name in sorted(rels_by_target.keys()):
-        rel_list = rels_by_target[target_name]
-        rel_list_sorted = sorted(
-            rel_list,
-            key=lambda r: (
-                str(r.get("type", "")),
-                str(r.get("description", "")),
-                str(r.get("chapter_added", "")),
-            ),
-        )
-        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
-    profile["relationships"] = relationships
+    profile["relationships"] = project_relationships_by_target(rels_by_target)
 
     return CharacterProfile.from_dict(name, profile)
 
@@ -382,8 +347,8 @@ async def get_all_character_names() -> list[str]:
     Notes:
         This function does not currently filter provisional characters.
     """
-    query = "MATCH (c:Character) " "WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE " "RETURN c.name AS name ORDER BY c.name"
-    results = await neo4j_manager.execute_read_query(query)
+    query = "MATCH (c:Character) RETURN c.name AS name ORDER BY c.name"
+    results = await get_services().database.execute_read_query(query)
     return [record["name"] for record in results if record.get("name")]
 
 
@@ -400,6 +365,7 @@ def _process_snippet_result(record: dict[str, Any], *, include_provisional: bool
         - `description`
         - `current_status`
         - `is_provisional_overall`
+        - `most_recent_development_note`
 
     Notes:
         Provisional semantics:
@@ -410,10 +376,14 @@ def _process_snippet_result(record: dict[str, Any], *, include_provisional: bool
     has_provisional_relationships = record.get("provisional_rel_count", 0) > 0
     is_provisional_overall = char_is_provisional or has_provisional_relationships
 
+    most_current_dev = record.get("most_current_dev_event")
+    development_note = most_current_dev if most_current_dev else "N/A"
+
     return {
         "description": record.get("description"),
         "current_status": record.get("current_status"),
         "is_provisional_overall": is_provisional_overall,
+        "most_recent_development_note": development_note,
     }
 
 
@@ -456,7 +426,6 @@ async def get_character_info_for_snippet_from_db(
 
     query = """
     MATCH (c:Character {name: $char_name_param})
-    WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
     // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
     OPTIONAL MATCH (c)-[r]-()
@@ -471,7 +440,7 @@ async def get_character_info_for_snippet_from_db(
             END
         ) AS provisional_rel_count
 
-    RETURN c.description AS description,
+    RETURN c.personality_description AS description,
            c.status AS current_status,
            c.is_provisional AS char_is_provisional,
            provisional_rel_count
@@ -480,16 +449,16 @@ async def get_character_info_for_snippet_from_db(
     params = {"char_name_param": canonical_name, "chapter_limit_param": chapter_limit}
 
     try:
-        result = await neo4j_manager.execute_read_query(query, params)
+        result = await get_services().database.execute_read_query(query, params)
     except ServiceUnavailable as e:
         logger.warning(
             "Neo4j service unavailable when fetching snippet for '%s': %s. Attempting single reconnect.",
             char_name,
             e,
         )
-        await neo4j_manager.connect()
+        await get_services().database.connect()
         try:
-            result = await neo4j_manager.execute_read_query(query, params)
+            result = await get_services().database.execute_read_query(query, params)
         except (ServiceUnavailable, Neo4jError, KeyError, ValueError, TypeError) as retry_error:
             raise handle_database_error(
                 "get_character_info_for_snippet_from_db (retry)",
@@ -522,39 +491,43 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
     Returns:
         A list of dictionaries with at least `name` for up to 20 characters considered thin.
 
+    Raises:
+        Neo4jError: If the database query fails.
+
     Notes:
         This is a diagnostic discovery query intended to seed enrichment workflows. It is not
         a strict completeness guarantee.
     """
     query = """
     MATCH (c:Character)
-    WHERE c.description STARTS WITH 'Auto-created via relationship'
-       OR c.description IS NULL
-       OR c.description = ''
+    WHERE c.personality_description STARTS WITH 'Auto-created via relationship'
+       OR c.personality_description IS NULL
+       OR c.personality_description = ''
     RETURN c.name AS name
     LIMIT 20 // Limit to avoid overwhelming the LLM in one cycle
     """
-    try:
-        results = await neo4j_manager.execute_read_query(query)
-        return results if results else []
-    except (Neo4jError, KeyError, ValueError, TypeError) as e:
-        logger.error(f"Error finding thin characters: {e}", exc_info=True)
-        return []
+    results = await get_services().database.execute_read_query(query)
+    return results if results else []
 
 
 # Native model functions for performance optimization
 async def sync_characters(
     characters: list[CharacterProfile],
     chapter_number: int,
-) -> bool:
+    *,
+    physical_description_only: bool = False,
+) -> None:
     """Persist character profiles to Neo4j using the native Cypher builder.
 
     Args:
         characters: Character profiles to upsert.
         chapter_number: Chapter number used for provenance and update tracking.
+        physical_description_only: Update existing stable IDs only, without replaying
+            other profile properties or relationship assertions. Missing IDs fail.
 
-    Returns:
-        True when the batch write completed successfully. False when a write error occurred.
+    Raises:
+        Neo4jError: If the database write fails.
+        ValueError: If Cypher builder encounters invalid data.
 
     Notes:
         Cache semantics:
@@ -562,88 +535,67 @@ async def sync_characters(
             [`clear_character_read_caches()`](data_access/cache_coordinator.py:31).
 
         In-memory name resolution:
-            On success it rebuilds the canonical display-name mapping used by
+            On success it updates the canonical display-name mapping used by
             [`resolve_character_name()`](data_access/character_queries.py:43).
     """
     if not characters:
         logger.info("No characters to sync")
-        return True
+        return
 
-    # Validate all characters before syncing
     for char in characters:
         errors = validate_kg_object(char)
         if errors:
             logger.warning(f"Invalid CharacterProfile for '{char.name}': {errors}")
 
-    try:
-        cypher_builder = NativeCypherBuilder()
+    cypher_builder = NativeCypherBuilder()
+    if physical_description_only:
+        statements = [cypher_builder.character_physical_description_cypher(character, chapter_number) for character in characters]
+    else:
         statements = cypher_builder.batch_character_upsert_cypher(characters, chapter_number)
 
-        if statements:
-            await neo4j_manager.execute_cypher_batch(statements)
+    if statements:
+        await get_services().database.execute_cypher_batch(statements)
 
-        logger.info(
-            "Persisted %d character updates for chapter %d using native models.",
-            len(characters),
-            chapter_number,
-        )
+    logger.info(
+        "Persisted %d character updates for chapter %d using native models.",
+        len(characters),
+        chapter_number,
+    )
 
-        # Update canonical name mapping deterministically (avoid stale accumulation).
-        rebuild_character_name_map(characters)
+    update_character_name_map(characters)
 
-        # P1.6: Post-write cache invalidation
-        # Local import avoids circular import / eager import side effects.
-        from data_access.cache_coordinator import clear_character_read_caches
+    from data_access.cache_coordinator import clear_character_read_caches
 
-        clear_character_read_caches()
-
-        return True
-
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(
-            "Error persisting character updates for chapter %d: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return False
+    clear_character_read_caches()
 
 
 async def get_character_profiles() -> list[CharacterProfile]:
     """Return all character profiles.
 
     Returns:
-        A list of `CharacterProfile` instances. Returns an empty list on query failures.
+        A list of `CharacterProfile` instances.
 
     Notes:
         In-memory name resolution:
             This call rebuilds the canonical display-name mapping used by
             [`resolve_character_name()`](data_access/character_queries.py:43).
-
-        Error behavior:
-            This function logs exceptions and returns an empty list rather than raising.
     """
-    try:
-        cypher_builder = NativeCypherBuilder()
-        query, params = cypher_builder.character_fetch_cypher()
+    cypher_builder = NativeCypherBuilder()
+    query, params = cypher_builder.character_fetch_cypher()
 
-        results = await neo4j_manager.execute_read_query(query, params)
-        characters = []
+    results = await get_services().database.execute_read_query(query, params)
+    characters = []
 
-        for record in results:
-            if record and record.get("c"):
-                char = CharacterProfile.from_dict_record(record)
-                characters.append(char)
+    for record in results:
+        if record and record.get("c"):
+            char = CharacterProfile.from_dict_record(record)
+            characters.append(char)
 
-        # Populate canonical name map for best-effort resolve helpers.
-        rebuild_character_name_map(characters)
+    # Populate canonical name map for best-effort resolve helpers.
+    rebuild_character_name_map(characters)
 
-        logger.info("Fetched %d characters using native models", len(characters))
-        return characters
-
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(f"Error fetching character profiles: {exc}", exc_info=True)
-        return []
+    logger.info("Fetched %d characters using native models", len(characters))
+    return characters
 
 
 async def get_characters_for_chapter_context_native(chapter_number: int, limit: int = 5) -> list[CharacterProfile]:
@@ -655,52 +607,38 @@ async def get_characters_for_chapter_context_native(chapter_number: int, limit: 
 
     Returns:
         A list of `CharacterProfile` instances, ordered by most recent appearance.
-
-    Notes:
-        Error behavior:
-            This function logs exceptions and returns an empty list rather than raising.
     """
-    try:
-        query = """
-        MATCH (c:Character)-[:APPEARS_IN]->(ch:Chapter)
-        WHERE ch.number < $chapter_number
-        WITH c, max(ch.number) as last_appearance
-        ORDER BY last_appearance DESC
-        LIMIT $limit
+    query = """
+    MATCH (c:Character)-[:APPEARS_IN]->(ch:Chapter)
+    WHERE ch.number < $chapter_number
+    WITH c, max(ch.number) as last_appearance
+    ORDER BY last_appearance DESC
+    LIMIT $limit
 
-        OPTIONAL MATCH (c)-[r]->(other)
-        RETURN c,
-               collect({
-                   target_name: other.name,
-                   type: CASE
-                       WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r))
-                       ELSE type(r)
-                   END,
-                   description: r.description
-               }) as relationships
-        """
+    OPTIONAL MATCH (c)-[r]->(other)
+    RETURN c,
+           collect({
+               target_name: other.name,
+               type: CASE
+                   WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r))
+                   ELSE type(r)
+               END,
+               description: r.description
+           }) as relationships
+    """
 
-        results = await neo4j_manager.execute_read_query(query, {"chapter_number": chapter_number, "limit": limit})
+    results = await get_services().database.execute_read_query(query, {"chapter_number": chapter_number, "limit": limit})
 
-        characters = []
-        for record in results:
-            if record and record.get("c"):
-                char = CharacterProfile.from_dict_record(record)
-                characters.append(char)
+    characters = []
+    for record in results:
+        if record and record.get("c"):
+            char = CharacterProfile.from_dict_record(record)
+            characters.append(char)
 
-        logger.debug(
-            "Fetched %d characters for chapter %d context using native models",
-            len(characters),
-            chapter_number,
-        )
+    logger.debug(
+        "Fetched %d characters for chapter %d context using native models",
+        len(characters),
+        chapter_number,
+    )
 
-        return characters
-
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(
-            "Error fetching characters for chapter %d context: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return []
+    return characters

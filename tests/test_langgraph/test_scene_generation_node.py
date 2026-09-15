@@ -30,7 +30,11 @@ async def test_draft_scene_returns_partial_update_on_invalid_index(tmp_path: Pat
 
     result = await draft_scene(state)
 
-    assert result == {"current_node": "draft_scene"}
+    assert result["current_node"] == "draft_scene"
+    assert result["has_fatal_error"] is True
+    assert result["error_node"] == "draft_scene"
+    assert result["last_error"] is not None
+    assert "Invalid scene index" in result["last_error"]
 
 
 @pytest.mark.asyncio

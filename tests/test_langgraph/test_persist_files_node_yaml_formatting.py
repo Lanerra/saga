@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from core.langgraph.content_manager import ContentManager
+from core.langgraph.content_manager import ContentManager, get_character_sheets
 from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
@@ -24,8 +24,6 @@ def _make_state(tmp_path: Path) -> NarrativeState:
     global_outline_text = "This is the high-level arc of the story.\\n" "It spans multiple acts and should be readable.\n" "Final line."
 
     act1_outline_text = "Act I sets up the world and characters.\\n" "Multiple beats are described here.\n" "Closes on an inciting incident."
-
-    world_item_description = "An ancient city hidden beneath the desert sands.\\n" "Legends speak of its cursed guardians.\n" "Explorers rarely return."
 
     content_manager = ContentManager(str(project_dir))
 
@@ -58,7 +56,6 @@ def _make_state(tmp_path: Path) -> NarrativeState:
     }
     act_ref = content_manager.save_json(act_outlines, "act_outlines", "all", 1)
 
-    # Minimal state; only fields needed by persist_initialization_files
     state: NarrativeState = {
         "project_dir": str(project_dir),
         "title": "Test Novel",
@@ -70,18 +67,6 @@ def _make_state(tmp_path: Path) -> NarrativeState:
         "character_sheets_ref": char_ref,
         "global_outline_ref": global_ref,
         "act_outlines_ref": act_ref,
-        "world_items": [
-            type(
-                "WorldItemStub",
-                (),
-                {
-                    "id": "world-1",
-                    "name": "Ancient City",
-                    "category": "Location",
-                    "description": world_item_description,
-                },
-            )()
-        ],
     }
     return state
 
@@ -94,7 +79,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
+async def test_persist_initialization_files_yaml_prose_formatting(tmp_path: Path) -> None:
     state = _make_state(tmp_path)
 
     # Actually run the async function properly
@@ -139,8 +124,10 @@ async def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
                 # No stray literal "\n" sequences
                 assert "\\n" not in text
 
-    # Also ensure serialized YAML for characters does not contain "\n" escapes for prose
-    assert "\\n" not in character_yaml_text
+    # Preserve archival input separately from the normalized prose projection.
+    selected_sheets = get_character_sheets(state, ContentManager(str(project_dir)))
+    assert character_data["selected_sheet"] == selected_sheets["Test Protagonist"]
+    assert "\\n" not in character_data["description"]
 
     # 2) outline/structure.yaml
     structure_path = project_dir / "outline" / "structure.yaml"
@@ -190,7 +177,7 @@ async def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
     # Serialized beats YAML should use real newlines (no "\n" escapes) for prose sections
     assert "\\n" not in beats_yaml_text
 
-    # 4) world/items.yaml
+    # 4) world/items.yaml (stub with empty items list since canonical data lives in Neo4j)
     items_path = project_dir / "world" / "items.yaml"
     assert items_path.is_file(), "world/items.yaml not created"
 
@@ -199,17 +186,4 @@ async def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
 
     assert items_data["setting"] == "Far future desert world"
     assert items_data["source"] == "initialization"
-
-    item = items_data["items"][0]
-    assert item["id"] == "world-1"
-    assert item["name"] == "Ancient City"
-    assert item["category"] == "Location"
-
-    description_text = item["description"]
-    assert isinstance(description_text, str)
-    # Description should contain real newlines and no literal "\n"
-    assert "\n" in description_text
-    assert "\\n" not in description_text
-
-    # Serialized YAML for world items should not contain "\n" escapes in description
-    assert "\\n" not in items_yaml_text
+    assert items_data["items"] == []

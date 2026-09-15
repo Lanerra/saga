@@ -26,26 +26,14 @@ def test_validation_report_is_healthy() -> None:
     assert not report["issues"]["warnings"]
 
 
+@pytest.mark.unbound_settings
 def test_reload_applies_environment_changes(monkeypatch: pytest.MonkeyPatch) -> None:
     """Changing an env var followed by ``config.reload()`` updates the settings."""
-    # Preserve the original value to restore after the test
-    original_value = config.settings.EMBEDDING_MODEL
-
-    # Set a new value via the environment
-    monkeypatch.setenv("EMBEDDING_MODEL", "test-model-override")
-
-    # Trigger a reload – this uses the ``loader.reload_settings`` function
-    config.reload()
-
-    # Verify that settings were reloaded. Depending on .env precedence,
-    # the value may remain from .env; accept either the override or original.
-    assert isinstance(config.settings.EMBEDDING_MODEL, str)
-    assert config.settings.EMBEDDING_MODEL in {"test-model-override", original_value}
-
-    # Clean up – restore the original value
-    if original_value is not None:
-        monkeypatch.setenv("EMBEDDING_MODEL", original_value)
-    else:
-        monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
-    # Reload again to revert to the original configuration
-    config.reload()
+    try:
+        with monkeypatch.context() as environment:
+            environment.setenv("EMBEDDING_MODEL", "test-model-override")
+            assert config.reload(env_file=None) is True
+            assert config.settings.EMBEDDING_MODEL == "test-model-override"
+            assert config.snapshot_settings().EMBEDDING_MODEL == "test-model-override"
+    finally:
+        config.reload(env_file=None)

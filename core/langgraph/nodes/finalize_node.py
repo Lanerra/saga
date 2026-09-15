@@ -5,8 +5,9 @@ This module defines the finalization node that persists the generated chapter to
 the filesystem and to Neo4j, then clears large transient state fields.
 
 Notes:
-    This node performs filesystem I/O and Neo4j writes. Filesystem writes are
-    best-effort; Neo4j persistence is treated as the source of truth.
+    Durable canonical prose and compatibility mirrors are mandatory before the
+    Neo4j write. A checksum-bound filesystem acceptance receipt follows graph
+    acknowledgement. Cross-store restart reconciliation belongs to the workflow.
 """
 
 from __future__ import annotations
@@ -17,17 +18,22 @@ from typing import cast
 import numpy as np
 import structlog
 
+import config
+from core.langgraph.chapter_lifecycle import ChapterLifecycle
 from core.langgraph.content_manager import (
     ContentManager,
     get_draft_text,
     get_previous_summaries,
     load_embedding,
+    load_scene_embeddings,
     require_project_dir,
 )
+from core.langgraph.manuscript import ManuscriptReceipt, ManuscriptStore
+from core.langgraph.nodes.commit_graph_ops import _aggregate_scene_embeddings_to_chapter
+from core.langgraph.quality_policy import acceptance_decision, announce_acceptance, validation_decision
 from core.langgraph.state import NarrativeState
-from core.llm_interface_refactored import llm_service
-from data_access.chapter_queries import save_chapter_data_to_db
-from utils.file_io import write_text_file
+from core.service_context import get_services
+from data_access.chapter_queries import save_finalized_chapter_to_db as save_chapter_data_to_db
 
 logger = structlog.get_logger(__name__)
 
@@ -35,8 +41,8 @@ logger = structlog.get_logger(__name__)
 async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     """Finalize the chapter and persist it to durable storage.
 
-    This node writes a canonical chapter file, resolves an embedding (prefer an
-    upstream `embedding_ref`, otherwise compute a fallback), and persists chapter
+    This node writes a canonical chapter file, resolves an embedding (prefer a
+    scene aggregate, then `embedding_ref`, otherwise compute a fallback), and persists chapter
     metadata to Neo4j.
 
     Args:
@@ -45,17 +51,19 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     Returns:
         Updated state with:
         - extracted_entities / extracted_relationships cleared (already persisted)
-        - contradictions cleared
+        - quality scores, findings, and revision controls preserved
         - needs_revision reset to `False`
         - current_node set to `"finalize"`
 
-        On fatal errors (missing draft text, or Neo4j persistence failure), returns
+        On fatal errors (missing draft, publication, or Neo4j failure), returns
         a state with `has_fatal_error` set and `last_error` populated.
 
     Notes:
-        - Filesystem writes are best-effort: failures are logged and do not block
-          Neo4j persistence.
-        - Neo4j persistence is treated as the source of truth; failures are fatal.
+        - Filesystem failures block finalization and preserve the draft reference.
+        - Export reads retained canonical bytes through the accepted receipt,
+          never through the replaceable Markdown/plain-text compatibility mirrors.
+        - Graph acknowledgement without a receipt requires restart reconciliation;
+          prepared artifacts remain recoverable and are not automatically accepted.
         - This node performs I/O (filesystem + Neo4j) and may compute an embedding
           if no upstream embedding is available.
     """
@@ -63,6 +71,12 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         "finalize_chapter: starting finalization",
         chapter=state.get("current_chapter", 1),
     )
+
+    if "lifecycle_version" in state:
+        try:
+            return await ChapterLifecycle(state).stage().publish()
+        except Exception as error:
+            return {"current_node": "finalize", "error_node": "finalize", "has_fatal_error": True, "last_error": f"Lifecycle publication requires reconciliation: {error}"}
 
     project_dir = require_project_dir(state)
 
@@ -96,13 +110,30 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
 
     chapter_number = state.get("current_chapter", 1)
 
-    # Step 1: Save to filesystem
     try:
-        await _save_chapter_to_filesystem(
+        from core.langgraph.nodes.quality_assurance_node import assess_graph_quality
+
+        validation_decision(state)
+        quality = acceptance_decision({**state, "graph_quality_check": await assess_graph_quality(state)})
+    except ValueError as error:
+        return {"current_node": "finalize", "error_node": "finalize", "has_fatal_error": True, "last_error": str(error)}
+
+    try:
+        receipt = await _save_chapter_to_filesystem(
             chapter_number=chapter_number,
             text=draft_text,
             project_dir=project_dir,
         )
+        from core.langgraph.chapter_lifecycle import canonical_bytes
+        from utils.file_io import ContainedFiles
+
+        files = ContainedFiles(Path(project_dir), durable=True)
+        quality_path = receipt.artifact_path.removesuffix(".md") + ".quality.json"
+        quality_bytes = canonical_bytes({"manuscript": receipt.model_dump(), "quality": quality})
+        if not files.exists(quality_path):
+            files.write_bytes(quality_path, quality_bytes)
+        if files.read_bytes(quality_path) != quality_bytes:
+            raise ValueError("Quality receipt conflict; explicit revalidation with a new manuscript version required")
     except Exception as e:
         error_msg = f"Error saving chapter to filesystem: {str(e)}"
         logger.error(
@@ -111,20 +142,23 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
             error=str(e),
             exc_info=True,
         )
-        # Continue with Neo4j save even if filesystem fails
-        # (Neo4j is source of truth)
+        return {
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "finalize",
+            "current_node": "finalize",
+        }
 
-    # Step 2: Get or generate embedding (exactly once per chapter when embedding node is present)
-    #
-    # Preferred behavior:
-    # - If an upstream embedding node ran, it should have stored `embedding_ref` in state.
-    #   We load and reuse that here (no recompute).
-    # - If no embedding is available (e.g., embedding node absent), we compute as a fallback.
+    # Preserve the same producer priority as graph commit and staged enrichment.
     try:
         embedding = None
         embedding_ref = state.get("embedding_ref")
 
-        if embedding_ref:
+        scene_embeddings_ref = state.get("scene_embeddings_ref")
+        if scene_embeddings_ref:
+            vectors = load_scene_embeddings(content_manager, scene_embeddings_ref)
+            embedding = np.asarray(_aggregate_scene_embeddings_to_chapter(vectors), dtype=config.EMBEDDING_DTYPE)
+        elif embedding_ref:
             embedding_list = load_embedding(content_manager, embedding_ref)
             embedding = np.array(embedding_list, dtype=np.float32)
             logger.info(
@@ -134,7 +168,7 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
                 embedding_ref_path=embedding_ref.get("path") if isinstance(embedding_ref, dict) else None,
             )
         else:
-            embedding = await llm_service.async_get_embedding(draft_text)
+            embedding = await get_services().language_model.async_get_embedding(draft_text)
             logger.info(
                 "finalize_chapter: embedding generated (fallback)",
                 chapter=chapter_number,
@@ -150,7 +184,6 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         embedding = None
         # Continue without embedding (non-critical)
 
-    # Step 3: Save to Neo4j
     try:
         current_summary = state.get("current_summary")
         if current_summary is None:
@@ -161,7 +194,8 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
             chapter_number=chapter_number,
             summary=current_summary,
             embedding_array=embedding,
-            is_provisional=False,  # Final chapter, not provisional
+            embedding_model=config.EMBEDDING_MODEL,
+            is_provisional=False,
         )
 
         logger.info(
@@ -184,7 +218,19 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "finalize",
         }
 
-    # Step 4: Clean up temporary state (clear extraction artifacts and counters)
+    try:
+        ManuscriptStore(Path(project_dir)).accept(receipt)
+    except Exception as error:
+        logger.error("finalize_chapter: acceptance publication failed", chapter=chapter_number, error=str(error), exc_info=True)
+        return {
+            "last_error": f"Manuscript acceptance requires reconciliation: {error}",
+            "has_fatal_error": True,
+            "error_node": "finalize",
+            "current_node": "finalize",
+        }
+
+    announce_acceptance(quality, quality_path)
+    # Retain quality evidence when clearing transient extraction state.
     logger.info(
         "finalize_chapter: finalization complete",
         chapter=chapter_number,
@@ -194,8 +240,6 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     return cast(
         NarrativeState,
         {
-            "contradictions": [],
-            "iteration_count": 0,
             "needs_revision": False,
             "current_node": "finalize",
             "last_error": None,
@@ -209,79 +253,13 @@ async def _save_chapter_to_filesystem(
     chapter_number: int,
     text: str,
     project_dir: str,
-) -> None:
-    """Write the finalized chapter to the project filesystem.
+) -> ManuscriptReceipt:
+    """Durably prepare retained Markdown and both compatibility mirrors.
 
-    The canonical artifact is a Markdown file with YAML front matter. A plain-text
-    mirror is also written for legacy consumers.
-
-    Canonical artifact:
-        chapters/chapter_{chapter_number:03d}.md
-
-    Legacy mirror:
-        chapters/chapter_{chapter_number:03d}.txt
-
-    Args:
-        chapter_number: Chapter number used for filenames and metadata.
-        text: Finalized chapter prose.
-        project_dir: Base project directory containing the `chapters/` folder.
+    The returned receipt is not accepted until the graph acknowledges finalization.
+    Interrupted mirrors can be rebuilt with ManuscriptStore.recover(chapter_number).
     """
-    from datetime import datetime
-
-    # Create chapters directory if it doesn't exist (handled implicitly by helpers,
-    # but we keep the directory Path for clarity and logging).
-    chapters_dir = Path(project_dir) / "chapters"
-
-    # Compute metadata
-    word_count = len(text.split())
-    # NOTE: Title/pov_character are intentionally not sourced from state here to
-    # avoid tight coupling; they can be injected in a future refactor.
-    title = f"Chapter {chapter_number}"
-    generated_at = datetime.utcnow().isoformat()
-    version = 1
-
-    # Build Markdown with YAML front matter
-    front_matter_lines = [
-        "---",
-        f"chapter: {chapter_number}",
-        f"title: {title}",
-        f"word_count: {word_count}",
-        f"generated_at: {generated_at}",
-        f"version: {version}",
-        "---",
-        "",
-    ]
-    markdown_content = "\n".join(front_matter_lines) + text
-
-    # Canonical .md path
-    md_file = chapters_dir / f"chapter_{chapter_number:03d}.md"
-    # Legacy .txt path (plain body only)
-    txt_file = chapters_dir / f"chapter_{chapter_number:03d}.txt"
-
-    try:
-        # Write canonical Markdown artifact
-        write_text_file(md_file, markdown_content)
-
-        # Write legacy .txt mirror for existing consumers/tests
-        write_text_file(txt_file, text)
-
-        logger.info(
-            "finalize_chapter: chapter saved to filesystem",
-            chapter=chapter_number,
-            md_path=str(md_file),
-            txt_path=str(txt_file),
-            word_count=word_count,
-        )
-    except Exception as e:
-        logger.error(
-            "finalize_chapter: failed to write chapter files",
-            chapter=chapter_number,
-            md_path=str(md_file),
-            txt_path=str(txt_file),
-            error=str(e),
-            exc_info=True,
-        )
-        raise
+    return ManuscriptStore(Path(project_dir)).prepare(chapter_number, text)
 
 
 __all__ = ["finalize_chapter"]

@@ -10,7 +10,7 @@ Protagonist: {{ protagonist_name }}
 
 Act: {{ act_number }} of {{ total_acts }}
 Role in structure: {{ act_role }}
-Chapters in act: ~{{ chapters_in_act }}
+Chapters in act: {{ chapters_in_act }} (exact)
 
 ## Global outline (context)
 {{ global_outline }}
@@ -18,6 +18,7 @@ Chapters in act: ~{{ chapters_in_act }}
 ## Main characters (context)
 {{ character_context }}
 
+{% include "initialization/original_story_input.j2" %}
 ## Task
 
 The JSON root MUST be an object with EXACTLY these keys:

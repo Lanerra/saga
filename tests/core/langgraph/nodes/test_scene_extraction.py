@@ -1,10 +1,24 @@
 # tests/core/langgraph/nodes/test_scene_extraction.py
 import json
-from typing import Any
+from pathlib import Path
+from typing import Any, get_type_hints
 from unittest.mock import patch
 
 import pytest
 from pydantic import BaseModel
+
+from tests.fakes.service_context import patch_service
+from tests.test_r08g_catalog_fixtures import catalog_state
+
+
+def test_character_parser_returns_named_info_pairs() -> None:
+    from core.langgraph.nodes.scene_extraction_parsing import parse_character_updates
+
+    data = {"character_updates": {"Alice": {"description": "A scout"}}}
+    assert parse_character_updates(data, 0, 1) == [("Alice", {"description": "A scout"})]
+    assert get_type_hints(parse_character_updates)["return"] == list[tuple[str, dict[str, Any]]]
+    with pytest.raises(ValueError, match="entries must map nonblank names to objects"):
+        parse_character_updates({"character_updates": {"Alice": {"description": "A scout"}, "ignored": None}}, 0, 1)
 
 
 def _assert_no_pydantic_models(value: Any) -> None:
@@ -30,6 +44,8 @@ def _assert_json_serializable(value: Any) -> None:
 
 @pytest.mark.asyncio
 async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
+    """Scene-level extraction produces characters, world items, and relationships."""
+    from core.langgraph.initialization.catalog import select_catalog
     from core.langgraph.nodes.scene_extraction import extract_from_scene
 
     scene_text = "Elara walked into the Sunken Library and found the ancient map."
@@ -72,8 +88,8 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
             return mock_event_response, None
         return mock_rel_response, None
 
-    with patch(
-        "core.llm_interface_refactored.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         side_effect=mock_llm_json,
     ):
         result = await extract_from_scene(
@@ -84,19 +100,34 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
             novel_genre="Fantasy",
             protagonist_name="Elara",
             model_name="test-model",
+            catalog=select_catalog(catalog_state(tmp_path, locations=("Sunken Library",))),
         )
 
     assert "characters" in result
     assert "world_items" in result
     assert "relationships" in result
+
     assert len(result["characters"]) == 1
-    assert result["characters"][0]["name"] == "Elara"
+    character = result["characters"][0]
+    assert character["name"] == "Elara"
+    assert character["type"] == "Character"
+    assert character["description"] == "A brave explorer"
+    assert character["attributes"]["traits"] == ["brave"]
+    assert character["attributes"]["status"] == "active"
+
+    assert len(result["world_items"]) == 1
+    location = result["world_items"][0]
+    assert location["name"] == "Sunken Library"
+    assert location["type"] == "Location"
+    assert location["description"] == "An ancient library"
+
+    assert result["relationships"] == []
 
 
 def test_consolidate_scene_extractions_deduplicates_by_name() -> None:
-    from core.langgraph.nodes.scene_extraction import consolidate_scene_extractions
+    from core.langgraph.nodes.scene_extraction_normalization import consolidate_scene_extractions
 
-    scene_results = [
+    scene_results: list[dict[str, Any]] = [
         {
             "characters": [
                 {"name": "Elara", "type": "Character", "description": "A hero", "attributes": {}},
@@ -156,14 +187,17 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
         "Scene 1: Elara enters the library.",
         "Scene 2: She meets Marcus at the tower.",
     ]
+    state.update(catalog_state(Path(project_dir), characters=("Elara", "Marcus"), existing=state))
     state["scene_drafts_ref"] = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
     state["current_chapter"] = 1
 
     async def mock_llm(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], None]:
+        if "relationship extraction" in kwargs["prompt"]:
+            return {"kg_triples": []}, None
         return {"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None
 
-    with patch(
-        "core.llm_interface_refactored.llm_service.async_call_llm_json_object",
+    with patch_service(
+        'language_model.async_call_llm_json_object',
         side_effect=mock_llm,
     ):
         result = await extract_from_scenes(state)
@@ -171,6 +205,7 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
     # Data is now externalized immediately, so only refs should be in result
     assert "extracted_entities_ref" in result
     assert "extracted_relationships_ref" in result
+    assert result["extraction_status"] == "complete"
     assert result["current_node"] == "extract_from_scenes"
     _assert_no_pydantic_models(result)
     _assert_json_serializable(result)
@@ -197,9 +232,11 @@ async def test_extract_from_scenes_no_scenes_returns_empty_serializable_state(tm
 
     result = await extract_from_scenes(state)
 
-    # When no scenes, refs should still be created (pointing to empty files)
-    assert "extracted_entities_ref" in result
-    assert "extracted_relationships_ref" in result
+    assert result["extracted_entities_ref"] is None
+    assert result["extracted_relationships_ref"] is None
+    assert result["has_fatal_error"] is True
+    assert result["extraction_status"] == "failed"
+    assert result["extraction_outcomes"] == []
     _assert_no_pydantic_models(result)
     _assert_json_serializable(result)
 
@@ -224,8 +261,9 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
     )
 
     content_manager = ContentManager(project_dir)
+    state.update(catalog_state(Path(project_dir), characters=("Elara", "Marcus"), locations=("Library",), events=("Arrival",), existing=state))
     state["scene_drafts_ref"] = content_manager.save_list_of_texts(
-        ["Scene 1: Elara enters the library."],
+        ["Scene 1: Elara enters the Library for Arrival."],
         "scenes",
         "chapter_1",
         1,
@@ -255,21 +293,19 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
             "relationships": [extracted_relationship],
         }
 
-    async def fake_extract_from_scene(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        return {"characters": [], "world_items": [], "relationships": []}
-
     with (
         patch(
             "core.langgraph.nodes.scene_extraction.consolidate_scene_extractions",
             side_effect=fake_consolidate,
         ),
-        patch(
-            "core.langgraph.nodes.scene_extraction.extract_from_scene",
-            side_effect=fake_extract_from_scene,
-        ),
-        patch(
-            "core.llm_interface_refactored.llm_service.async_call_llm_json_object",
-            return_value=({"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None),
+        patch_service(
+            'language_model.async_call_llm_json_object',
+            side_effect=[
+                ({"character_updates": {}}, None),
+                ({"world_updates": {"Location": {}}}, None),
+                ({"world_updates": {"Event": {}}}, None),
+                ({"kg_triples": []}, None),
+            ],
         ),
     ):
         result = await extract_from_scenes(state)
@@ -289,6 +325,7 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
     extracted_entities = content_manager.load_json(result["extracted_entities_ref"])
     extracted_relationships = content_manager.load_json(result["extracted_relationships_ref"])
 
+    assert isinstance(extracted_entities, dict)
     characters = extracted_entities["characters"]
     assert isinstance(characters, list)
     assert characters == [
@@ -311,5 +348,9 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
             "confidence": 0.8,
             "source_type": None,
             "target_type": None,
+            "source_id": None,
+            "target_id": None,
+            "scene_index": None,
+            "scene_assertions": None,
         }
     ]

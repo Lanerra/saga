@@ -1,0 +1,65 @@
+{
+  "runtime_python": {
+    "files": 114,
+    "lines": 38596
+  },
+  "root_auxiliary_python": [
+    {
+      "path": "reset_neo4j.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 9300,
+      "lines": 207,
+      "sha256": "4296e4d83a7d990abf1a8fb34c1aaed75e6630ae68f880e6e384b6b0c5400fbd",
+      "purpose": "",
+      "functions": 2,
+      "classes": 0,
+      "broad_except": 5
+    },
+    {
+      "path": "verify_split.py",
+      "role": "production_python",
+      "tracked": false,
+      "bytes": 862,
+      "lines": 29,
+      "sha256": "3faff786300b6cb29976bac46298a9ec3c2b847b69b97ab42d41a88d65d9756e",
+      "purpose": "Verify scene_extraction split imports.",
+      "functions": 0,
+      "classes": 0,
+      "broad_except": 0
+    },
+    {
+      "path": "verify_subgraph.py",
+      "role": "production_python",
+      "tracked": false,
+      "bytes": 334,
+      "lines": 9,
+      "sha256": "048e781ea7986fa8bca5a22de64a6e661747b2d073a9020385d20afdd1e32d13",
+      "purpose": "Verify scene_extraction subgraph still works.",
+      "functions": 0,
+      "classes": 0,
+      "broad_except": 0
+    },
+    {
+      "path": "visualize_workflow.py",
+      "role": "production_python",
+      "tracked": true,
+      "bytes": 6833,
+      "lines": 250,
+      "sha256": "a8345a3caaedf2110518a0df2d944adad905da3dd15a5cbb53583a0242765112",
+      "purpose": "CLI tool to visualize LangGraph workflows.",
+      "functions": 7,
+      "classes": 0,
+      "broad_except": 1
+    }
+  ],
+  "test_function_definitions": 1657,
+  "pytest_mark_occurrences": {
+    "skip": 1,
+    "asyncio": 484,
+    "parametrize": 4,
+    "usefixtures": 2
+  },
+  "passing_cases": 1639,
+  "failure_cases": 43
+}

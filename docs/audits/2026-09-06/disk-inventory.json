@@ -1,0 +1,125 @@
+{
+  "by_top_level": [
+    {
+      "directory": ".venv",
+      "bytes": 8301858245,
+      "files": 35805
+    },
+    {
+      "directory": ".mypy_cache",
+      "bytes": 148007215,
+      "files": 6426
+    },
+    {
+      "directory": ".kilocode",
+      "bytes": 50822577,
+      "files": 3443
+    },
+    {
+      "directory": ".git",
+      "bytes": 45486595,
+      "files": 3923
+    },
+    {
+      "directory": "htmlcov",
+      "bytes": 11171133,
+      "files": 112
+    },
+    {
+      "directory": "projects",
+      "bytes": 8271130,
+      "files": 110
+    },
+    {
+      "directory": "tests",
+      "bytes": 5000459,
+      "files": 272
+    },
+    {
+      "directory": ".ruff_cache",
+      "bytes": 4718097,
+      "files": 176
+    },
+    {
+      "directory": "core",
+      "bytes": 2094804,
+      "files": 169
+    },
+    {
+      "directory": "docs",
+      "bytes": 1788545,
+      "files": 33
+    },
+    {
+      "directory": "output",
+      "bytes": 1329529,
+      "files": 1
+    },
+    {
+      "directory": "(root files)",
+      "bytes": 1287023,
+      "files": 31
+    },
+    {
+      "directory": "data_access",
+      "bytes": 372403,
+      "files": 20
+    },
+    {
+      "directory": ".pytest_cache",
+      "bytes": 294642,
+      "files": 6
+    },
+    {
+      "directory": "models",
+      "bytes": 147400,
+      "files": 14
+    },
+    {
+      "directory": "prompts",
+      "bytes": 141199,
+      "files": 37
+    },
+    {
+      "directory": "utils",
+      "bytes": 94175,
+      "files": 10
+    },
+    {
+      "directory": "config",
+      "bytes": 93759,
+      "files": 10
+    },
+    {
+      "directory": "orchestration",
+      "bytes": 70663,
+      "files": 4
+    },
+    {
+      "directory": "processing",
+      "bytes": 52702,
+      "files": 6
+    },
+    {
+      "directory": "ui",
+      "bytes": 21500,
+      "files": 4
+    },
+    {
+      "directory": "plans",
+      "bytes": 12400,
+      "files": 1
+    },
+    {
+      "directory": ".claude",
+      "bytes": 2234,
+      "files": 1
+    },
+    {
+      "directory": ".clinerules",
+      "bytes": 1227,
+      "files": 1
+    }
+  ],
+  "note": "Metadata-only logical bytes, no symlink traversal or story/credential content reads; not allocated blocks."
+}

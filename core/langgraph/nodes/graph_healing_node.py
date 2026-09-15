@@ -15,6 +15,7 @@ from __future__ import annotations
 import structlog
 
 from core.graph_healing_service import graph_healing_service
+from core.langgraph.quality_policy import retain_maintenance
 from core.langgraph.state import NarrativeState
 
 logger = structlog.get_logger(__name__)
@@ -32,8 +33,6 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         - last_healing_chapter: Chapter number used for the healing run.
         - nodes_graduated / nodes_enriched / nodes_merged / nodes_removed: Running totals.
         - provisional_count: Best-effort estimate of remaining provisional nodes.
-        - merge_candidates / pending_merges / auto_approved_merges: Merge metadata extracted
-          from service actions.
         - last_healing_warnings / last_apoc_available: Observability snapshot.
 
         On exceptions from the healing service, returns a non-fatal update with
@@ -65,11 +64,6 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
                 chapter=current_chapter,
                 apoc_available=results.get("apoc_available"),
             )
-            state["last_healing_warnings"] = healing_warnings
-
-        # Update healing history
-        healing_history = state.get("healing_history", [])
-        healing_history.append(results)
 
         # Calculate running totals
         total_graduated = state.get("nodes_graduated", 0) + results["nodes_graduated"]
@@ -83,25 +77,11 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         graduated_this_run = results.get("nodes_graduated", 0)
         provisional_remaining = max(0, provisional_raw - graduated_this_run)
 
-        # Extract merge candidates for potential user review.
-        # `merge_candidates` must be populated consistently (was previously always empty).
-        merge_candidates: list[dict[str, object]] = []
-        pending_merges: list[dict[str, object]] = []
-        auto_approved_merges: list[dict[str, object]] = []
-
-        for action in results.get("actions", []):
-            if action.get("type") == "merge":
-                merge_info = {
-                    "primary": action.get("primary"),
-                    "duplicate": action.get("duplicate"),
-                    "similarity": action.get("similarity"),
-                }
-                merge_candidates.append(merge_info)
-
-                if action.get("auto_approved"):
-                    auto_approved_merges.append(merge_info)
-                else:
-                    pending_merges.append(merge_info)
+        # Update healing history with new results
+        healing_history = [
+            *state.get("healing_history", []),
+            results,
+        ]
 
         logger.info(
             "heal_graph: Graph healing complete",
@@ -113,18 +93,16 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             provisional_remaining=provisional_remaining,
         )
 
+        retain_maintenance(state, "healing", results)
         return {
             "current_node": "heal_graph",
-            "last_error": None,
+            "last_error": state.get("last_error"),
             "last_healing_chapter": current_chapter,
             "provisional_count": provisional_remaining,
             "nodes_graduated": total_graduated,
             "nodes_merged": total_merged,
             "nodes_enriched": total_enriched,
             "nodes_removed": total_removed,
-            "merge_candidates": merge_candidates,
-            "pending_merges": pending_merges,
-            "auto_approved_merges": auto_approved_merges,
             "healing_history": healing_history,
             # Snapshot for callers/tests so warnings are not "silent degradation".
             "last_healing_warnings": healing_warnings,
@@ -142,6 +120,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         )
 
         # Don't fail the workflow for healing errors
+        retain_maintenance(state, "healing", {"errors": [str(e)]})
         return {
             "current_node": "heal_graph",
             "last_error": f"Graph healing warning: {str(e)}",
