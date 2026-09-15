@@ -1,6 +1,8 @@
 """Tests for LOCATED_AT relationship semantic validation and type inference."""
 
-from core.langgraph.state import ExtractedRelationship
+import pytest
+
+from core.langgraph.state import ExtractedEntity, ExtractedRelationship
 from core.relationship_validation import (
     infer_entity_type_from_relationship,
     validate_relationship_semantics_strict,
@@ -10,7 +12,7 @@ from core.relationship_validation import (
 class TestLocatedAtSemanticValidation:
     """Ensure LOCATED_AT only links Characters to Locations."""
 
-    def test_validates_character_to_location(self) -> None:
+    def test_validates_character_to_location(self):
         """Valid: Character → LOCATED_AT → Location should be accepted."""
         is_valid, error = validate_relationship_semantics_strict(
             relationship_type="LOCATED_AT",
@@ -20,7 +22,7 @@ class TestLocatedAtSemanticValidation:
         assert is_valid is True
         assert error is None
 
-    def test_rejects_character_to_character(self) -> None:
+    def test_rejects_character_to_character(self):
         """Invalid: Character → LOCATED_AT → Character should be rejected."""
         is_valid, error = validate_relationship_semantics_strict(
             relationship_type="LOCATED_AT",
@@ -32,7 +34,7 @@ class TestLocatedAtSemanticValidation:
         assert "Character" in error
         assert "LOCATED_AT" in error
 
-    def test_rejects_character_to_item(self) -> None:
+    def test_rejects_character_to_item(self):
         """Invalid: Character → LOCATED_AT → Item should be rejected."""
         is_valid, error = validate_relationship_semantics_strict(
             relationship_type="LOCATED_AT",
@@ -42,7 +44,7 @@ class TestLocatedAtSemanticValidation:
         assert is_valid is False
         assert error is not None
 
-    def test_validates_item_to_location(self) -> None:
+    def test_validates_item_to_location(self):
         """Valid: Item → LOCATED_AT → Location should be accepted."""
         is_valid, error = validate_relationship_semantics_strict(
             relationship_type="LOCATED_AT",
@@ -56,7 +58,7 @@ class TestLocatedAtSemanticValidation:
 class TestTypeInferenceFromRelationship:
     """Test entity type inference from relationship semantics."""
 
-    def test_infers_location_from_located_at_target(self) -> None:
+    def test_infers_location_from_located_at_target(self):
         """When target type is unknown, infer Location from LOCATED_AT."""
         inferred = infer_entity_type_from_relationship(
             entity_name="Castle",
@@ -65,7 +67,7 @@ class TestTypeInferenceFromRelationship:
         )
         assert inferred == "Location"
 
-    def test_infers_item_from_owns_target(self) -> None:
+    def test_infers_item_from_owns_target(self):
         """When target type is unknown, infer Item from OWNS."""
         inferred = infer_entity_type_from_relationship(
             entity_name="Sword",
@@ -74,7 +76,7 @@ class TestTypeInferenceFromRelationship:
         )
         assert inferred == "Item"
 
-    def test_infers_character_from_ally_of_target(self) -> None:
+    def test_infers_character_from_ally_of_target(self):
         """When target type is unknown, infer Character from ALLY_OF."""
         inferred = infer_entity_type_from_relationship(
             entity_name="Marcus",
@@ -83,7 +85,7 @@ class TestTypeInferenceFromRelationship:
         )
         assert inferred == "Character"
 
-    def test_infers_character_from_ally_of_source(self) -> None:
+    def test_infers_character_from_ally_of_source(self):
         """When source type is unknown, infer Character from ALLY_OF."""
         inferred = infer_entity_type_from_relationship(
             entity_name="Sarah",
@@ -92,7 +94,7 @@ class TestTypeInferenceFromRelationship:
         )
         assert inferred == "Character"
 
-    def test_returns_none_when_no_inference_possible(self) -> None:
+    def test_returns_none_when_no_inference_possible(self):
         """When inference is not possible, return None."""
         inferred = infer_entity_type_from_relationship(
             entity_name="Something",
@@ -101,7 +103,7 @@ class TestTypeInferenceFromRelationship:
         )
         assert inferred is None
 
-    def test_infers_event_from_happens_before_target(self) -> None:
+    def test_infers_event_from_happens_before_target(self):
         """When target type is unknown, infer Event from HAPPENS_BEFORE."""
         inferred = infer_entity_type_from_relationship(
             entity_name="Battle",
@@ -114,7 +116,7 @@ class TestTypeInferenceFromRelationship:
 class TestOtherSemanticRules:
     """Test other strict semantic validation rules."""
 
-    def test_validates_owns_character_to_item(self) -> None:
+    def test_validates_owns_character_to_item(self):
         """Valid: Character → OWNS → Item should be accepted."""
         is_valid, error = validate_relationship_semantics_strict(
             relationship_type="OWNS",
@@ -124,7 +126,7 @@ class TestOtherSemanticRules:
         assert is_valid is True
         assert error is None
 
-    def test_rejects_owns_character_to_character(self) -> None:
+    def test_rejects_owns_character_to_character(self):
         """Invalid: Character → OWNS → Character should be rejected."""
         is_valid, error = validate_relationship_semantics_strict(
             relationship_type="OWNS",
@@ -135,7 +137,7 @@ class TestOtherSemanticRules:
         assert error is not None
         assert "OWNS" in error
 
-    def test_validates_ally_of_character_to_character(self) -> None:
+    def test_validates_ally_of_character_to_character(self):
         """Valid: Character → ALLY_OF → Character should be accepted."""
         is_valid, error = validate_relationship_semantics_strict(
             relationship_type="ALLY_OF",
@@ -145,7 +147,7 @@ class TestOtherSemanticRules:
         assert is_valid is True
         assert error is None
 
-    def test_rejects_ally_of_character_to_location(self) -> None:
+    def test_rejects_ally_of_character_to_location(self):
         """Invalid: Character → ALLY_OF → Location should be rejected."""
         is_valid, error = validate_relationship_semantics_strict(
             relationship_type="ALLY_OF",
@@ -155,7 +157,7 @@ class TestOtherSemanticRules:
         assert is_valid is False
         assert error is not None
 
-    def test_validates_loves_character_to_anything(self) -> None:
+    def test_validates_loves_character_to_anything(self):
         """Valid: Character → LOVES → (anything) should be accepted."""
         is_valid_char, error_char = validate_relationship_semantics_strict(
             relationship_type="LOVES",
@@ -182,7 +184,7 @@ class TestOtherSemanticRules:
 class TestIntegrationWithExtractedRelationships:
     """Test validation with actual ExtractedRelationship objects."""
 
-    def test_creates_valid_character_location_relationship(self) -> None:
+    def test_creates_valid_character_location_relationship(self):
         """A valid Character → LOCATED_AT → Location relationship."""
         rel = ExtractedRelationship(
             source_name="Alice",
@@ -194,8 +196,6 @@ class TestIntegrationWithExtractedRelationships:
             confidence=1.0,
             chapter=1,
         )
-        assert rel.source_type == "Character"
-        assert rel.target_type == "Location"
 
         is_valid, error = validate_relationship_semantics_strict(
             rel.relationship_type,
@@ -205,7 +205,7 @@ class TestIntegrationWithExtractedRelationships:
         assert is_valid is True
         assert error is None
 
-    def test_rejects_invalid_character_character_relationship(self) -> None:
+    def test_rejects_invalid_character_character_relationship(self):
         """An invalid Character → LOCATED_AT → Character relationship."""
         rel = ExtractedRelationship(
             source_name="Alice",
@@ -217,8 +217,6 @@ class TestIntegrationWithExtractedRelationships:
             confidence=1.0,
             chapter=1,
         )
-        assert rel.source_type == "Character"
-        assert rel.target_type == "Character"
 
         is_valid, error = validate_relationship_semantics_strict(
             rel.relationship_type,

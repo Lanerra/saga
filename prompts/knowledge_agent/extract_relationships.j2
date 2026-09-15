@@ -25,6 +25,17 @@ ENTITY REQUIREMENTS:
   * An action/state as noun (communication, protection, survival)
   * A generic descriptor without identity (the group, the entity)
 
+SEMANTIC CONSTRAINTS (CRITICAL):
+- LOCATED_AT: Subject must be a character/entity, object_entity must be a LOCATION (building, city, room, etc.), NEVER another character.
+  ✓ Valid: {"subject":"Alice","predicate":"LOCATED_AT","object_entity":"Castle","description":"Alice is at the Castle"}
+  ✗ INVALID: {"subject":"Alice","predicate":"LOCATED_AT","object_entity":"Bob"} - Characters cannot be located "at" other characters
+- OWNS/CARRIES/WIELDS: object_entity must be a physical item or object, not a person or location.
+  ✓ Valid: {"subject":"Marcus","predicate":"OWNS","object_entity":"Sword","description":"Marcus owns a sword"}
+  ✗ INVALID: {"subject":"Marcus","predicate":"OWNS","object_entity":"Sarah"} - Cannot "own" a person
+- ALLY_OF/ENEMY_OF/MENTORS/LOVES/FEARS: Both subject and object_entity must be characters/people, not locations or items.
+  ✓ Valid: {"subject":"Sarah","predicate":"ALLY_OF","object_entity":"Marcus","description":"Sarah is allied with Marcus"}
+  ✗ INVALID: {"subject":"Sarah","predicate":"ALLY_OF","object_entity":"Castle"} - Cannot be allied with a location
+
 Required information (schema):
 
 Output contract:
@@ -39,14 +50,13 @@ Output contract:
 - If no significant relationships are present, return: {"kg_triples": []}
 
 Examples demonstrating valid relationships:
-These examples use Character Elara and Marcus, Location Sunken Library, and Item Enchanted Blade. They illustrate those label pairs only; never copy a name absent from the eligible scene identities.
 {"kg_triples":[
   {"subject":"Elara","predicate":"LOCATED_AT","object_entity":"Sunken Library","description":"Elara is currently at the Sunken Library."},
-  {"subject":"Marcus","predicate":"ALLIES_WITH","object_entity":"Elara","description":"Marcus considers Elara a trusted ally."},
-  {"subject":"Marcus","predicate":"WIELDS","object_entity":"Enchanted Blade","description":"Marcus wields the weapon named Enchanted Blade."}
+  {"subject":"Marcus","predicate":"ALLY_OF","object_entity":"Elara","description":"Marcus considers Elara a trusted ally."},
+  {"subject":"Marcus","predicate":"WIELDS","object_entity":"Enchanted Blade","description":"Marcus wields an enchanted blade."}
 ]}
 
-Remember: If the chapter text describes "Alice is with Bob", this is NOT a LOCATED_AT relationship. Use ALLIES_WITH only if the text supports an alliance, or another listed canonical social relationship supported by the text. Mere co-presence does not establish a social relationship.
+Remember: If the chapter text describes "Alice is with Bob", this is NOT a LOCATED_AT relationship. Consider ALLY_OF, ACCOMPANIES, or similar social relationships instead.
 
 Chapter text:
 {{ chapter_text }}

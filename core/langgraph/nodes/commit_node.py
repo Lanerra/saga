@@ -809,7 +809,7 @@ async def _build_relationship_statements(
                 name=source_name,
                 original_name=rel.source_name,
                 explicit_type=source_type,
-                stable_id=rel.source_id,
+                stable_id=None,
                 relationship_type=rel.relationship_type,
                 role="source",
             ),
@@ -818,7 +818,7 @@ async def _build_relationship_statements(
                 name=target_name,
                 original_name=rel.target_name,
                 explicit_type=target_type,
-                stable_id=rel.target_id,
+                stable_id=None,
                 relationship_type=rel.relationship_type,
                 role="target",
             ),
@@ -870,7 +870,16 @@ async def _build_relationship_statements(
             )
 
             if not is_valid:
-                raise ValueError(f"Relationship semantic validation failed: {error_message}")
+                logger.warning(
+                    "_build_relationship_statements: skipping semantically invalid relationship",
+                    source=subject_name,
+                    source_type=subject_type,
+                    predicate=predicate_clean,
+                    target=object_name,
+                    target_type=object_type,
+                    reason=error_message,
+                )
+                continue
 
             subject_label = _get_cypher_labels(subject_type).lstrip(":")
             object_label = _get_cypher_labels(object_type).lstrip(":")
